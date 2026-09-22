@@ -1,0 +1,509 @@
+/**
+ * Pure view state for the interactive viewer (design D6), ported from kosmo-callflow
+ * `packages/cli/src/connect/view-state.ts`.
+ *
+ * Deliberately independent of the wire format and of any daemon type: the caller maps
+ * projection pages and deltas onto the small row shapes below. That keeps stable
+ * selection, pause semantics and the distinct "nothing to show" states testable as
+ * plain data.
+ *
+ * Identity is the full qualified ref `(datasetId, projectId, sessionId, traceId,
+ * spanId)`, never a bare id and never a list index. Two sessions that reuse the same
+ * traceId/spanId are two different spans: selecting, expanding or dropping one of them
+ * must not touch the other. Keys are the shared `replayTraceKey`/`replaySpanKey` from
+ * `@kosmo-callflow/replay`, so the viewer and the replay reducer cannot disagree about
+ * what "the same span" means.
+ */
+
+import type { TraceTextDocumentV1 } from "@kosmo-callflow/protocol";
+import { replaySpanKey, replayTraceKey, type ReplaySpanRef, type ReplayTraceRef } from "@kosmo-callflow/replay";
+import { stepIndex, type ReplaySchedule, type ReplayTimeline } from "./replay.js";
+
+/** Full identity of one trace: `(datasetId, projectId, sessionId, traceId)`. */
+export type TraceRef = ReplayTraceRef;
+/** Full identity of one span: `(datasetId, projectId, sessionId, traceId, spanId)`. */
+export type SpanRef = ReplaySpanRef;
+
+/** Stable map key of a trace ref; extra fields on the argument are ignored. */
+export function traceKey(ref: TraceRef): string {
+  return replayTraceKey(ref);
+}
+
+/** Stable map key of a span ref; extra fields on the argument are ignored. */
+export function spanKey(ref: SpanRef): string {
+  return replaySpanKey(ref);
+}
+
+/** Copy exactly the five identity fields, so a row never leaks into a selection. */
+export function spanRefOf(ref: SpanRef): SpanRef {
+  return {
+    datasetId: ref.datasetId,
+    projectId: ref.projectId,
+    sessionId: ref.sessionId,
+    traceId: ref.traceId,
+    spanId: ref.spanId
+  };
+}
+
+export function sameTrace(left: TraceRef, right: TraceRef): boolean {
+  return traceKey(left) === traceKey(right);
+}
+
+export function sameSpan(left: SpanRef, right: SpanRef): boolean {
+  return spanKey(left) === spanKey(right);
+}
+
+export type TraceRow = TraceRef & {
+  /**
+   * The projection's own vocabulary, deliberately not renamed: translating "complete"
+   * to "completed" here would create a second spelling of the same fact.
+   */
+  status: "running" | "complete" | "errored";
+  startedAt: number;
+  spanCount: number;
+};
+
+export type SpanRow = SpanRef & {
+  /** Parent spanId inside the same trace ref; null for a root or a re-rooted orphan. */
+  parentSpanId: string | null;
+  nodeId: string;
+  depth: number;
+  errored: boolean;
+};
+
+export type Selection = SpanRef | null;
+
+/**
+ * One recorded value in the details pane.
+ *
+ * Every non-recorded case carries its own marker. A missing value is never rendered as
+ * an empty string or as a plausible-looking default.
+ */
+export type DetailValue =
+  | { state: "recorded"; text: string }
+  | { state: "masked" }
+  | { state: "not-recorded" }
+  | { state: "unavailable"; reason: string };
+
+export type DetailDuration = { state: "recorded"; ms: number } | { state: "unavailable"; reason: string };
+
+/** Code anchor for the selected span. `line` is null when no line evidence exists. */
+export type DetailAnchor = { file: string; symbol: string; line: number | null };
+
+export type SpanDetail = SpanRef & {
+  nodeId: string;
+  status: TraceRow["status"];
+  args: DetailValue;
+  ret: DetailValue;
+  error: DetailValue;
+  duration: DetailDuration;
+  anchor: DetailAnchor;
+  /**
+   * The span as a trace-text document, kept so the `d` toggle can render it in either
+   * dialect through the protocol's own renderer instead of a private codec.
+   */
+  document: TraceTextDocumentV1 | null;
+};
+
+/** Why the selected row is not currently in the visible list. */
+export type SelectionAbsence = "retention" | "filter" | null;
+
+export type Filters = {
+  errorsOnly: boolean;
+  search: string | null;
+};
+
+/**
+ * The no-data states the spec requires be told apart: "daemon unreachable", "SDK not
+ * attached" and "attached but nothing recorded yet" need different user action.
+ */
+export type ConnectionState =
+  | { kind: "disconnected"; reason: string }
+  | { kind: "connected"; sdk: "absent" }
+  | { kind: "connected"; sdk: "present"; events: "none" }
+  | { kind: "connected"; sdk: "present"; events: "flowing" };
+
+/**
+ * An active replay session. `null` means the view is live. It is never cleared by
+ * reaching the end of the recording — only by the explicit `returnToLive` action.
+ */
+export type ReplaySession = {
+  timeline: ReplayTimeline;
+  schedule: ReplaySchedule;
+  /** Position in `timeline.frames`; -1 before the first frame is shown. */
+  index: number;
+};
+
+export type ViewState = {
+  connection: ConnectionState;
+  traces: TraceRow[];
+  spans: SpanRow[];
+  selection: Selection;
+  selectionAbsence: SelectionAbsence;
+  /** Last known rendering of the selection, kept so a pinned selection can still show detail. */
+  lastKnownSpan: SpanRow | null;
+  /** Expanded spans, keyed by `spanKey` — never by bare spanId. */
+  expanded: Set<string>;
+  focus: "list" | "detail";
+  view: "tree" | "table";
+  dsl: "lisp" | "tab";
+  filters: Filters;
+  paused: boolean;
+  /** Deltas folded while paused, applied on resume. Bounded by backlogCap. */
+  backlog: Delta[];
+  backlogCap: number;
+  backlogOverflowed: boolean;
+  behindLive: boolean;
+  retentionGap: boolean;
+  effectivePolicy: string | null;
+  replay: ReplaySession | null;
+  detail: SpanDetail | null;
+  /** Live search buffer while the `/` prompt is open; null when it is closed. */
+  searchInput: string | null;
+  /**
+   * Index of the first visible row. Held in state, not derived, so rows inserted above
+   * the selection can be compensated for and the selected row keeps its screen position.
+   */
+  scrollTop: number;
+  /** Rows available for the list body; the terminal layer keeps this in sync on resize. */
+  viewportHeight: number;
+};
+
+export type Delta =
+  | { kind: "traces"; rows: TraceRow[] }
+  | { kind: "spans"; rows: SpanRow[] }
+  | { kind: "retention"; dropped: TraceRef[] }
+  | { kind: "behindLive"; behind: boolean }
+  | { kind: "connection"; connection: ConnectionState }
+  | { kind: "policy"; effectivePolicy: string }
+  | { kind: "resize"; viewportHeight: number }
+  | { kind: "detail"; detail: SpanDetail | null };
+
+export type Action =
+  | { kind: "move"; delta: number }
+  | { kind: "moveTo"; edge: "first" | "last" }
+  | { kind: "focus"; pane: "list" | "detail" }
+  | { kind: "expand" }
+  | { kind: "collapse" }
+  | { kind: "toggleExpand" }
+  | { kind: "togglePause" }
+  | { kind: "toggleView" }
+  | { kind: "toggleDsl" }
+  | { kind: "search" }
+  | { kind: "searchInput"; text: string }
+  | { kind: "searchBackspace" }
+  | { kind: "searchCommit" }
+  | { kind: "searchCancel" }
+  | { kind: "filterErrorsOnly" }
+  | { kind: "clearSelection" }
+  | { kind: "replayStep"; delta: number }
+  | { kind: "returnToLive" }
+  | { kind: "quit" };
+
+export const defaultBacklogCap = 1_000;
+
+export function initialViewState(overrides: Partial<ViewState> = {}): ViewState {
+  return {
+    connection: { kind: "disconnected", reason: "not connected" },
+    traces: [],
+    spans: [],
+    selection: null,
+    selectionAbsence: null,
+    lastKnownSpan: null,
+    expanded: new Set<string>(),
+    focus: "list",
+    view: "tree",
+    dsl: "lisp",
+    filters: { errorsOnly: false, search: null },
+    paused: false,
+    backlog: [],
+    backlogCap: defaultBacklogCap,
+    backlogOverflowed: false,
+    behindLive: false,
+    retentionGap: false,
+    effectivePolicy: null,
+    replay: null,
+    detail: null,
+    searchInput: null,
+    scrollTop: 0,
+    viewportHeight: 20,
+    ...overrides
+  };
+}
+
+/**
+ * Fold a delta from the projection stream.
+ *
+ * While paused the delta is queued rather than applied: pause freezes the view only. It
+ * must not unsubscribe and must never touch capture policy.
+ */
+export function applyDelta(state: ViewState, delta: Delta): ViewState {
+  if (state.paused) {
+    if (state.backlog.length >= state.backlogCap) {
+      // Record the gap instead of dropping silently.
+      return { ...state, backlogOverflowed: true, retentionGap: true };
+    }
+    return { ...state, backlog: [...state.backlog, delta] };
+  }
+  return reduceDelta(state, delta);
+}
+
+function reduceDelta(state: ViewState, delta: Delta): ViewState {
+  switch (delta.kind) {
+    case "traces":
+      return preservingScreenRow(state, (draft) => ({ ...draft, traces: mergeTraces(draft.traces, delta.rows) }));
+    case "spans":
+      return preservingScreenRow(state, (draft) => ({ ...draft, spans: mergeSpans(draft.spans, delta.rows) }));
+    case "retention": {
+      // Dropped by full trace ref: another session's trace with the same traceId stays.
+      const dropped = new Set(delta.dropped.map(traceKey));
+      return preservingScreenRow(state, (draft) => ({
+        ...draft,
+        traces: draft.traces.filter((row) => !dropped.has(traceKey(row))),
+        spans: draft.spans.filter((row) => !dropped.has(traceKey(row))),
+        retentionGap: true
+      }));
+    }
+    case "behindLive":
+      return { ...state, behindLive: delta.behind };
+    case "connection":
+      return { ...state, connection: delta.connection };
+    case "policy":
+      return { ...state, effectivePolicy: delta.effectivePolicy };
+    case "resize":
+      return { ...state, viewportHeight: Math.max(1, Math.floor(delta.viewportHeight)) };
+    case "detail":
+      return { ...state, detail: delta.detail };
+  }
+}
+
+/**
+ * Apply a list mutation while keeping the selected row on the same screen line: the
+ * selection's absolute index moves as rows sort in around it, so scrollTop is
+ * compensated by the same amount.
+ */
+function preservingScreenRow(state: ViewState, mutate: (draft: ViewState) => ViewState): ViewState {
+  const before = selectionIndex(state);
+  const next = resolveSelection(mutate(state));
+  const after = selectionIndex(next);
+  if (before === -1 || after === -1) return next;
+  return { ...next, scrollTop: Math.max(0, next.scrollTop + (after - before)) };
+}
+
+/** Index of the selection within the currently visible rows, or -1. */
+export function selectionIndex(state: ViewState): number {
+  if (!state.selection) return -1;
+  const key = spanKey(state.selection);
+  return visibleSpans(state).findIndex((row) => spanKey(row) === key);
+}
+
+function mergeTraces(current: TraceRow[], incoming: TraceRow[]): TraceRow[] {
+  const byKey = new Map(current.map((row) => [traceKey(row), row]));
+  for (const row of incoming) byKey.set(traceKey(row), row);
+  // Newest first; the full key is the final tie-break so two sessions that reuse a
+  // traceId still sort deterministically.
+  return [...byKey.values()].sort(
+    (left, right) =>
+      right.startedAt - left.startedAt ||
+      left.traceId.localeCompare(right.traceId) ||
+      traceKey(left).localeCompare(traceKey(right))
+  );
+}
+
+function mergeSpans(current: SpanRow[], incoming: SpanRow[]): SpanRow[] {
+  const byKey = new Map(current.map((row) => [spanKey(row), row]));
+  for (const row of incoming) byKey.set(spanKey(row), row);
+  return [...byKey.values()];
+}
+
+/**
+ * Recompute why a selection is not visible, without ever moving it. A selection that
+ * falls out of retention or is hidden by a filter stays pinned; it is cleared only by an
+ * explicit user action.
+ */
+function resolveSelection(state: ViewState): ViewState {
+  if (!state.selection) return { ...state, selectionAbsence: null };
+  const key = spanKey(state.selection);
+  const span = state.spans.find((row) => spanKey(row) === key);
+  if (!span) {
+    const trace = traceKey(state.selection);
+    const traceStillPresent = state.traces.some((row) => traceKey(row) === trace);
+    return { ...state, selectionAbsence: traceStillPresent ? "filter" : "retention" };
+  }
+  if (!passesFilters(span, state.filters)) {
+    return { ...state, selectionAbsence: "filter", lastKnownSpan: span };
+  }
+  return { ...state, selectionAbsence: null, lastKnownSpan: span };
+}
+
+export function passesFilters(span: SpanRow, filters: Filters): boolean {
+  if (filters.errorsOnly && !span.errored) return false;
+  if (filters.search && !span.nodeId.includes(filters.search)) return false;
+  return true;
+}
+
+/** Key of a span's parent inside the same trace ref, or null for a root. */
+export function parentKey(span: SpanRow): string | null {
+  return span.parentSpanId === null ? null : spanKey({ ...span, spanId: span.parentSpanId });
+}
+
+/** Spans currently eligible for display, in stable tree order. */
+export function visibleSpans(state: ViewState): SpanRow[] {
+  return state.spans
+    .filter((span) => passesFilters(span, state.filters))
+    .filter((span) => {
+      const parent = parentKey(span);
+      return parent === null || state.expanded.has(parent);
+    })
+    .sort(
+      (left, right) =>
+        left.depth - right.depth ||
+        left.spanId.localeCompare(right.spanId) ||
+        spanKey(left).localeCompare(spanKey(right))
+    );
+}
+
+export function applyAction(state: ViewState, action: Action): ViewState {
+  switch (action.kind) {
+    case "move":
+      return moveSelection(state, action.delta);
+    case "moveTo": {
+      const rows = visibleSpans(state);
+      if (rows.length === 0) return state;
+      const target = action.edge === "first" ? rows[0]! : rows[rows.length - 1]!;
+      return select(state, target);
+    }
+    case "focus":
+      return { ...state, focus: action.pane };
+    case "expand":
+      return state.selection ? { ...state, expanded: withAdded(state.expanded, spanKey(state.selection)) } : state;
+    case "collapse":
+      return state.selection ? { ...state, expanded: withRemoved(state.expanded, spanKey(state.selection)) } : state;
+    case "toggleExpand": {
+      if (!state.selection) return state;
+      const key = spanKey(state.selection);
+      return {
+        ...state,
+        expanded: state.expanded.has(key) ? withRemoved(state.expanded, key) : withAdded(state.expanded, key)
+      };
+    }
+    case "togglePause":
+      return state.paused ? resume(state) : { ...state, paused: true };
+    case "toggleView":
+      return { ...state, view: state.view === "tree" ? "table" : "tree" };
+    case "toggleDsl":
+      return { ...state, dsl: state.dsl === "lisp" ? "tab" : "lisp" };
+    case "search":
+      // Opening the prompt seeds it with the active search, so refining a filter does
+      // not mean retyping it.
+      return { ...state, searchInput: state.filters.search ?? "" };
+    case "searchInput":
+      return state.searchInput === null ? state : { ...state, searchInput: state.searchInput + action.text };
+    case "searchBackspace":
+      return state.searchInput === null || state.searchInput.length === 0
+        ? state
+        : { ...state, searchInput: state.searchInput.slice(0, -1) };
+    case "searchCommit": {
+      if (state.searchInput === null) return state;
+      const search = state.searchInput.length === 0 ? null : state.searchInput;
+      // resolveSelection, not a move: a filter that hides the selected span pins it and
+      // explains itself rather than retargeting the selection.
+      return resolveSelection({ ...state, searchInput: null, filters: { ...state.filters, search } });
+    }
+    case "searchCancel":
+      return state.searchInput === null ? state : { ...state, searchInput: null };
+    case "filterErrorsOnly":
+      return resolveSelection({ ...state, filters: { ...state.filters, errorsOnly: !state.filters.errorsOnly } });
+    case "clearSelection":
+      return { ...state, selection: null, selectionAbsence: null, lastKnownSpan: null };
+    case "replayStep":
+      return replayStep(state, action.delta);
+    case "returnToLive":
+      // The ONLY way out of replay. Running off the end of the recording parks at the
+      // last frame instead of rejoining live behind the user's back.
+      return state.replay === null ? state : { ...state, replay: null };
+    case "quit":
+      return state;
+  }
+}
+
+/**
+ * Show the recorded projection state one step forward or back. The frame carries a whole
+ * recorded state, so back-stepping re-shows exactly what was recorded. The selection is
+ * carried across by full identity and re-resolved.
+ */
+function replayStep(state: ViewState, delta: number): ViewState {
+  const session = state.replay;
+  if (session === null || session.timeline.frames.length === 0) return state;
+  // Before the first frame, stepping back is a no-op rather than a disguised step
+  // forward onto frame 0.
+  if (session.index < 0 && delta < 0) return state;
+  const index = stepIndex(session.timeline, session.index, delta);
+  if (index === session.index) return state;
+  const frame = session.timeline.frames[index]!;
+  return resolveSelection({
+    ...state,
+    replay: { ...session, index },
+    traces: frame.state.traces,
+    spans: frame.state.spans
+  });
+}
+
+function resume(state: ViewState): ViewState {
+  let next: ViewState = { ...state, paused: false, backlog: [] };
+  for (const delta of state.backlog) {
+    next = reduceDelta(next, delta);
+  }
+  return next;
+}
+
+function moveSelection(state: ViewState, delta: number): ViewState {
+  const rows = visibleSpans(state);
+  if (rows.length === 0) return state;
+  if (!state.selection) {
+    return select(state, delta >= 0 ? rows[0]! : rows[rows.length - 1]!);
+  }
+  const key = spanKey(state.selection);
+  const index = rows.findIndex((row) => spanKey(row) === key);
+  if (index === -1) {
+    // The pinned selection is not on screen. Moving is the explicit user action that
+    // releases the pin, so start from the top rather than guessing a neighbour.
+    return select(state, rows[0]!);
+  }
+  const target = rows[clamp(index + delta, 0, rows.length - 1)]!;
+  return select(state, target);
+}
+
+function select(state: ViewState, span: SpanRow): ViewState {
+  const selected: ViewState = {
+    ...state,
+    selection: spanRefOf(span),
+    selectionAbsence: null,
+    lastKnownSpan: span
+  };
+  // User-driven movement is the one case where the viewport may follow, and then only
+  // by the minimum needed to keep the selection on screen.
+  const index = selectionIndex(selected);
+  if (index === -1) return selected;
+  const height = Math.max(1, selected.viewportHeight);
+  let scrollTop = selected.scrollTop;
+  if (index < scrollTop) scrollTop = index;
+  else if (index >= scrollTop + height) scrollTop = index - height + 1;
+  return { ...selected, scrollTop: Math.max(0, scrollTop) };
+}
+
+function withAdded(set: ReadonlySet<string>, value: string): Set<string> {
+  const next = new Set(set);
+  next.add(value);
+  return next;
+}
+
+function withRemoved(set: ReadonlySet<string>, value: string): Set<string> {
+  const next = new Set(set);
+  next.delete(value);
+  return next;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}

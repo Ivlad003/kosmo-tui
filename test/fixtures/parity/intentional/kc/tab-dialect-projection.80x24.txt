@@ -1,0 +1,24 @@
+connected; live | capture: unavailable
+────────────────────────────────────────────────────────────────────────────────
+>!  src/api/pricing.ts#applyDiscount
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+detail: src/api/pricing.ts#applyDiscount [errored]
+  anchor: src/api/pricing.ts#applyDiscount (line unavailable)
+  duration: 12ms
+  args: [{"sku":"A-1","qty":2}]
+  ret: [masked]
+  error: RangeError: discount exceeds price
+  tab: kosmo.trace-text/v1	projection_version=1	ordering=causal	depth=call	deta…
+  tab: dataset	project="kosmo-callflow"	source_revision="cae5cd842927b7fcb63c7b…
+  tab: coverage	state=complete	gaps=nil
+────────────────────────────────────────────────────────────────────────────────
+tree/tab  j/k move  space expand  p pause  v view  d dsl  e errors  / search  q…

@@ -1,0 +1,24 @@
+connected; live | capture: full
+────────────────────────────────────────────────────────────────────────────────
+selection hidden by the current filter — showing last known values
+ ~ t-7  (3)
+   t-6  (3)
+>! t-5  (3)
+ ~ t-4  (3)
+   t-3  (3)
+   … 2 more traces
+    + src/db/orders.ts#insertOrder
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+search: db/p_  (enter apply, esc cancel)

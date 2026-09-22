@@ -1,0 +1,40 @@
+connected; live | capture: unavailable
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>~ t-long  (60)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    src/m/mod000.ts#step
+    src/m/mod001.ts#step
+    src/m/mod002.ts#step
+    src/m/mod003.ts#step
+    src/m/mod004.ts#step
+    src/m/mod005.ts#step
+    src/m/mod006.ts#step
+    src/m/mod007.ts#step
+    src/m/mod008.ts#step
+    src/m/mod009.ts#step
+    src/m/mod010.ts#step
+    src/m/mod011.ts#step
+    src/m/mod012.ts#step
+    src/m/mod013.ts#step
+    src/m/mod014.ts#step
+    src/m/mod015.ts#step
+    src/m/mod016.ts#step
+    src/m/mod017.ts#step
+    src/m/mod018.ts#step
+    src/m/mod019.ts#step
+    src/m/mod020.ts#step
+    src/m/mod021.ts#step
+    src/m/mod022.ts#step
+    src/m/mod023.ts#step
+    src/m/mod024.ts#step
+    src/m/mod025.ts#step
+    src/m/mod026.ts#step
+    src/m/mod027.ts#step
+    src/m/mod028.ts#step
+    src/m/mod029.ts#step
+>   src/m/mod030.ts#step
+    src/m/mod031.ts#step
+    src/m/mod032.ts#step
+    src/m/mod033.ts#step
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+tree/lisp  j/k move  space expand  p pause  v view  d dsl  e errors  / search  q quit

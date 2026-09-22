@@ -1,0 +1,16 @@
+connected; SDK attached; no events recorded yet | capture: …
+────────────────────────────────────────────────────────────
+  no data: SDK attached, nothing recorded yet
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+tree/lisp  j/k move  space expand  p pause  v view  d dsl  …

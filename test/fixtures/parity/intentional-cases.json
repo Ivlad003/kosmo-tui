@@ -1,0 +1,259 @@
+{
+  "sizes": [
+    [80, 24],
+    [120, 40],
+    [60, 16]
+  ],
+  "cases": [
+    {
+      "name": "unicode-wide-node",
+      "change": "unicode-width",
+      "description": "CJK, emoji ZWJ sequence and a combining mark in node ids and a trace id",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "connected",
+              "sdk": "present",
+              "events": "flowing"
+            }
+          }
+        },
+        {
+          "delta": {
+            "kind": "traces",
+            "rows": [
+              {
+                "traceId": "\u6ce8\u6587-\u30c8\u30ec\u30fc\u30b9-\ud83d\udc69\u200d\ud83d\udcbb-\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044",
+                "status": "complete",
+                "startedAt": 1,
+                "spanCount": 1
+              }
+            ]
+          }
+        },
+        {
+          "delta": {
+            "kind": "spans",
+            "rows": [
+              {
+                "traceId": "\u6ce8\u6587-\u30c8\u30ec\u30fc\u30b9-\ud83d\udc69\u200d\ud83d\udcbb-\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044",
+                "spanId": "u-1",
+                "parentSpanId": null,
+                "nodeId": "src/\u6ce8\u6587/\u51e6\u7406.ts#\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d\u78ba\u8a8d",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "\u6ce8\u6587-\u30c8\u30ec\u30fc\u30b9-\ud83d\udc69\u200d\ud83d\udcbb-\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044",
+                "spanId": "u-2",
+                "parentSpanId": null,
+                "nodeId": "src/cafe\u0301/\ud83c\uddfa\ud83c\udde6/\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66.ts#run",
+                "depth": 0,
+                "errored": false
+              }
+            ]
+          }
+        },
+        {
+          "select": {
+            "traceId": "\u6ce8\u6587-\u30c8\u30ec\u30fc\u30b9-\ud83d\udc69\u200d\ud83d\udcbb-\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044\u9577\u3044",
+            "spanId": "u-1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "duplicate-ids-two-sessions",
+      "change": "full-identity",
+      "description": "two sessions recorded the same traceId/spanId; the second session's rows carry sessionId s-2",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "connected",
+              "sdk": "present",
+              "events": "flowing"
+            }
+          }
+        },
+        {
+          "delta": {
+            "kind": "traces",
+            "rows": [
+              {
+                "traceId": "t-dup",
+                "status": "complete",
+                "startedAt": 1,
+                "spanCount": 1,
+                "sessionId": "s-1"
+              },
+              {
+                "traceId": "t-dup",
+                "status": "errored",
+                "startedAt": 2,
+                "spanCount": 1,
+                "sessionId": "s-2"
+              }
+            ]
+          }
+        },
+        {
+          "delta": {
+            "kind": "spans",
+            "rows": [
+              {
+                "traceId": "t-dup",
+                "spanId": "root",
+                "parentSpanId": null,
+                "nodeId": "src/a.ts#handle",
+                "depth": 0,
+                "errored": false,
+                "sessionId": "s-1"
+              },
+              {
+                "traceId": "t-dup",
+                "spanId": "root",
+                "parentSpanId": null,
+                "nodeId": "src/a.ts#handle",
+                "depth": 0,
+                "errored": true,
+                "sessionId": "s-2"
+              }
+            ]
+          }
+        },
+        {
+          "select": {
+            "traceId": "t-dup",
+            "spanId": "root",
+            "sessionId": "s-2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "control-chars-in-recorded-data",
+      "change": "terminal-escaping",
+      "description": "recorded node id and trace id contain ESC/CSI and BEL",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "connected",
+              "sdk": "present",
+              "events": "flowing"
+            }
+          }
+        },
+        {
+          "delta": {
+            "kind": "traces",
+            "rows": [
+              {
+                "traceId": "t-\u001b[31mred",
+                "status": "complete",
+                "startedAt": 1,
+                "spanCount": 1
+              }
+            ]
+          }
+        },
+        {
+          "delta": {
+            "kind": "spans",
+            "rows": [
+              {
+                "traceId": "t-\u001b[31mred",
+                "spanId": "c-1",
+                "parentSpanId": null,
+                "nodeId": "src/x.ts#\u001b]0;pwned\u0007title\u001b[2J",
+                "depth": 0,
+                "errored": false
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "tab-dialect-projection",
+      "change": "tab-expansion",
+      "description": "tab-dialect projection lines in the details pane; the pane only has room for projection lines at 80x24 and 120x40",
+      "sizes": [
+        [80, 24],
+        [120, 40]
+      ],
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "connected",
+              "sdk": "present",
+              "events": "flowing"
+            }
+          }
+        },
+        {
+          "delta": {
+            "kind": "spans",
+            "rows": [
+              {
+                "traceId": "t-7",
+                "spanId": "b-child",
+                "parentSpanId": null,
+                "nodeId": "src/api/pricing.ts#applyDiscount",
+                "depth": 0,
+                "errored": true
+              }
+            ]
+          }
+        },
+        {
+          "select": {
+            "traceId": "t-7",
+            "spanId": "b-child"
+          }
+        },
+        {
+          "detail": {
+            "traceId": "t-7",
+            "spanId": "b-child",
+            "nodeId": "src/api/pricing.ts#applyDiscount",
+            "status": "errored",
+            "args": {
+              "state": "recorded",
+              "text": "[{\"sku\":\"A-1\",\"qty\":2}]"
+            },
+            "ret": {
+              "state": "masked"
+            },
+            "error": {
+              "state": "recorded",
+              "text": "RangeError: discount exceeds price"
+            },
+            "duration": {
+              "state": "recorded",
+              "ms": 12
+            },
+            "anchor": {
+              "file": "src/api/pricing.ts",
+              "symbol": "applyDiscount",
+              "line": null
+            },
+            "documentLisp": "(kosmo.trace-text/v1\n  :projection-version 1\n  :ordering causal\n  :dataset (dataset :project \"kosmo-callflow\" :source-revision \"cae5cd842927b7fcb63c7b7b972eef21621572bb\" :trace-id (trace-ref \"trace-react-suspense\") :watermark 85)\n  :coverage (coverage :state complete :gaps ())\n  :items (\n    (span :ref (span-ref \"trace-react-suspense\" \"67715c8680213d91\") :node (node-ref \"src/SuspenseFixture.jsx#readProduct\") :callsite nil :seq 21 :state pending :event suspend :parent (parent :state known :ref (span-ref \"trace-react-suspense\" \"77d0a9312108e3de\") :requested nil :reason nil) :coverage complete :causal () :markers (suspense))\n    (span :ref (span-ref \"trace-react-suspense\" \"83b820f73e202d1e\") :node (node-ref \"src/SuspenseFixture.jsx#readProduct\") :callsite nil :seq 84 :state resumed :event enter :parent (parent :state known :ref (span-ref \"trace-react-suspense\" \"ecc7299356594235\") :requested nil :reason nil) :coverage complete :causal ((causal :kind resumes :from (span-ref \"trace-react-suspense\" \"67715c8680213d91\"))) :markers ())\n    (span :ref (span-ref \"trace-react-suspense\" \"83b820f73e202d1e\") :node (node-ref \"src/SuspenseFixture.jsx#readProduct\") :callsite nil :seq 85 :state success :event exit :parent (parent :state known :ref (span-ref \"trace-react-suspense\" \"ecc7299356594235\") :requested nil :reason nil) :coverage complete :causal ((causal :kind completes :from (span-ref \"trace-react-suspense\" \"83b820f73e202d1e\"))) :markers ())\n  )\n  :cursor nil\n  :cursor-identity nil)\n"
+          }
+        },
+        {
+          "action": {
+            "kind": "toggleDsl"
+          }
+        }
+      ]
+    }
+  ]
+}

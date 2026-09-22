@@ -1,0 +1,1377 @@
+{
+  "sizes": [
+    [80, 24],
+    [120, 40],
+    [60, 16]
+  ],
+  "cases": [
+    {
+      "name": "disconnected",
+      "description": "daemon unreachable, nothing loaded",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "disconnected",
+              "reason": "ECONNREFUSED 127.0.0.1:41731"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "sdk-absent",
+      "description": "connected, SDK not attached",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "connected",
+              "sdk": "absent"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "no-events",
+      "description": "connected, SDK attached, nothing recorded; capture policy known",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "connected",
+              "sdk": "present",
+              "events": "none"
+            }
+          }
+        },
+        {
+          "delta": {
+            "kind": "policy",
+            "effectivePolicy": "errors-only"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tree-selection",
+      "description": "trace list overflow, expanded tree, errored rows, selection on a child",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "connected",
+              "sdk": "present",
+              "events": "flowing"
+            }
+          }
+        },
+        {
+          "delta": {
+            "kind": "policy",
+            "effectivePolicy": "full"
+          }
+        },
+        {
+          "delta": {
+            "kind": "traces",
+            "rows": [
+              {
+                "traceId": "t-1",
+                "status": "running",
+                "startedAt": 101,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-2",
+                "status": "errored",
+                "startedAt": 102,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-3",
+                "status": "complete",
+                "startedAt": 103,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-4",
+                "status": "running",
+                "startedAt": 104,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-5",
+                "status": "errored",
+                "startedAt": 105,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-6",
+                "status": "complete",
+                "startedAt": 106,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-7",
+                "status": "running",
+                "startedAt": 107,
+                "spanCount": 3
+              }
+            ]
+          }
+        },
+        {
+          "delta": {
+            "kind": "spans",
+            "rows": [
+              {
+                "traceId": "t-7",
+                "spanId": "a-root",
+                "parentSpanId": null,
+                "nodeId": "src/api/checkout.ts#handleCheckout",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-7",
+                "spanId": "b-child",
+                "parentSpanId": "a-root",
+                "nodeId": "src/api/pricing.ts#applyDiscount",
+                "depth": 1,
+                "errored": true
+              },
+              {
+                "traceId": "t-7",
+                "spanId": "c-child",
+                "parentSpanId": "a-root",
+                "nodeId": "src/db/orders.ts#insertOrder",
+                "depth": 1,
+                "errored": false
+              },
+              {
+                "traceId": "t-7",
+                "spanId": "d-grand",
+                "parentSpanId": "c-child",
+                "nodeId": "src/db/pool.ts#acquire",
+                "depth": 2,
+                "errored": false
+              },
+              {
+                "traceId": "t-6",
+                "spanId": "e-root",
+                "parentSpanId": null,
+                "nodeId": "src/auth/session.ts#signIn",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-5",
+                "spanId": "f-root",
+                "parentSpanId": null,
+                "nodeId": "src/jobs/mailer.ts#sendReceipt",
+                "depth": 0,
+                "errored": true
+              }
+            ]
+          }
+        },
+        {
+          "select": {
+            "traceId": "t-7",
+            "spanId": "a-root"
+          }
+        },
+        {
+          "action": {
+            "kind": "toggleExpand"
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 2
+          }
+        },
+        {
+          "action": {
+            "kind": "toggleExpand"
+          }
+        }
+      ]
+    },
+    {
+      "name": "scrolled-long-list",
+      "description": "60 spans, selection moved down 30 rows with minimal scroll",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "connected",
+              "sdk": "present",
+              "events": "flowing"
+            }
+          }
+        },
+        {
+          "delta": {
+            "kind": "traces",
+            "rows": [
+              {
+                "traceId": "t-long",
+                "status": "running",
+                "startedAt": 1,
+                "spanCount": 60
+              }
+            ]
+          }
+        },
+        {
+          "delta": {
+            "kind": "spans",
+            "rows": [
+              {
+                "traceId": "t-long",
+                "spanId": "m-000",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod000.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-001",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod001.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-002",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod002.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-003",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod003.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-004",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod004.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-005",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod005.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-006",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod006.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-007",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod007.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-008",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod008.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-009",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod009.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-010",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod010.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-011",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod011.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-012",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod012.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-013",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod013.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-014",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod014.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-015",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod015.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-016",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod016.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-017",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod017.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-018",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod018.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-019",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod019.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-020",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod020.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-021",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod021.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-022",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod022.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-023",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod023.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-024",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod024.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-025",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod025.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-026",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod026.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-027",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod027.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-028",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod028.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-029",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod029.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-030",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod030.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-031",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod031.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-032",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod032.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-033",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod033.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-034",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod034.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-035",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod035.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-036",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod036.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-037",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod037.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-038",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod038.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-039",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod039.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-040",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod040.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-041",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod041.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-042",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod042.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-043",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod043.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-044",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod044.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-045",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod045.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-046",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod046.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-047",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod047.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-048",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod048.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-049",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod049.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-050",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod050.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-051",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod051.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-052",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod052.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-053",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod053.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-054",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod054.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-055",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod055.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-056",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod056.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-057",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod057.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-058",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod058.ts#step",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-long",
+                "spanId": "m-059",
+                "parentSpanId": null,
+                "nodeId": "src/m/mod059.ts#step",
+                "depth": 0,
+                "errored": false
+              }
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "moveTo",
+            "edge": "first"
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "paused-filtered",
+      "description": "paused with parked updates, errors-only filter hiding the selection, behind live, retention gap",
+      "steps": [
+        {
+          "include": "tree-selection"
+        },
+        {
+          "delta": {
+            "kind": "behindLive",
+            "behind": true
+          }
+        },
+        {
+          "action": {
+            "kind": "togglePause"
+          }
+        },
+        {
+          "delta": {
+            "kind": "traces",
+            "rows": [
+              {
+                "traceId": "t-9",
+                "status": "complete",
+                "startedAt": 900,
+                "spanCount": 1
+              }
+            ]
+          }
+        },
+        {
+          "delta": {
+            "kind": "traces",
+            "rows": [
+              {
+                "traceId": "t-10",
+                "status": "complete",
+                "startedAt": 901,
+                "spanCount": 1
+              }
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "filterErrorsOnly"
+          }
+        }
+      ]
+    },
+    {
+      "name": "retention-pinned",
+      "description": "selected trace aged out of retention; selection pinned with banner",
+      "steps": [
+        {
+          "include": "tree-selection"
+        },
+        {
+          "delta": {
+            "kind": "retention",
+            "droppedTraceIds": ["t-7"]
+          }
+        }
+      ]
+    },
+    {
+      "name": "search-prompt",
+      "description": "search prompt open over an applied search filter",
+      "steps": [
+        {
+          "include": "tree-selection"
+        },
+        {
+          "action": {
+            "kind": "search"
+          }
+        },
+        {
+          "action": {
+            "kind": "searchInput",
+            "text": "db"
+          }
+        },
+        {
+          "action": {
+            "kind": "searchCommit"
+          }
+        },
+        {
+          "action": {
+            "kind": "search"
+          }
+        },
+        {
+          "action": {
+            "kind": "searchInput",
+            "text": "/p"
+          }
+        }
+      ]
+    },
+    {
+      "name": "detail-lisp",
+      "description": "details pane with recorded, masked and error values, no line, lisp projection",
+      "steps": [
+        {
+          "include": "tree-selection"
+        },
+        {
+          "detail": {
+            "traceId": "t-7",
+            "spanId": "b-child",
+            "nodeId": "src/api/pricing.ts#applyDiscount",
+            "status": "errored",
+            "args": {
+              "state": "recorded",
+              "text": "[{\"sku\":\"A-1\",\"qty\":2}]"
+            },
+            "ret": {
+              "state": "masked"
+            },
+            "error": {
+              "state": "recorded",
+              "text": "RangeError: discount exceeds price"
+            },
+            "duration": {
+              "state": "recorded",
+              "ms": 12
+            },
+            "anchor": {
+              "file": "src/api/pricing.ts",
+              "symbol": "applyDiscount",
+              "line": null
+            },
+            "documentLisp": "(kosmo.trace-text/v1\n  :projection-version 1\n  :ordering causal\n  :dataset (dataset :project \"kosmo-callflow\" :source-revision \"cae5cd842927b7fcb63c7b7b972eef21621572bb\" :trace-id (trace-ref \"trace-react-suspense\") :watermark 85)\n  :coverage (coverage :state complete :gaps ())\n  :items (\n    (span :ref (span-ref \"trace-react-suspense\" \"67715c8680213d91\") :node (node-ref \"src/SuspenseFixture.jsx#readProduct\") :callsite nil :seq 21 :state pending :event suspend :parent (parent :state known :ref (span-ref \"trace-react-suspense\" \"77d0a9312108e3de\") :requested nil :reason nil) :coverage complete :causal () :markers (suspense))\n    (span :ref (span-ref \"trace-react-suspense\" \"83b820f73e202d1e\") :node (node-ref \"src/SuspenseFixture.jsx#readProduct\") :callsite nil :seq 84 :state resumed :event enter :parent (parent :state known :ref (span-ref \"trace-react-suspense\" \"ecc7299356594235\") :requested nil :reason nil) :coverage complete :causal ((causal :kind resumes :from (span-ref \"trace-react-suspense\" \"67715c8680213d91\"))) :markers ())\n    (span :ref (span-ref \"trace-react-suspense\" \"83b820f73e202d1e\") :node (node-ref \"src/SuspenseFixture.jsx#readProduct\") :callsite nil :seq 85 :state success :event exit :parent (parent :state known :ref (span-ref \"trace-react-suspense\" \"ecc7299356594235\") :requested nil :reason nil) :coverage complete :causal ((causal :kind completes :from (span-ref \"trace-react-suspense\" \"83b820f73e202d1e\"))) :markers ())\n  )\n  :cursor nil\n  :cursor-identity nil)\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "detail-tab-table",
+      "description": "detail in the tab dialect and table view, no projection document (the tab projection itself is an intentional change, see intentional-cases.json tab-dialect-projection)",
+      "steps": [
+        {
+          "include": "tree-selection"
+        },
+        {
+          "detail": {
+            "traceId": "t-7",
+            "spanId": "b-child",
+            "nodeId": "src/api/pricing.ts#applyDiscount",
+            "status": "errored",
+            "args": {
+              "state": "recorded",
+              "text": "[{\"sku\":\"A-1\",\"qty\":2}]"
+            },
+            "ret": {
+              "state": "masked"
+            },
+            "error": {
+              "state": "recorded",
+              "text": "RangeError: discount exceeds price"
+            },
+            "duration": {
+              "state": "recorded",
+              "ms": 12
+            },
+            "anchor": {
+              "file": "src/api/pricing.ts",
+              "symbol": "applyDiscount",
+              "line": null
+            },
+            "documentLisp": null
+          }
+        },
+        {
+          "action": {
+            "kind": "toggleDsl"
+          }
+        },
+        {
+          "action": {
+            "kind": "toggleView"
+          }
+        }
+      ]
+    },
+    {
+      "name": "detail-unavailable",
+      "description": "detail with not-recorded/unavailable values and no projection",
+      "steps": [
+        {
+          "include": "tree-selection"
+        },
+        {
+          "detail": {
+            "traceId": "t-7",
+            "spanId": "b-child",
+            "nodeId": "src/api/pricing.ts#applyDiscount",
+            "status": "running",
+            "args": {
+              "state": "not-recorded"
+            },
+            "ret": {
+              "state": "unavailable",
+              "reason": "no exit record"
+            },
+            "error": {
+              "state": "not-recorded"
+            },
+            "duration": {
+              "state": "unavailable",
+              "reason": "no exit recorded yet"
+            },
+            "anchor": {
+              "file": "src/api/pricing.ts",
+              "symbol": "applyDiscount",
+              "line": 42
+            },
+            "documentLisp": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "replay-fallback",
+      "description": "replay: speed fallback over unsynced clocks, aggregate window, declared missing seqs",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "connected",
+              "sdk": "present",
+              "events": "flowing"
+            }
+          }
+        },
+        {
+          "replay": {
+            "frames": [
+              {
+                "seq": 1,
+                "sessionId": "s-a",
+                "clock": {
+                  "domain": "monotonic",
+                  "value": 0
+                },
+                "state": {
+                  "traces": [
+                    {
+                      "traceId": "t-r",
+                      "status": "complete",
+                      "startedAt": 1,
+                      "spanCount": 1
+                    }
+                  ],
+                  "spans": [
+                    {
+                      "traceId": "t-r",
+                      "spanId": "r-1",
+                      "parentSpanId": null,
+                      "nodeId": "src/r.ts#first",
+                      "depth": 0,
+                      "errored": false
+                    }
+                  ]
+                }
+              },
+              {
+                "seq": 4,
+                "sessionId": "s-b",
+                "clock": {
+                  "domain": "monotonic",
+                  "value": 5
+                },
+                "granularity": "aggregate-window",
+                "state": {
+                  "traces": [
+                    {
+                      "traceId": "t-r",
+                      "status": "complete",
+                      "startedAt": 1,
+                      "spanCount": 2
+                    }
+                  ],
+                  "spans": [
+                    {
+                      "traceId": "t-r",
+                      "spanId": "r-1",
+                      "parentSpanId": null,
+                      "nodeId": "src/r.ts#first",
+                      "depth": 0,
+                      "errored": false
+                    },
+                    {
+                      "traceId": "t-r",
+                      "spanId": "r-2",
+                      "parentSpanId": "r-1",
+                      "nodeId": "src/r.ts#second",
+                      "depth": 1,
+                      "errored": false
+                    }
+                  ]
+                }
+              }
+            ],
+            "requestedSeqs": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+            "plan": {
+              "speed": 4
+            },
+            "index": 0
+          }
+        },
+        {
+          "action": {
+            "kind": "replayStep",
+            "delta": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "replay-manual",
+      "description": "replay in manual mode at frame 1 of 2",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "connected",
+              "sdk": "present",
+              "events": "flowing"
+            }
+          }
+        },
+        {
+          "replay": {
+            "frames": [
+              {
+                "seq": 10,
+                "sessionId": "s-1",
+                "state": {
+                  "traces": [
+                    {
+                      "traceId": "t-m",
+                      "status": "complete",
+                      "startedAt": 10,
+                      "spanCount": 1
+                    }
+                  ],
+                  "spans": [
+                    {
+                      "traceId": "t-m",
+                      "spanId": "x-1",
+                      "parentSpanId": null,
+                      "nodeId": "src/m.ts#one",
+                      "depth": 0,
+                      "errored": false
+                    }
+                  ]
+                }
+              },
+              {
+                "seq": 12,
+                "sessionId": "s-1",
+                "state": {
+                  "traces": [
+                    {
+                      "traceId": "t-m",
+                      "status": "complete",
+                      "startedAt": 10,
+                      "spanCount": 1
+                    }
+                  ],
+                  "spans": [
+                    {
+                      "traceId": "t-m",
+                      "spanId": "x-1",
+                      "parentSpanId": null,
+                      "nodeId": "src/m.ts#one",
+                      "depth": 0,
+                      "errored": false
+                    },
+                    {
+                      "traceId": "t-m",
+                      "spanId": "x-2",
+                      "parentSpanId": null,
+                      "nodeId": "src/m.ts#two",
+                      "depth": 0,
+                      "errored": false
+                    }
+                  ]
+                }
+              }
+            ],
+            "requestedSeqs": [],
+            "plan": {},
+            "index": -1
+          }
+        },
+        {
+          "action": {
+            "kind": "replayStep",
+            "delta": 1
+          }
+        },
+        {
+          "select": {
+            "traceId": "t-m",
+            "spanId": "x-1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "long-ascii-node",
+      "description": "long ASCII node id truncated with an ellipsis",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "connected",
+              "sdk": "present",
+              "events": "flowing"
+            }
+          }
+        },
+        {
+          "delta": {
+            "kind": "traces",
+            "rows": [
+              {
+                "traceId": "trace-with-a-rather-long-identifier-0123456789abcdef",
+                "status": "complete",
+                "startedAt": 5,
+                "spanCount": 1
+              }
+            ]
+          }
+        },
+        {
+          "delta": {
+            "kind": "spans",
+            "rows": [
+              {
+                "traceId": "trace-with-a-rather-long-identifier-0123456789abcdef",
+                "spanId": "s",
+                "parentSpanId": null,
+                "nodeId": "src/very-long-segment/very-long-segment/very-long-segment/very-long-segment/very-long-segment/very-long-segment/very-long-segment/very-long-segment/very-long-segment/very-long-segment/very-long-segment/very-long-segment/file.ts#run",
+                "depth": 0,
+                "errored": false
+              }
+            ]
+          }
+        },
+        {
+          "select": {
+            "traceId": "trace-with-a-rather-long-identifier-0123456789abcdef",
+            "spanId": "s"
+          }
+        }
+      ]
+    }
+  ]
+}

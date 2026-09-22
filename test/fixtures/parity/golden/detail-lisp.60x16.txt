@@ -1,0 +1,16 @@
+connected; live | capture: full
+────────────────────────────────────────────────────────────
+ ~ t-7  (3)
+   t-6  (3)
+>! t-5  (3)
+ ~ t-4  (3)
+   t-3  (3)
+   … 2 more traces
+  - src/api/checkout.ts#handleCheckout
+    src/auth/session.ts#signIn
+>!  src/jobs/mailer.ts#sendReceipt
+────────────────────────────────────────────────────────────
+detail: src/api/pricing.ts#applyDiscount [errored]
+  anchor: src/api/pricing.ts#applyDiscount (line unavailabl…
+────────────────────────────────────────────────────────────
+tree/lisp  j/k move  space expand  p pause  v view  d dsl  …

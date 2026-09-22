@@ -1,0 +1,16 @@
+connected; live | capture: unavailable
+────────────────────────────────────────────────────────────
+>~ t-long  (60)
+────────────────────────────────────────────────────────────
+    src/m/mod019.ts#step
+    src/m/mod020.ts#step
+    src/m/mod021.ts#step
+    src/m/mod022.ts#step
+    src/m/mod023.ts#step
+    src/m/mod024.ts#step
+    src/m/mod025.ts#step
+    src/m/mod026.ts#step
+    src/m/mod027.ts#step
+    src/m/mod028.ts#step
+────────────────────────────────────────────────────────────
+tree/lisp  j/k move  space expand  p pause  v view  d dsl  …
