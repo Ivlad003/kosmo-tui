@@ -10,7 +10,7 @@
  * binary never returns it), 130 SIGINT, 143 SIGTERM.
  */
 
-import { closeSync, openSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -23,6 +23,7 @@ import {
   type ProjectConfigReader,
   type ResolvedTarget
 } from "./detect.js";
+import { controllingTerminalAvailable } from "./terminal-input.js";
 
 export const EXIT_OK = 0;
 export const EXIT_USAGE = 1;
@@ -441,16 +442,6 @@ export const defaultReadProjectConfig: ProjectConfigReader = async (directory) =
   }
 };
 
-function defaultTerminalInputAvailable(platform: string): boolean {
-  if (platform === "win32") return false;
-  try {
-    closeSync(openSync("/dev/tty", "r"));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function defaultReadVersion(): string {
   try {
     const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: string };
@@ -511,7 +502,7 @@ export async function run(proc: Proc, deps: RunDeps = {}): Promise<number> {
       const outputTty = proc.stdout.isTTY === true;
       const inputTty =
         target.kind === "stdin"
-          ? (deps.terminalInputAvailable ?? (() => defaultTerminalInputAvailable(platform)))()
+          ? (deps.terminalInputAvailable ?? (() => controllingTerminalAvailable(platform)))()
           : proc.stdin.isTTY === true;
       if (!outputTty || !inputTty) {
         proc.stderr.write(
@@ -541,11 +532,11 @@ export async function run(proc: Proc, deps: RunDeps = {}): Promise<number> {
   let signalled: number | undefined;
   const onInt = (): void => {
     signalled ??= EXIT_SIGINT;
-    controller.abort();
+    controller.abort("SIGINT");
   };
   const onTerm = (): void => {
     signalled ??= EXIT_SIGTERM;
-    controller.abort();
+    controller.abort("SIGTERM");
   };
   proc.on?.("SIGINT", onInt);
   proc.on?.("SIGTERM", onTerm);
