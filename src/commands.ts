@@ -168,7 +168,15 @@ export type CommandErrorCode =
 export type CommandResult =
   | { kind: "receipt"; command: string; notice: string }
   | { kind: "unavailable"; command: string; reason: string; notice: string }
-  | { kind: "error"; command: string | null; code: CommandErrorCode; notice: string; available?: string[] }
+  | {
+      kind: "error";
+      command: string | null;
+      code: CommandErrorCode;
+      notice: string;
+      available?: string[];
+      /** An ambiguous short ref: the loaded refs it matched, as qualified refs. */
+      candidates?: string[];
+    }
   | { kind: "deadline-exceeded"; command: "find"; deadlineMs: number; notice: string }
   | {
       kind: "projection";
@@ -460,32 +468,24 @@ function runTrace({ state, command }: Context): CommandOutcome {
   if (!arg) return usage("trace");
   const parsed = parseTraceRef(arg);
   if (!parsed.ok) return fail("trace", "usage", `trace: ${parsed.error}`);
-  const context = contextOf(state);
-  const full = {
-    datasetId: parsed.spec.datasetId ?? context.datasetId,
-    projectId: parsed.spec.projectId ?? context.projectId,
-    sessionId: parsed.spec.sessionId ?? context.sessionId,
-    traceId: parsed.spec.traceId
-  };
-  const missing = firstMissing(full);
-  if (missing) {
-    return fail(
+  const matched = matchLoaded(state, parsed.spec, null);
+  if (matched.kind === "ambiguous") {
+    return ambiguous(
       "trace",
-      "ambiguous-ref",
-      `trace ${arg.text}: no current ${missing}; qualify it as session:trace or dataset:project:session:trace`
+      `trace ${arg.text}`,
+      matched.candidates.map((row) => qualifiedTrace(row, matched.candidates))
     );
   }
-  const ref = full as TraceRef;
-  const key = traceKey(ref);
-  const spans = state.spans.filter((row) => traceKey(row) === key);
-  const traceLoaded = spans.length > 0 || state.traces.some((row) => traceKey(row) === key);
-  if (!traceLoaded) {
+  if (matched.kind === "none") {
     return fail(
       "trace",
       "unknown-ref",
       `trace ${arg.text}: unknown(${state.retentionGap ? "retention" : "not-loaded"})`
     );
   }
+  const ref = matched.ref;
+  const key = traceKey(ref);
+  const spans = state.spans.filter((row) => traceKey(row) === key);
   if (spans.length === 0) return fail("trace", "unknown-ref", `trace ${arg.text}: no spans loaded for this trace`);
   const root = [...spans].sort(
     (left, right) =>
@@ -563,7 +563,7 @@ function runBookmark({ state, command }: Context): CommandOutcome {
 function runAncestors({ state, command, selectors, deps }: Context): CommandOutcome {
   const [arg] = command.args;
   const resolved = resolveSpan(state, arg ? parseSpanRef(arg) : { ok: true, spec: { kind: "selection" } }, arg);
-  if (resolved.kind === "error") return fail("ancestors", resolved.code, `ancestors: ${resolved.message}`);
+  if (resolved.kind === "error") return failRef("ancestors", resolved);
   const ref = resolved.kind === "loaded" ? spanRefOf(resolved.row) : resolved.ref;
   const targetRow = resolved.kind === "loaded" ? resolved.row : loadedRowOrLastKnown(state, ref);
   const chain = selectors.ancestors(
@@ -604,9 +604,9 @@ function runPath({ state, command, selectors, deps }: Context): CommandOutcome {
   const [fromToken, toToken] = command.args;
   if (!fromToken || !toToken || command.args.length > 2) return usage("path");
   const from = resolveSpan(state, parseSpanRef(fromToken), fromToken);
-  if (from.kind === "error") return fail("path", from.code, `path: ${from.message}`);
+  if (from.kind === "error") return failRef("path", from);
   const to = resolveSpan(state, parseSpanRef(toToken), toToken);
-  if (to.kind === "error") return fail("path", to.code, `path: ${to.message}`);
+  if (to.kind === "error") return failRef("path", to);
   const texts = { from: fromToken.text, to: toToken.text };
   // An endpoint that is not loaded makes the question undecidable, never "no path".
   for (const [endpoint, side] of [
@@ -782,7 +782,7 @@ async function runFind({ state, command, deps }: Context): Promise<CommandOutcom
 type Resolved =
   | { kind: "loaded"; row: SpanRow }
   | { kind: "unknown"; ref: SpanRef; reason: "retention" | "not-loaded" }
-  | { kind: "error"; code: CommandErrorCode; message: string };
+  | { kind: "error"; code: CommandErrorCode; message: string; candidates?: string[] };
 
 const IDENTITY_FIELDS = ["datasetId", "projectId", "sessionId", "traceId"] as const;
 
@@ -821,22 +821,98 @@ function resolveSpan(
     if (!state.selection) return { kind: "error", code: "usage", message: "nothing selected; give a span ref" };
     return lookup(state, spanRefOf(state.selection));
   }
-  const context = contextOf(state);
-  const full = {
-    datasetId: spec.datasetId ?? context.datasetId,
-    projectId: spec.projectId ?? context.projectId,
-    sessionId: spec.sessionId ?? context.sessionId,
-    traceId: spec.traceId ?? context.traceId
+  const given = {
+    datasetId: spec.datasetId,
+    projectId: spec.projectId,
+    sessionId: spec.sessionId,
+    traceId: spec.traceId
   };
-  const missing = firstMissing(full);
-  if (missing) {
+  if (firstMissing(given) === null) return lookup(state, { ...(given as TraceRef), spanId: spec.spanId });
+  const matched = matchLoaded(state, given, spec.spanId);
+  if (matched.kind === "ambiguous") {
+    const text = token?.text ?? spec.spanId;
+    const candidates = matched.candidates.map((row) => `${qualifiedTrace(row, matched.candidates)}:${spec.spanId}`);
     return {
       kind: "error",
       code: "ambiguous-ref",
-      message: `ref ${token?.text ?? spec.spanId} is ambiguous without a current ${missing}; qualify it as session:trace:span or dataset:project:session:trace:span`
+      message: `ref ${text} matches ${candidates.length} loaded spans (${candidates.join(", ")}); qualify it as session:trace:span or dataset:project:session:trace:span`,
+      candidates
     };
   }
-  return lookup(state, { ...(full as TraceRef), spanId: spec.spanId });
+  if (matched.kind === "one") return lookup(state, { ...matched.ref, spanId: spec.spanId });
+  // Nothing loaded matches. Inside a known context the ref names a concrete span that is
+  // not loaded (or gone to retention); without one it cannot even be named.
+  const context = contextOf(state);
+  const full = {
+    datasetId: given.datasetId ?? context.datasetId,
+    projectId: given.projectId ?? context.projectId,
+    sessionId: given.sessionId ?? context.sessionId,
+    traceId: given.traceId ?? context.traceId
+  };
+  if (firstMissing(full) === null) return lookup(state, { ...(full as TraceRef), spanId: spec.spanId });
+  return {
+    kind: "error",
+    code: "unknown-ref",
+    message: `ref ${token?.text ?? spec.spanId}: unknown(${state.retentionGap ? "retention" : "not-loaded"})`
+  };
+}
+
+type Matched = { kind: "one"; ref: TraceRef } | { kind: "ambiguous"; candidates: TraceRef[] } | { kind: "none" };
+
+/**
+ * A short ref is matched against the LOADED rows on only the fields it gives: exactly one
+ * matching trace resolves it, whatever session is selected. When several match, the
+ * current context (the selected trace) breaks the tie if it leaves exactly one; otherwise
+ * the ref is ambiguous and the matches are named. `spanId` restricts the match to traces
+ * holding that span; null matches trace rows and span rows alike.
+ */
+function matchLoaded(state: ViewState, given: Partial<TraceRef>, spanId: string | null): Matched {
+  const fits = (row: TraceRef): boolean =>
+    IDENTITY_FIELDS.every((field) => given[field] === undefined || row[field] === given[field]);
+  const found = new Map<string, TraceRef>();
+  const add = (row: TraceRef): void => {
+    if (!fits(row)) return;
+    const key = traceKey(row);
+    if (!found.has(key)) {
+      const { datasetId, projectId, sessionId, traceId } = row;
+      found.set(key, { datasetId, projectId, sessionId, traceId });
+    }
+  };
+  for (const row of state.spans) if (spanId === null || row.spanId === spanId) add(row);
+  if (spanId === null) for (const row of state.traces) add(row);
+  const all = [...found.values()];
+  if (all.length === 0) return { kind: "none" };
+  if (all.length === 1) return { kind: "one", ref: all[0]! };
+  const context = contextOf(state);
+  const preferred = all.filter((row) =>
+    IDENTITY_FIELDS.every(
+      (field) => given[field] !== undefined || context[field] === undefined || row[field] === context[field]
+    )
+  );
+  if (preferred.length === 1) return { kind: "one", ref: preferred[0]! };
+  const candidates = all.sort((left, right) => traceKey(left).localeCompare(traceKey(right)));
+  return { kind: "ambiguous", candidates };
+}
+
+/** `session:trace`, or the full `dataset:project:session:trace` when the candidates span datasets/projects. */
+function qualifiedTrace(row: TraceRef, among: TraceRef[]): string {
+  const mixed = among.some((other) => other.datasetId !== row.datasetId || other.projectId !== row.projectId);
+  return mixed
+    ? `${row.datasetId}:${row.projectId}:${row.sessionId}:${row.traceId}`
+    : `${row.sessionId}:${row.traceId}`;
+}
+
+function ambiguous(command: string, subject: string, candidates: string[]): CommandOutcome {
+  return {
+    actions: [],
+    result: {
+      kind: "error",
+      command,
+      code: "ambiguous-ref",
+      notice: `${subject} matches ${candidates.length} loaded refs (${candidates.join(", ")}); qualify it as session:trace or dataset:project:session:trace`,
+      candidates
+    }
+  };
 }
 
 function lookup(state: ViewState, ref: SpanRef): Resolved {
@@ -888,6 +964,13 @@ function unavailable(command: string, reason: string): CommandOutcome {
 
 function fail(command: string | null, code: CommandErrorCode, notice: string): CommandOutcome {
   return { actions: [], result: { kind: "error", command, code, notice } };
+}
+
+function failRef(command: string, resolved: Extract<Resolved, { kind: "error" }>): CommandOutcome {
+  const outcome = fail(command, resolved.code, `${command}: ${resolved.message}`);
+  if (resolved.candidates !== undefined && outcome.result.kind === "error")
+    outcome.result.candidates = resolved.candidates;
+  return outcome;
 }
 
 function usage(name: string): CommandOutcome {

@@ -491,3 +491,58 @@ describe("real pipe from the kosmo-callflow producer (4.3)", () => {
 it("fixture sanity: the canonical page of t-1 has the checkout spans", () => {
   expect(canonicalV2("t-1", checkoutRecords()).items.filter((item) => item.kind === "span")).toHaveLength(2);
 });
+
+describe("follow deltas stay bounded on a long stream (review)", () => {
+  it("tracks 100k trace frames in linear time and keeps one pending change per trace", async () => {
+    const later: string[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const source = createStreamSource({
+      input: (async function* () {
+        yield lines({ ...headerFrameV2(snap, { eventsCount: 5 }), follow: true }, summary("t-0"));
+        // One frame per chunk: the worst case for a per-chunk copy of the whole trace map.
+        for (let index = 0; index < 100_000; index += 1) {
+          yield `${JSON.stringify(summary(`t-${index % 20_000}`, 100 + index))}\n`;
+        }
+        await gate;
+        for (const line of later) yield line;
+      })()
+    });
+    const opened = await source.open(signal());
+    const started = performance.now();
+    const lastOf = async () => {
+      const body = await source.deltas!(opened.deltaCursor!, signal());
+      return { body, last: body.traces.find((row) => row.traceId === "t-19999")?.startedAt };
+    };
+    let { body: delta, last } = await lastOf();
+    while (last !== 100 + 99_999) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      ({ body: delta, last } = await lastOf());
+    }
+    expect(performance.now() - started).toBeLessThan(10_000);
+    // 100k updates over 20k traces: one pending change per trace, not one per frame.
+    expect(source.pendingChanges()).toBe(20_000);
+    expect(delta.traces).toHaveLength(20_000);
+    expect(delta).toMatchObject({ reset: false, gap: false });
+    // Only what changed after the returned cursor comes back next time.
+    later.push(lines(summary("t-7", 999_999)));
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const next = await source.deltas!(delta.cursor, signal());
+    expect(next.traces.map((row) => [row.traceId, row.startedAt])).toEqual([["t-7", 999_999]]);
+    await source.close();
+  }, 30_000);
+
+  it("fails the source with an explicit error when a reader cap is hit, never silently", async () => {
+    const pipe = new PassThrough();
+    const source = createStreamSource({ input: pipe, reader: { maxFrameBytes: 512 } });
+    pipe.write(lines({ ...headerFrameV2(snap, { eventsCount: 5 }), follow: true }, summary("t-1")));
+    const opened = await source.open(signal());
+    pipe.write(`${JSON.stringify({ ...summary("t-2"), pad: "x".repeat(1_000) })}\n`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(await failure(source.deltas!(opened.deltaCursor!, signal()))).toMatchObject({
+      code: "stream-frame-too-large"
+    });
+    await source.close();
+  });
+});

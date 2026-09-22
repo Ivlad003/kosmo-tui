@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { checkCommand, effectiveCapabilities } from "../src/capabilities.js";
 import { SourceError } from "../src/source-common.js";
-import { createExportSource, EXPORT_MAX_BYTES, type ExportFs } from "../src/source-export.js";
+import { createExportSource, defaultExportFs, EXPORT_MAX_BYTES, type ExportFs } from "../src/source-export.js";
 import { openTargetSource } from "../src/source-open.js";
 import { portableExport } from "./source-fixtures.js";
 import { checkoutRecords, event } from "./replay-records.js";
@@ -227,5 +227,18 @@ describe("portable export source (4.2)", () => {
     });
     // The SQLite reader landed (4.4): a sqlite target opens the sqlite source, not a stub.
     expect(sqlite.ok && sqlite.source.kind).toBe("sqlite");
+  });
+});
+
+describe("bounded export read allocates for the file, not the cap (review L5)", () => {
+  it("reads a small file into a small buffer and still stops one byte past the cap", async () => {
+    const small = await file('{"x":1}', "small.json");
+    const bytes = await defaultExportFs.readBounded(small, EXPORT_MAX_BYTES);
+    expect(new TextDecoder().decode(bytes)).toBe('{"x":1}');
+    expect(bytes.buffer.byteLength).toBeLessThan(1_024);
+    const big = await file("y".repeat(5_000), "big.json");
+    const capped = await defaultExportFs.readBounded(big, 1_000);
+    expect(capped.length).toBe(1_001);
+    expect(capped.buffer.byteLength).toBe(1_001);
   });
 });

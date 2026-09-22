@@ -61,9 +61,18 @@ export const defaultExportFs: ExportFs = {
   async readBounded(filePath, maxBytes) {
     const handle = await openFile(filePath, "r");
     try {
-      const buffer = new Uint8Array(maxBytes + 1);
+      // Sized to the file (plus the one byte that detects growth), not to the cap; a file
+      // that grows while it is read extends the buffer, still never past `maxBytes + 1`.
+      const limit = maxBytes + 1;
+      let buffer = new Uint8Array(Math.min((await handle.stat()).size, maxBytes) + 1);
       let offset = 0;
-      while (offset < buffer.length) {
+      for (;;) {
+        if (offset === buffer.length) {
+          if (buffer.length >= limit) break;
+          const grown = new Uint8Array(Math.min(limit, buffer.length * 2));
+          grown.set(buffer);
+          buffer = grown;
+        }
         const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, offset);
         if (bytesRead === 0) break;
         offset += bytesRead;

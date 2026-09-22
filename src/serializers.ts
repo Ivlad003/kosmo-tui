@@ -74,10 +74,25 @@ export const RESULT_FORMATS: Record<TypedResult["kind"], readonly OutputFormat[]
 };
 
 export type SerializeOutcome =
-  | { ok: true; text: string; format: OutputFormat; truncated: boolean }
-  | { ok: false; code: "unsupported-format"; message: string };
+  | {
+      ok: true;
+      text: string;
+      format: OutputFormat;
+      truncated: boolean;
+      /** Set when the byte cap dropped whole rows/items: how many were kept. */
+      keptItems?: number;
+    }
+  | { ok: false; code: "unsupported-format" | "output-too-large"; message: string };
 
-export type SerializeOptions = { maxBytes?: number };
+export type SerializeOptions = {
+  maxBytes?: number;
+  /**
+   * The page cursor that resumes a byte-cut table at its first dropped row (`keptRows`
+   * rows in). Without it a byte-cut table carries `cursor: null` rather than a cursor
+   * past rows it never printed.
+   */
+  resumeCursor?: (keptRows: number) => string | null;
+};
 
 const encoder = new TextEncoder();
 
@@ -112,7 +127,8 @@ export function safeJson(value: unknown): string {
 
 /**
  * The largest `n` in `0..max` for which `fits(n)` holds, assuming `fits` is monotone
- * (fewer items never make the output larger). `fits(0)` is assumed true.
+ * (fewer items never make the output larger). Callers check `fits(0)` themselves: when
+ * even the empty envelope is over the cap, the result is `tooLarge`.
  */
 function largestFitting(max: number, fits: (n: number) => boolean): number {
   let low = 0;
@@ -129,46 +145,88 @@ function withinBudget(text: string, maxBytes: number): boolean {
   return utf8Bytes(`${text}\n`) <= maxBytes;
 }
 
+function tooLarge(maxBytes: number): SerializeOutcome {
+  return {
+    ok: false,
+    code: "output-too-large",
+    message: `even an empty result envelope exceeds the ${maxBytes}-byte output cap; nothing printed`
+  };
+}
+
+/** The coverage a byte cut leaves: what is in the output, and where the rest resumes. */
+function cutCoverage(
+  coverage: Record<string, unknown>,
+  dropped: number,
+  cursor: string | null
+): Record<string, unknown> {
+  return {
+    ...coverage,
+    ...(typeof coverage.scope === "string" ? { scope: "partial" } : {}),
+    ...(typeof coverage.loaded === "number" ? { loaded: coverage.loaded - dropped } : {}),
+    ...("cursor" in coverage ? { cursor } : {}),
+    truncatedBy: "output-byte-cap"
+  };
+}
+
 /* ---------------------------------------------------------------- projection */
 
 function serializeProjection(result: ProjectionResult, format: OutputFormat, maxBytes: number): SerializeOutcome {
   if (format === "json") {
-    const document = result.document as { items: unknown[]; truncated: boolean };
+    const document = result.document as {
+      items: unknown[];
+      truncated: boolean;
+      coverage: { state: string; gaps: string[] };
+      cursor: string | null;
+    };
+    const full = safeJson(document);
+    if (withinBudget(full, maxBytes)) return { ok: true, text: `${full}\n`, format, truncated: document.truncated };
+    // Same marking as the trace-text codecs: coverage truncated with the output-byte-cap gap.
+    // The page cursor would resume after items this output dropped, so it is withheld.
     const cut = (count: number): string =>
       safeJson({
         ...document,
         items: document.items.slice(0, count),
-        truncated: document.truncated || count < document.items.length
+        truncated: true,
+        coverage: {
+          ...document.coverage,
+          state: "truncated",
+          gaps: [...new Set([...document.coverage.gaps, "output-byte-cap"])]
+        },
+        cursor: null
       });
-    const full = cut(document.items.length);
-    if (withinBudget(full, maxBytes)) return { ok: true, text: `${full}\n`, format, truncated: document.truncated };
+    if (!withinBudget(cut(0), maxBytes)) return tooLarge(maxBytes);
     const count = largestFitting(document.items.length - 1, (n) => withinBudget(cut(n), maxBytes));
-    return { ok: true, text: `${cut(count)}\n`, format, truncated: true };
+    return { ok: true, text: `${cut(count)}\n`, format, truncated: true, keptItems: count };
   }
   // The codecs bound their own output by dropping whole items and marking truncation.
-  const body =
-    result.version === 1
-      ? renderTraceText(result.document, { dialect: format, maxBytes: maxBytes - 1 })
-      : renderTraceTextV2(result.document, { dialect: format, maxBytes: maxBytes - 1 });
+  const render = (bounded: boolean, document: ProjectionResult["document"]): string => {
+    const options = bounded ? { dialect: format, maxBytes: maxBytes - 1 } : { dialect: format };
+    return result.version === 1
+      ? renderTraceText(document as TraceTextDocumentV1, options)
+      : renderTraceTextV2(document as TraceTextDocumentV2, options);
+  };
+  const unbounded = render(false, result.document);
+  const cutByBytes = utf8Bytes(unbounded.endsWith("\n") ? unbounded : `${unbounded}\n`) > maxBytes;
+  // A byte cut drops items after which the page cursor would resume: withhold the cursor.
+  const body = render(true, cutByBytes ? { ...result.document, cursor: null } : result.document);
   const text = body.endsWith("\n") ? body : `${body}\n`;
-  if (utf8Bytes(text) > maxBytes) {
-    throw new Error(`trace-text codec returned ${utf8Bytes(text)} bytes over the ${maxBytes}-byte cap`);
-  }
-  const unbounded =
-    result.version === 1
-      ? renderTraceText(result.document, { dialect: format })
-      : renderTraceTextV2(result.document, { dialect: format });
-  return { ok: true, text, format, truncated: result.document.truncated || unbounded !== body };
+  if (utf8Bytes(text) > maxBytes) return tooLarge(maxBytes);
+  return { ok: true, text, format, truncated: result.document.truncated || cutByBytes };
 }
 
 /* ---------------------------------------------------------------- table */
 
-function tableJson(result: TableResult, maxBytes: number): SerializeOutcome {
+function tableJson(
+  result: TableResult,
+  maxBytes: number,
+  resumeCursor: SerializeOptions["resumeCursor"]
+): SerializeOutcome {
   const full = safeJson(result);
   if (withinBudget(full, maxBytes)) return { ok: true, text: `${full}\n`, format: "json", truncated: result.truncated };
   const cut = (count: number): string =>
     safeJson({
       ...result,
+      coverage: cutCoverage(result.coverage, result.rows.length - count, resumeCursor?.(count) ?? null),
       rows: result.rows.slice(0, count),
       truncated: true,
       truncation: {
@@ -178,8 +236,9 @@ function tableJson(result: TableResult, maxBytes: number): SerializeOutcome {
         returnedRows: count
       } satisfies TableTruncation
     });
+  if (!withinBudget(cut(0), maxBytes)) return tooLarge(maxBytes);
   const count = largestFitting(result.rows.length - 1, (n) => withinBudget(cut(n), maxBytes));
-  return { ok: true, text: `${cut(count)}\n`, format: "json", truncated: true };
+  return { ok: true, text: `${cut(count)}\n`, format: "json", truncated: true, keptItems: count };
 }
 
 /**
@@ -237,8 +296,9 @@ function tableTab(result: TableResult, maxBytes: number): SerializeOutcome {
       maxBytes,
       returnedRows: count
     });
+  if (!withinBudget(cutAt(0), maxBytes)) return tooLarge(maxBytes);
   const count = largestFitting(lines.length - 1, (n) => withinBudget(cutAt(n), maxBytes));
-  return { ok: true, text: `${cutAt(count)}\n`, format: "tab", truncated: true };
+  return { ok: true, text: `${cutAt(count)}\n`, format: "tab", truncated: true, keptItems: count };
 }
 
 /* ---------------------------------------------------------------- value */
@@ -248,6 +308,7 @@ function serializeValue(result: ValueResult, maxBytes: number): SerializeOutcome
   if (withinBudget(full, maxBytes)) return { ok: true, text: `${full}\n`, format: "json", truncated: result.truncated };
   const bytes = utf8Bytes(safeJson(result.value) ?? "null");
   const text = safeJson({ ...result, value: { $truncated: { bytes } }, truncated: true });
+  if (!withinBudget(text, maxBytes)) return tooLarge(maxBytes);
   return { ok: true, text: `${text}\n`, format: "json", truncated: true };
 }
 
@@ -270,7 +331,7 @@ export function serializeResult(
     case "projection":
       return serializeProjection(result, chosen, maxBytes);
     case "table":
-      return chosen === "tab" ? tableTab(result, maxBytes) : tableJson(result, maxBytes);
+      return chosen === "tab" ? tableTab(result, maxBytes) : tableJson(result, maxBytes, options.resumeCursor);
     case "value":
       return serializeValue(result, maxBytes);
   }

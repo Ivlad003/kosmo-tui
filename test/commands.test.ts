@@ -354,6 +354,43 @@ describe(":path — no-path vs unknown-path", () => {
     expect(await result(cyclic, "path root leaf")).toMatchObject({ status: "unknown-path", reason: "cycle" });
   });
 
+  it("a short ref matches loaded rows on the fields it gives, not only the selected session (review)", async () => {
+    // Selection is in s-1; t-3 is loaded only in s-2, so a short ref must still find it.
+    const extra = [...rows(), { ...span("t-3", "only", { nodeId: "src/x.ts#only" }), sessionId: "s-2" }];
+    const state = seeded({}, extra);
+    const traced = applyOutcome(state, await run(state, "trace t-3"));
+    expect(traced.selection).toEqual({ ...ref("t-3", "only"), sessionId: "s-2" });
+    expect(await result(state, "ancestors only")).toMatchObject({ kind: "projection", spans: [{ spanId: "only" }] });
+    expect(await result(state, "ancestors t-3:only")).toMatchObject({ kind: "projection" });
+    // Several matches outside the current trace: ambiguous, with the candidates named.
+    const noSelection = { ...state, selection: null };
+    const ambiguous = await result(noSelection, "ancestors mid");
+    expect(ambiguous).toMatchObject({
+      kind: "error",
+      code: "ambiguous-ref",
+      candidates: ["s-1:t-1:mid", "s-2:t-1:mid"]
+    });
+    expect(ambiguous.kind === "error" && ambiguous.notice).toContain("s-2:t-1:mid");
+    expect(await result(noSelection, "trace t-1")).toMatchObject({
+      code: "ambiguous-ref",
+      candidates: ["s-1:t-1", "s-2:t-1"]
+    });
+    // Inside the selected trace a short ref still prefers that trace's row.
+    const inTrace = await result(state, "ancestors mid");
+    expect(inTrace.kind === "projection" && inTrace.spans[0]).toMatchObject({ sessionId: "s-1", spanId: "mid" });
+    // Nothing loaded matches: not-loaded, or retention after a retention gap.
+    expect(await result(noSelection, "trace t-404")).toMatchObject({ code: "unknown-ref" });
+    expect((await result(noSelection, "trace t-404")).kind === "error").toBe(true);
+    expect(await result(noSelection, "ancestors nope")).toMatchObject({ code: "unknown-ref" });
+    const gone = await result({ ...noSelection, retentionGap: true }, "trace t-404");
+    expect(gone).toMatchObject({ code: "unknown-ref" });
+    expect(gone.kind === "error" && gone.notice).toContain("unknown(retention)");
+    expect(await result(state, "ancestors t-404:x")).toMatchObject({
+      kind: "projection",
+      title: expect.stringContaining("unknown(not-loaded)")
+    });
+  });
+
   it("a short ref is resolved only inside the current trace; without one it must be qualified", async () => {
     const noSelection = { ...seeded(), selection: null };
     expect(await result(noSelection, "path root leaf")).toMatchObject({ kind: "error", code: "ambiguous-ref" });

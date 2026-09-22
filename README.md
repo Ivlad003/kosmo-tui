@@ -23,6 +23,12 @@ trace-text, and `:` runs commands (`:ancestors`, `:path`, `:callers`, `:find`, `
 SQLite source, `:js` trusted local eval on export/SQLite). A key whose capability is
 missing answers `unavailable(reason)` in the footer.
 
+Eval (`kosmo-tui eval`, `:js`) runs your own trusted code in a child process: `node:vm` is
+a separate JS context, not a security boundary. The child's V8 heap is capped at 64 MiB by
+heap flags; those flags do not cover off-heap memory (typed-array/`ArrayBuffer` backing
+stores), which is bounded by a 128 MiB resident-memory watchdog that kills the child
+(`heap-exceeded`). WebAssembly and `SharedArrayBuffer` are not available in the eval realm.
+
 `--print` never opens the terminal UI or writes a review: without `--trace` it prints the
 dataset's trace list (`kosmo.trace-list/v1`, JSON or Tab); with `--trace` the trace's
 projection (Lisp by default). Output is capped at 51,200 bytes with explicit truncation.

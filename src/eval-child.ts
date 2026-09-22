@@ -4,7 +4,7 @@
  * Spawned by `runLocalEval` in eval.ts with a 64 MiB heap and an allowlisted
  * environment; the parent owns the 2 s deadline and kills this process on expiry.
  *
- * stdin: one header line `{"code": string, "valueBudget": number}`, then the serialized
+ * stdin: one header line `{"code": string, "valueBudget": number, "rssBudget"?: number}`, then the serialized
  * snapshot JSON. stdout: exactly one result line, written synchronously, then exit.
  *
  * `node:vm` gives the user code a separate JS context (its own builtins, no `process`,
@@ -26,6 +26,10 @@ const PRELUDE = String.raw`"use strict";
   const snapshot = JSON.parse(globalThis.__kosmoSnapshot);
   delete globalThis.__kosmoSnapshot;
   delete globalThis.console;
+  // No Wasm memories or shared buffers: off-heap memory the RSS watchdog would only catch late.
+  delete globalThis.WebAssembly;
+  delete globalThis.SharedArrayBuffer;
+  delete globalThis.Atomics;
   const freeze = Object.freeze;
   const MAX_WALK = 1000000;
   const FIELDS = ["args", "ret", "error"];
@@ -276,7 +280,7 @@ function main(): void {
   const input = readFileSync(0, "utf8");
   const newline = input.indexOf("\n");
   if (newline === -1) send(JSON.stringify({ ok: false, code: "protocol-error", message: "missing eval header" }));
-  const header = JSON.parse(input.slice(0, newline)) as { code: string; valueBudget: number };
+  const header = JSON.parse(input.slice(0, newline)) as { code: string; valueBudget: number; rssBudget?: number };
 
   const context = vm.createContext(Object.create(null) as object, {
     name: "kosmo-eval",
@@ -301,7 +305,13 @@ function main(): void {
   } catch (error) {
     send(JSON.stringify({ ok: false, code: "user-error", message: helpers.describe(error) }));
   }
-  send(helpers.serialize(result, header.valueBudget));
+  const serialized = helpers.serialize(result, header.valueBudget);
+  // Off-heap memory (ArrayBuffers) is outside the V8 heap flags; the parent polls RSS, and
+  // this check catches an allocation that finished before the parent's next poll.
+  if (typeof header.rssBudget === "number" && process.memoryUsage.rss() > header.rssBudget) {
+    send(JSON.stringify({ ok: false, code: "heap-exceeded", message: "rss-budget" }));
+  }
+  send(serialized);
 }
 
 main();

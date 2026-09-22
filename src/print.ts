@@ -344,10 +344,29 @@ export async function runPrintCommand(invocation: Invocation<ViewerArgs>, deps: 
     let serialized;
     try {
       serialized = serializeResult(built.result, format);
+      if (traceId === undefined && serialized.ok && serialized.keptItems !== undefined) {
+        // The byte cap cut the list: resume it at the first row it did not print. Cursor
+        // text is part of the envelope, so while fitting, an unknown count borrows a known
+        // cursor of the same shape; the printed cursor is always the exact one (or null).
+        const cursors = new Map<number, string | null>();
+        const exact = (rows: number): string | null => cursors.get(rows) ?? null;
+        const sized = (rows: number): string | null => cursors.get(rows) ?? cursors.values().next().value ?? null;
+        for (let attempt = 0; attempt < 4 && serialized.ok && serialized.keptItems !== undefined; attempt += 1) {
+          const kept: number = serialized.keptItems;
+          if (cursors.has(kept)) break;
+          const page = kept === 0 ? null : await source.traces(opened.snapshot, { limit: kept }, controller.signal);
+          cursors.set(kept, page?.cursor ?? null);
+          serialized = serializeResult(built.result, format, { resumeCursor: sized });
+        }
+        if (serialized.ok && serialized.keptItems !== undefined && !cursors.has(serialized.keptItems)) {
+          serialized = serializeResult(built.result, format, { resumeCursor: exact });
+        }
+      }
     } catch (error) {
       return fail(EXIT_SOURCE, `serialization failed: ${describe(error)}; nothing printed`);
     }
-    if (!serialized.ok) return fail(EXIT_USAGE, serialized.message);
+    if (!serialized.ok)
+      return fail(serialized.code === "output-too-large" ? EXIT_SOURCE : EXIT_USAGE, serialized.message);
 
     // Everything is validated and serialized: the first and only stdout write.
     const failed = await writeOnce(proc.stdout as unknown as SinkLike, serialized.text);

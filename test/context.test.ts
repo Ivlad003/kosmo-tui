@@ -106,3 +106,34 @@ describe("KOSMO_TUI_CONTEXT v1 (boundary §1.9)", () => {
     expect(contextToken(fileAuth.context, { [TUI_TOKEN_ENV]: SECRET })).toEqual({ ok: true, token: undefined });
   });
 });
+
+describe("the private token does not outlive the read in process.env (review)", () => {
+  it("removes KOSMO_TUI_TOKEN from process.env, keeps it in memory, and later children never see it", async () => {
+    const { spawnSync } = await import("node:child_process");
+    const saved = { context: process.env[TUI_CONTEXT_ENV], token: process.env[TUI_TOKEN_ENV] };
+    try {
+      process.env[TUI_CONTEXT_ENV] = contextJson({ auth: { kind: "env", variable: TUI_TOKEN_ENV } });
+      process.env[TUI_TOKEN_ENV] = SECRET;
+      const read = readLaunchContext(process.env);
+      if (!read.ok || read.context === null) throw new Error("expected a context");
+      // Reading the context already takes the token out of the environment.
+      expect(process.env[TUI_TOKEN_ENV]).toBeUndefined();
+      expect(contextToken(read.context, process.env)).toEqual({ ok: true, token: SECRET });
+      // Asked again (a reload), the in-memory copy still answers.
+      expect(contextToken(read.context, process.env)).toEqual({ ok: true, token: SECRET });
+      const child = spawnSync(
+        process.execPath,
+        ["-e", "process.stdout.write(process.env.KOSMO_TUI_TOKEN ?? 'absent')"],
+        {
+          encoding: "utf8"
+        }
+      );
+      expect(child.stdout).toBe("absent");
+    } finally {
+      if (saved.context === undefined) delete process.env[TUI_CONTEXT_ENV];
+      else process.env[TUI_CONTEXT_ENV] = saved.context;
+      if (saved.token === undefined) delete process.env[TUI_TOKEN_ENV];
+      else process.env[TUI_TOKEN_ENV] = saved.token;
+    }
+  });
+});

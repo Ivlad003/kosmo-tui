@@ -7,7 +7,9 @@
  *  - `KOSMO_TUI_CONTEXT`: non-secret JSON, schema v1 below;
  *  - `KOSMO_PROJECT_DIR`: the absolute project directory;
  *  - `KOSMO_TUI_TOKEN`: only when the token was obtained without a file
- *    (`auth.kind = "env"`); it is private to this process.
+ *    (`auth.kind = "env"`); it is private to this process. The first read of the
+ *    context (or of the token) moves it out of `process.env` into memory, so no child
+ *    kosmo-tui spawns later (eval, clipboard, viewers) inherits it.
  *
  * The token itself is never part of the parsed context: it is read on demand by
  * `contextToken`, and no message produced here ever contains it. A malformed context
@@ -44,6 +46,23 @@ type Env = Readonly<Record<string, string | undefined>>;
 
 const CONTEXT_MAX_BYTES = 16 * 1024;
 
+/** The launcher token once it has been taken out of `process.env`; in memory only. */
+let retainedToken: string | undefined;
+
+/**
+ * Move `KOSMO_TUI_TOKEN` out of `process.env` (only the real process environment is
+ * touched; an injected env object is the caller's). Returns the in-memory copy.
+ */
+export function takeProcessToken(env: Env): string | undefined {
+  if (env !== process.env) return undefined;
+  const value = process.env[TUI_TOKEN_ENV];
+  if (value !== undefined) {
+    retainedToken = value;
+    delete process.env[TUI_TOKEN_ENV];
+  }
+  return retainedToken;
+}
+
 function invalid(detail: string): ContextRead {
   return { ok: false, code: "invalid-context", message: `kosmo-tui: ${TUI_CONTEXT_ENV} is invalid: ${detail}` };
 }
@@ -77,6 +96,7 @@ function parseAuth(value: unknown): TuiContextAuth | string {
  * accepted, so a secret smuggled in as an extra field is rejected, not carried along.
  */
 export function readLaunchContext(env: Env): ContextRead {
+  takeProcessToken(env);
   const projectDirEnv = env[TUI_PROJECT_DIR_ENV];
   if (projectDirEnv !== undefined && (!path.isAbsolute(projectDirEnv) || projectDirEnv.includes("\0"))) {
     return {
@@ -170,7 +190,7 @@ export function contextToken(
   env: Env
 ): { ok: true; token: string | undefined } | { ok: false; message: string } {
   if (context.auth.kind !== "env") return { ok: true, token: undefined };
-  const token = env[TUI_TOKEN_ENV]?.trim();
+  const token = (env === process.env ? takeProcessToken(env) : env[TUI_TOKEN_ENV])?.trim();
   if (token === undefined || token.length === 0) {
     return {
       ok: false,

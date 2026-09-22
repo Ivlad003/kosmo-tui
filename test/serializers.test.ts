@@ -185,3 +185,79 @@ describe("byte-valid truncation (task 5b.2)", () => {
     expect(tabCell(1.5)).toBe("1.5");
   });
 });
+
+describe("byte-cut coverage and cursors stay honest (review M4/M5/L3)", () => {
+  const wide = Array.from({ length: 1_000 }, (_, index) => [`${index}:${"ї€😀".repeat(20)}`]);
+  const paged = (): TableResult => ({
+    ...table(wide),
+    coverage: { scope: "complete", loaded: 1_000, total: 1_000, cursor: "cursor-after-1000" }
+  });
+
+  it("a byte-cut table reports the kept rows as loaded and resumes at the first dropped row", () => {
+    const serialized = serializeResult(paged(), "json", { resumeCursor: (kept) => `cursor-after-${kept}` });
+    if (!serialized.ok) throw new Error(serialized.message);
+    const parsed = JSON.parse(serialized.text) as TableResult & { coverage: Record<string, unknown> };
+    const kept = parsed.rows.length;
+    expect(kept).toBeLessThan(1_000);
+    expect(serialized.keptItems).toBe(kept);
+    expect(parsed.coverage).toMatchObject({
+      scope: "partial",
+      loaded: kept,
+      total: 1_000,
+      cursor: `cursor-after-${kept}`,
+      truncatedBy: "output-byte-cap"
+    });
+    // Without a way to re-derive it, the cursor is dropped rather than skipping rows.
+    const plain = serializeResult(paged());
+    expect(plain.ok && (JSON.parse(plain.text) as { coverage: unknown }).coverage).toMatchObject({
+      loaded: kept,
+      cursor: null
+    });
+    const tab = serializeResult(paged(), "tab");
+    expect(tab.ok && tab.keptItems).toBe(tab.ok ? tab.text.trimEnd().split("\n").length - 3 : -1);
+  });
+
+  it("a byte-cut projection is coverage truncated with the output-byte-cap gap and no stale cursor", () => {
+    const { v2 } = projections();
+    const doc = (v2 as Extract<ProjectionResult, { version: 2 }>).document;
+    const many: ProjectionResult = {
+      kind: "projection",
+      version: 2,
+      document: { ...doc, cursor: "page-2", items: Array.from({ length: 200 }, () => doc.items[0]!) }
+    };
+    const json = serializeResult(many, "json", { maxBytes: 4_096 });
+    if (!json.ok) throw new Error(json.message);
+    const parsed = JSON.parse(json.text) as { coverage: { state: string; gaps: string[] }; cursor: unknown };
+    expect(parsed.coverage.state).toBe("truncated");
+    expect(parsed.coverage.gaps).toContain("output-byte-cap");
+    expect(parsed.cursor).toBeNull();
+    const lisp = serializeResult(many, "lisp", { maxBytes: 4_096 });
+    if (!lisp.ok) throw new Error(lisp.message);
+    const back = parseTraceTextV2(lisp.text, { dialect: "lisp" });
+    expect(back.ok && back.data.cursor).toBeNull();
+    expect(back.ok && back.data.coverage.state).toBe("truncated");
+    // Untruncated output keeps its cursor.
+    const whole = serializeResult(
+      { ...many, document: { ...many.document, items: [doc.items[0]!] } } as ProjectionResult,
+      "json"
+    );
+    expect(whole.ok && (JSON.parse(whole.text) as { cursor: unknown }).cursor).toBe("page-2");
+  });
+
+  it("an envelope that cannot fit even empty is a typed error, never an over-cap output", () => {
+    for (const outcome of [
+      serializeResult(paged(), "json", { maxBytes: 40 }),
+      serializeResult(paged(), "tab", { maxBytes: 40 }),
+      serializeResult(
+        { kind: "value", provenance: "computed-local", value: "x".repeat(500), truncated: false },
+        "json",
+        {
+          maxBytes: 40
+        }
+      ),
+      serializeResult(projections().v2, "json", { maxBytes: 40 })
+    ]) {
+      expect(outcome).toMatchObject({ ok: false, code: "output-too-large" });
+    }
+  });
+});

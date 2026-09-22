@@ -66,6 +66,8 @@ export type StreamSource = TraceSource & {
   completeness(): StreamCompleteness;
   /** The stream version once the header was read; null before. */
   version(): 1 | 2 | null;
+  /** Traces with a change still tracked for delta cursors: at most one per trace, never one per frame. */
+  pendingChanges(): number;
 };
 
 function describeIncomplete(completeness: ConnectStreamCompleteness): string | undefined {
@@ -97,9 +99,34 @@ export function createStreamSource(options: StreamSourceOptions): StreamSource {
   let pumpError: unknown = null;
   let headerWaiters: Array<() => void> = [];
   let endWaiters: Array<() => void> = [];
-  /** Order in which traces were (re)announced, as full-ref keys; the delta cursor is a position in it. */
-  const updates: string[] = [];
+  /**
+   * The latest change sequence per trace (full-ref key); the delta cursor is a sequence
+   * number. Bounded by the traces the reader holds: a trace announced again moves its
+   * entry, it never adds another one.
+   */
+  const changes = new Map<string, number>();
+  let changeSeq = 0;
   let gapsSeen = 0;
+  const noteChange = (key: string): void => {
+    changeSeq += 1;
+    changes.delete(key);
+    changes.set(key, changeSeq);
+  };
+  {
+    // Incremental change tracking: observe the reader's trace map as it is written, so a
+    // chunk costs its own frames, not a copy of every trace seen so far.
+    const traces = reader.state().traces;
+    const set = traces.set.bind(traces);
+    const remove = traces.delete.bind(traces);
+    traces.set = (key, frame) => {
+      if (traces.get(key) !== frame) noteChange(key);
+      return set(key, frame);
+    };
+    traces.delete = (key) => {
+      changes.delete(key);
+      return remove(key);
+    };
+  }
 
   const wake = (): void => {
     const state = reader.state();
@@ -120,12 +147,8 @@ export function createStreamSource(options: StreamSourceOptions): StreamSource {
       try {
         for await (const chunk of options.input) {
           if (closed) break;
-          const before = new Map(reader.state().traces);
           reader.push(chunk);
           const state = reader.state();
-          for (const [key, frame] of state.traces) {
-            if (before.get(key) !== frame) updates.push(key);
-          }
           wake();
           if (state.completeness.state === "failed") break;
         }
@@ -274,6 +297,7 @@ export function createStreamSource(options: StreamSourceOptions): StreamSource {
     sourceId,
     completeness: () => reader.state().completeness,
     version: () => reader.state().version,
+    pendingChanges: () => changes.size,
 
     async open(signal): Promise<SourceOpenResult> {
       if (closed) throw new SourceError("closed", "kosmo-tui: the stream source is closed");
@@ -324,7 +348,7 @@ export function createStreamSource(options: StreamSourceOptions): StreamSource {
         offers,
         firstPage: page(snapshot, { limit: pageSize }),
         stableDataset: false,
-        deltaCursor: encodeCursor(binding(snapshot, {}), String(updates.length))
+        deltaCursor: encodeCursor(binding(snapshot, {}), String(changeSeq))
       };
     },
 
@@ -374,13 +398,15 @@ export function createStreamSource(options: StreamSourceOptions): StreamSource {
       const snapshot: SnapshotRef = { ...pinned, snapshotId: snapshotRef(state).snapshotId };
       const reset = state.gaps > gapsSeen;
       gapsSeen = state.gaps;
-      const changed = reset ? [...state.traces.keys()] : [...new Set(updates.slice(from))];
+      const changed: string[] = [];
+      if (reset) changed.push(...state.traces.keys());
+      else for (const [key, seq] of changes) if (seq > from) changed.push(key);
       const traces = changed
         .map((key) => state.traces.get(key))
         .filter((frame): frame is ConnectTraceFrame => frame !== undefined)
         .map((frame) => rowOf(snapshot, frame));
       return {
-        cursor: encodeCursor(binding(pinned, {}), String(updates.length)),
+        cursor: encodeCursor(binding(pinned, {}), String(changeSeq)),
         snapshot,
         traces,
         spans: [],

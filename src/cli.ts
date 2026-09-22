@@ -23,6 +23,7 @@ import {
   type ProjectConfigReader,
   type ResolvedTarget
 } from "./detect.js";
+import { takeProcessToken } from "./context.js";
 import { runEvalCommand } from "./eval.js";
 import { openViewerSession } from "./open-viewer.js";
 import { runPrintCommand } from "./print.js";
@@ -109,7 +110,8 @@ export const USAGE = `Usage:
   kosmo-tui sql <query> [--source <events.sqlite>] [--project <id>] [--trace <id>] [--print json|tab]
   kosmo-tui eval <code> [--source <target>] [--trace <id>] [--project <id>] [--format json]
         trusted local code only: node:vm is a separate JS context, not a security
-        boundary. -r / --no-eval disable eval.
+        boundary. 64 MiB V8 heap (flags) + 128 MiB RSS watchdog for off-heap memory.
+        -r / --no-eval disable eval.
 
 Target: none (cwd live project) | - (NDJSON on stdin) | http(s)://endpoint |
         ./export.json | ./store.sqlite | <traceId>. Use --trace <id> for a literal id
@@ -511,6 +513,8 @@ function isLive(target: ResolvedTarget): boolean {
 }
 
 export async function run(proc: Proc, deps: RunDeps = {}): Promise<number> {
+  // The launcher token lives in memory from here on; no child spawned later inherits it.
+  takeProcessToken(proc.env);
   const parsed = parseArgv(proc.argv.slice(2));
   if (!parsed.ok) {
     proc.stderr.write(`kosmo-tui: ${parsed.message}\nRun kosmo-tui --help for usage.\n`);

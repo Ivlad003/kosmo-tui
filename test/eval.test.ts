@@ -11,16 +11,22 @@ import {
   EVAL_HEAP_FLAGS,
   EVAL_HEAP_MB,
   EVAL_OUTPUT_MAX_BYTES,
+  EVAL_RSS_MAX_MB,
   buildEvalSnapshot,
   defaultEvalChildScript,
   evalChildEnv,
+  evalSnapshotFromDataset,
   eventsFromExportRecords,
   runLocalEval,
   type EvalOutcome,
   type EvalSnapshot
 } from "../src/eval.js";
+import { ancestors as sharedAncestors } from "@kosmo-callflow/query/graph";
+import { snapshotFromPortableExport } from "@kosmo-callflow/query/snapshot";
 import { importPortableExport } from "@kosmo-callflow/replay";
 import { fakeProc } from "./helpers.js";
+import { portableExport as sharedExport } from "./source-fixtures.js";
+import { event } from "./replay-records.js";
 import { portableExport, processExists, removeDir, tempDir, writeExport } from "./eval-fixtures.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -239,6 +245,32 @@ describe("parent-enforced deadline and child failure cleanup", () => {
     );
   }, 15_000);
 
+  it("off-heap memory is bounded too: an RSS watchdog kills a child holding a huge ArrayBuffer (review L6)", async () => {
+    const started = Date.now();
+    expectFailure(
+      await evaluate("const hoard = new Uint8Array(256 * 1024 * 1024).fill(1); for (;;) hoard[0]++;", {
+        deadlineMs: 10_000
+      }),
+      "heap-exceeded",
+      new RegExp(`${EVAL_RSS_MAX_MB} MiB`)
+    );
+    // Killed by the memory watchdog, not by the (10 s) deadline.
+    expect(Date.now() - started).toBeLessThan(5_000);
+    // A quick allocation that returns before the next poll is caught by the child's own check.
+    expectFailure(
+      await evaluate("new Uint8Array(256 * 1024 * 1024).fill(1).length", { deadlineMs: 10_000 }),
+      "heap-exceeded"
+    );
+  }, 20_000);
+
+  it("WebAssembly and SharedArrayBuffer are not in the eval realm", async () => {
+    expect(await value("[typeof WebAssembly, typeof SharedArrayBuffer, typeof Atomics]")).toEqual([
+      "undefined",
+      "undefined",
+      "undefined"
+    ]);
+  });
+
   it("a crashing child is an explicit error, never partial success", async () => {
     expectFailure(
       await evaluate("1", { childScript: path.join(fixtures, "eval-crash.mjs") }),
@@ -394,5 +426,44 @@ describe("kosmo-tui eval subcommand", () => {
     const p = proc(["eval", "1", "--source", bad]);
     expect(await run(p)).toBe(EXIT_SOURCE);
     expect(p.err).toMatch(/not a valid portable export/);
+  });
+});
+
+describe("trace.ancestors follows the shared graph's parent resolution (review)", () => {
+  it("links a unique cross-session parent like :ancestors, and leaves an ambiguous one unresolved", async () => {
+    const records = [
+      event({ seq: 1, spanId: "a", nodeId: "src/app.ts#handle" }),
+      // s-2 continues s-1's trace: its parent "a" exists only in s-1 (a unique cross-session parent).
+      event({ seq: 2, spanId: "e", parentSpanId: "a", nodeId: "src/worker.ts#job", sessionId: "s-2" }),
+      event({ seq: 3, spanId: "f", parentSpanId: "e", nodeId: "src/worker.ts#step", sessionId: "s-2" }),
+      // "dup" exists in s-1 and s-2; s-3's child of "dup" has no single parent.
+      event({ seq: 4, spanId: "dup", nodeId: "src/d.ts#one" }),
+      event({ seq: 5, spanId: "dup", nodeId: "src/d.ts#two", sessionId: "s-2" }),
+      event({ seq: 6, spanId: "g", parentSpanId: "dup", nodeId: "src/g.ts#x", sessionId: "s-3" })
+    ];
+    const dataset = snapshotFromPortableExport(sharedExport(records), { maxBytes: 1 << 20 });
+    const built = evalSnapshotFromDataset(dataset, "export");
+    if (!built.ok) throw new Error(built.message);
+    const shared = (sessionId: string, spanId: string) =>
+      sharedAncestors(dataset, {
+        datasetId: dataset.identity.datasetId,
+        projectId: dataset.identity.projectId,
+        sessionId,
+        traceId: "t-1",
+        spanId
+      }).refs.map((ref) => `${ref.sessionId}:${ref.spanId}`);
+    const idOf = (sessionId: string, spanId: string) =>
+      built.snapshot.spans.find((span) => span.ref.sessionId === sessionId && span.ref.spanId === spanId)!.id;
+    const outcome = await runLocalEval({
+      code: `[${JSON.stringify(idOf("s-2", "f"))}, ${JSON.stringify(idOf("s-3", "g"))}].map(id => trace.ancestors(id).map(s => s.ref.sessionId + ":" + s.ref.spanId))`,
+      snapshot: built.snapshot,
+      env: {}
+    });
+    if (!outcome.ok) throw new Error(`${outcome.code}: ${outcome.message}`);
+    expect(shared("s-2", "f")).toEqual(["s-2:e", "s-1:a"]);
+    expect(outcome.envelope.value).toEqual([shared("s-2", "f"), shared("s-3", "g")]);
+    expect(outcome.envelope.value).toEqual([["s-2:e", "s-1:a"], []]);
+    const g = built.snapshot.spans.find((span) => span.ref.sessionId === "s-3")!;
+    expect(g).toMatchObject({ parentId: null, orphan: true });
   });
 });

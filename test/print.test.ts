@@ -27,6 +27,7 @@ import { parseArgv, run, type Invocation, type ViewerArgs } from "../src/cli.js"
 import type { ResolvedTarget } from "../src/detect.js";
 import { PRINT_STDIN_DEADLINE_MS, runPrintCommand, TRACE_LIST_SCHEMA, type PrintDeps } from "../src/print.js";
 import { OUTPUT_MAX_BYTES } from "../src/serializers.js";
+import { openTargetSource } from "../src/source-open.js";
 import type { StreamInput } from "../src/source-stream.js";
 import { fakeProc, type FakeProc } from "./helpers.js";
 import { canonicalV2, portableExport } from "./source-fixtures.js";
@@ -104,6 +105,34 @@ function wideTrace(count: number): ReplayRecord[] {
 }
 
 describe("--print: dataset list without a trace", () => {
+  it("a byte-cut list resumes at the first row it did not print, so load-more skips nothing (review)", async () => {
+    const file = await exportFile(manyTraces(1_200));
+    const json = await print([file, "--print", "json"], { kind: "export", path: file });
+    expect(json.code).toBe(0);
+    const table = JSON.parse(json.out) as {
+      rows: unknown[][];
+      coverage: { scope: string; loaded: number; cursor: string | null };
+      truncated: boolean;
+    };
+    const kept = table.rows.length;
+    expect(bytes(json.out)).toBeLessThanOrEqual(OUTPUT_MAX_BYTES);
+    expect(kept).toBeLessThan(1_000);
+    expect(table).toMatchObject({ truncated: true, coverage: { scope: "partial", loaded: kept } });
+    expect(table.coverage.cursor).not.toBeNull();
+    const opened = await openTargetSource({ target: { kind: "export", path: file }, project: null, env: {}, cwd: tmp });
+    if (!opened.ok) throw new Error(opened.message);
+    const result = await opened.source.open(new AbortController().signal);
+    const next = await opened.source.traces(
+      result.snapshot,
+      { limit: 5, cursor: table.coverage.cursor! },
+      new AbortController().signal
+    );
+    const all = await opened.source.traces(result.snapshot, { limit: kept + 5 }, new AbortController().signal);
+    expect(all.items.slice(0, kept).map((row) => row.traceId)).toEqual(table.rows.map((row) => row[3]));
+    expect(next.items.map((row) => row.traceId)).toEqual(all.items.slice(kept).map((row) => row.traceId));
+    await opened.source.close();
+  });
+
   it("returns the bounded dataset list as a table, never a trace projection", async () => {
     const file = await exportFile(manyTraces(3));
     const json = await print([file, "--print", "json"], { kind: "export", path: file });

@@ -6,7 +6,9 @@
  * snapshot. It is explicit local-code execution, not a read-only or hostile-code sandbox:
  * `node:vm` only gives the code a separate JS context. What this module does guarantee:
  *
- *  - the code runs in a child process (eval-child.ts) with a 64 MiB heap, a minimal
+ *  - the code runs in a child process (eval-child.ts) with a 64 MiB V8 heap and a
+ *    128 MiB resident-memory budget (off-heap ArrayBuffers are not covered by the heap
+ *    flags; the parent polls the child's RSS and SIGKILLs it above the budget), a minimal
  *    allowlisted environment (no inherited auth variables, tokens or NODE_OPTIONS) and
  *    only the serialized snapshot — no source handles, tokens or host callbacks;
  *  - the parent enforces a 2 s wall-clock deadline and SIGKILLs the child on expiry,
@@ -19,7 +21,7 @@
  * `-r` and `--no-eval` disable the action before any child is spawned.
  */
 
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,6 +44,14 @@ export const EVAL_HEAP_FLAGS = [
   `--max-semi-space-size=${EVAL_SEMI_SPACE_MB}`,
   `--max-old-space-size=${EVAL_HEAP_MB - 3 * EVAL_SEMI_SPACE_MB}`
 ] as const;
+/**
+ * Resident-memory budget of the child. The heap flags bound the V8 heap only; typed-array
+ * backing stores live off-heap, so the parent polls the child's RSS every
+ * `EVAL_RSS_POLL_MS` and SIGKILLs it above this (and the child checks once more before it
+ * answers). A bare child sits near 45 MiB and a full 64 MiB heap near 100 MiB.
+ */
+export const EVAL_RSS_MAX_MB = 128;
+export const EVAL_RSS_POLL_MS = 50;
 export const EVAL_OUTPUT_MAX_BYTES = 51_200;
 /** Snapshot bounds; a larger scope is rejected, never silently sampled. */
 export const EVAL_SNAPSHOT_MAX_SPANS = 20_000;
@@ -183,17 +193,37 @@ export function buildEvalSnapshot(
     list.push(event);
     grouped.set(key, list);
   }
+  // Parent links resolve exactly like the shared graph selectors (`@kosmo-callflow/query/graph`)
+  // behind `:ancestors`: the same session first, else a UNIQUE span with that id in the same
+  // trace (another session), else no link (missing or ambiguous).
+  const bySession = new Set(rows.map((row) => JSON.stringify([row.sessionId, row.traceId, row.spanId])));
+  const byTraceSpan = new Map<string, SpanRef[]>();
+  for (const row of rows) {
+    const key = JSON.stringify([row.traceId, row.spanId]);
+    const list = byTraceSpan.get(key) ?? [];
+    list.push(spanRefOf(row));
+    byTraceSpan.set(key, list);
+  }
+  const parentOf = (ref: SpanRef, parentSpanId: string | null): string | null => {
+    if (parentSpanId === null) return null;
+    if (bySession.has(JSON.stringify([ref.sessionId, ref.traceId, parentSpanId]))) {
+      return spanKey({ ...ref, spanId: parentSpanId });
+    }
+    const candidates = byTraceSpan.get(JSON.stringify([ref.traceId, parentSpanId])) ?? [];
+    return candidates.length === 1 ? spanKey(candidates[0]!) : null;
+  };
   const spans: EvalSpan[] = rows.map((row) => {
     const ref = spanRefOf(row);
     const own = grouped.get(JSON.stringify([row.sessionId, row.traceId, row.spanId])) ?? [];
     const detail = spanDetailFromEvents(own, ref, null);
     const recordedParent = own.find((event) => event.parentSpanId !== null)?.parentSpanId ?? null;
+    const parentId = parentOf(ref, recordedParent);
     const seqs = own.map((event) => event.seq);
     return {
       id: spanKey(ref),
       ref,
-      parentId: row.parentSpanId === null ? null : spanKey({ ...ref, spanId: row.parentSpanId }),
-      orphan: row.parentSpanId === null && recordedParent !== null,
+      parentId,
+      orphan: parentId === null && recordedParent !== null,
       nodeId: sanitize(row.nodeId),
       depth: row.depth,
       errored: row.errored,
@@ -261,6 +291,26 @@ export type EvalRunOptions = {
   signal?: AbortSignal;
 };
 
+/** The child's resident set in bytes, or null where it cannot be read (the heap flags still apply). */
+async function residentBytes(pid: number): Promise<number | null> {
+  if (process.platform === "linux") {
+    try {
+      const status = await readFile(`/proc/${pid}/status`, "utf8");
+      const match = /^VmRSS:\s+(\d+)\s+kB/m.exec(status);
+      return match ? Number(match[1]) * 1024 : null;
+    } catch {
+      return null;
+    }
+  }
+  if (process.platform === "win32") return null;
+  return await new Promise((resolve) => {
+    execFile("ps", ["-o", "rss=", "-p", String(pid)], { timeout: 1_000, windowsHide: true }, (error, stdout) => {
+      const kib = Number(String(stdout).trim());
+      resolve(error || !Number.isFinite(kib) || kib <= 0 ? null : kib * 1024);
+    });
+  });
+}
+
 type ChildMessage =
   | { ok: true; truncation: EvalTruncation | null; value: unknown }
   | { ok: false; code: EvalFailureCode; message: string };
@@ -309,6 +359,20 @@ export async function runLocalEval(options: EvalRunOptions): Promise<EvalOutcome
       () => kill("timeout", `eval exceeded the ${deadlineMs} ms deadline; the child process was killed`),
       deadlineMs
     );
+    const memoryMessage = `eval exceeded the ${EVAL_RSS_MAX_MB} MiB memory budget (resident set; ${EVAL_HEAP_MB} MiB heap); the child process was killed`;
+    let watching = true;
+    const watch = async (): Promise<void> => {
+      while (watching && pid !== undefined) {
+        const rss = await residentBytes(pid);
+        if (!watching) return;
+        if (rss !== null && rss > EVAL_RSS_MAX_MB * 1024 * 1024) {
+          kill("heap-exceeded", memoryMessage);
+          return;
+        }
+        await new Promise((resume) => setTimeout(resume, EVAL_RSS_POLL_MS).unref());
+      }
+    };
+    void watch();
     const onAbort = (): void => kill("aborted", "eval was interrupted; the child process was killed");
     if (options.signal?.aborted) onAbort();
     options.signal?.addEventListener("abort", onAbort, { once: true });
@@ -331,6 +395,7 @@ export async function runLocalEval(options: EvalRunOptions): Promise<EvalOutcome
     child.on("close", (exitCode, signal) => {
       if (settled) return;
       settled = true;
+      watching = false;
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", onAbort);
       if (failure !== undefined) {
@@ -349,10 +414,12 @@ export async function runLocalEval(options: EvalRunOptions): Promise<EvalOutcome
         });
         return;
       }
-      resolve(finish(Buffer.concat(out).toString("utf8"), options.snapshot, pid));
+      const outcome = finish(Buffer.concat(out).toString("utf8"), options.snapshot, pid);
+      resolve(!outcome.ok && outcome.code === "heap-exceeded" ? { ...outcome, message: memoryMessage } : outcome);
     });
 
-    child.stdin.end(`${JSON.stringify({ code: options.code, valueBudget: budget })}\n${snapshotText}`);
+    const rssBudget = EVAL_RSS_MAX_MB * 1024 * 1024;
+    child.stdin.end(`${JSON.stringify({ code: options.code, valueBudget: budget, rssBudget })}\n${snapshotText}`);
   });
 }
 
