@@ -47,7 +47,8 @@ import {
   type SessionPolicy
 } from "./capabilities.js";
 import { StdoutFallback, buildCopyDocument, copyToClipboard, withAfterClose, type ClipboardDeps } from "./clipboard.js";
-import type { CommandResult } from "./commands.js";
+import type { CommandResult, DepthLevel } from "./commands.js";
+import type { DepthMapping } from "./depth.js";
 import { compareSpanPair } from "./compare.js";
 import { spanDocumentFor } from "./detail.js";
 import { decodeBookmarkKey, decodeCommandLineKey, decodeKey, decodeSearchKey } from "./keys.js";
@@ -100,6 +101,8 @@ export const RECONNECT_MAX_MS = 10_000;
 /** Per-value cap for detail text kept in state, so one pinned selection stays bounded. */
 export const DETAIL_VALUE_MAX_BYTES = 64 * 1024;
 const RECORD_PAGE_LIMIT = 1_000;
+/** Traces whose canonical v2 page is loaded for the request selector and depth rows. */
+export const CANONICAL_PAGE_TRACES = 20;
 const REPLACEMENT_CHAR = String.fromCharCode(0xfffd);
 
 export type SessionTimers = {
@@ -135,6 +138,10 @@ export type SessionOptions = {
   clipboard?: ClipboardDeps & { stdout: { write(chunk: string): unknown } };
   sanitize?: SanitizeContext;
   onExit?: () => void;
+  /** `--depth`: initial level for the shared canonical depth projection. */
+  depth?: DepthLevel;
+  /** Roots and producer logical mapping for the depth projector. */
+  depthMapping?: DepthMapping;
 };
 
 export type PollingState = { state: "off" | "active" | "reconnecting" | "stopped"; reason: string | null };
@@ -876,6 +883,42 @@ export function createSession(options: SessionOptions): Session {
     return item ?? "span is not in the projection";
   }
 
+  /**
+   * Canonical v2 pages of the loaded traces (bounded), for the request selector and the
+   * depth rows. Without v2 the view keeps its trace-summary rows; nothing is invented.
+   */
+  async function loadCanonicalPages(): Promise<void> {
+    if (closed || pinned !== null || snapshot === null || !source.canonical || projectionVersion() !== 2) return;
+    const pin = snapshot;
+    const traces = state.traces.slice(0, CANONICAL_PAGE_TRACES);
+    const pages: CanonicalPageEnvelopeV2[] = [];
+    for (const trace of traces) {
+      try {
+        const page = await source.canonical(
+          pin,
+          {
+            kind: "trace",
+            ref: {
+              datasetId: trace.datasetId,
+              projectId: trace.projectId,
+              sessionId: trace.sessionId,
+              traceId: trace.traceId
+            }
+          },
+          { version: 2, detail: 2, values: false },
+          lifetime.signal
+        );
+        if (page.version === 2) pages.push(page.envelope);
+      } catch {
+        // That trace keeps its trace-summary row (reason no-projection-v2).
+      }
+      if (closed || snapshot === null || epochKey(snapshot) !== epochKey(pin)) return;
+    }
+    if (pages.length === 0) return;
+    state = reduceDelta(state, { kind: "canonical", pages });
+    invalidate();
+  }
+
   function projectionVersion(): 1 | 2 | null {
     const versions = caps?.projectionVersions ?? [];
     if (options.projectionVersion !== undefined)
@@ -979,6 +1022,12 @@ export function createSession(options: SessionOptions): Session {
           return;
         }
         break;
+      case "setDepth":
+      case "depthStep":
+        state = applyAction(state, action);
+        if (state.canonical.length === 0) void loadCanonicalPages();
+        afterChange();
+        return;
       default:
         break;
     }
@@ -1015,6 +1064,8 @@ export function createSession(options: SessionOptions): Session {
     const size = terminal?.size() ?? { cols: 80, rows: 24 };
     state = initialViewState({
       caps,
+      ...(options.depth !== undefined ? { depth: options.depth } : {}),
+      ...(options.depthMapping !== undefined ? { depthMapping: options.depthMapping } : {}),
       viewportHeight: Math.max(1, size.rows - 4),
       connection: {
         kind: "connected",
@@ -1023,6 +1074,7 @@ export function createSession(options: SessionOptions): Session {
       }
     });
     adoptOpen(opened, false);
+    void loadCanonicalPages();
     terminal?.onKey(press);
     terminal?.onResize((next) => {
       state = reduceDelta(state, { kind: "resize", viewportHeight: Math.max(1, next.rows - 4) });

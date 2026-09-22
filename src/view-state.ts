@@ -29,6 +29,16 @@ import {
   type CommandLineInput
 } from "./command-line.js";
 import type { CommandResult, DepthLevel } from "./commands.js";
+import type { CanonicalPageEnvelopeV2 } from "@kosmo-callflow/protocol";
+import {
+  depthRank,
+  depthView,
+  focusOn,
+  stepDepth,
+  type DepthFocus,
+  type DepthMapping,
+  type DepthView
+} from "./depth.js";
 import { stepIndex, type ReplaySchedule, type ReplayTimeline } from "./replay.js";
 
 /** Full identity of one trace: `(datasetId, projectId, sessionId, traceId)`. */
@@ -227,6 +237,14 @@ export type ViewState = {
   commandResult: CommandResult | null;
   /** `:depth` level for the shared canonical depth projection; null is the default view. */
   depth: DepthLevel | null;
+  /** Loaded canonical v2 pages (one per trace): the request selector and depth rows read these. */
+  canonical: CanonicalPageEnvelopeV2[];
+  /** Depth focus: canonical group identity + membership + mapping revision (depth.ts). */
+  depthFocus: DepthFocus | null;
+  /** Highlighted row while a group level (app..symbol) is shown. */
+  depthCursor: number;
+  /** Roots and logical mapping handed to the shared depth projector. */
+  depthMapping: DepthMapping;
   /** `=` marks: A first, then B (compare.ts); full refs, at most two. */
   compareRefs: SpanRef[];
 };
@@ -249,7 +267,9 @@ export type Delta =
    * unknown.
    */
   | { kind: "baseline"; traces: TraceRow[]; spans: SpanRow[]; gap: boolean }
-  | { kind: "scope"; scope: LoadedScope };
+  | { kind: "scope"; scope: LoadedScope }
+  /** Canonical v2 pages; each replaces the loaded page of the same dataset/project/trace. */
+  | { kind: "canonical"; pages: CanonicalPageEnvelopeV2[] };
 
 export type Action =
   | { kind: "move"; delta: number }
@@ -295,6 +315,8 @@ export type Action =
   | { kind: "closeCommandResult" }
   | { kind: "replaySeek"; seq: number }
   | { kind: "setDepth"; level: DepthLevel }
+  /** `-` coarser, `+` finer (focusing the highlighted group). */
+  | { kind: "depthStep"; delta: number }
   | { kind: "selectRef"; ref: SpanRef }
   | { kind: "quit" };
 
@@ -335,6 +357,10 @@ export function initialViewState(overrides: Partial<ViewState> = {}): ViewState 
     commandHistory: [],
     commandResult: null,
     depth: null,
+    canonical: [],
+    depthFocus: null,
+    depthCursor: 0,
+    depthMapping: {},
     compareRefs: [],
     ...overrides
   };
@@ -402,6 +428,8 @@ export function reduceDelta(state: ViewState, delta: Delta): ViewState {
       }));
     case "scope":
       return { ...state, scope: delta.scope };
+    case "canonical":
+      return { ...state, canonical: mergeCanonical(state.canonical, delta.pages) };
   }
 }
 
@@ -540,6 +568,7 @@ function commandOf(action: Action): Command | null {
     case "replaySeek":
       return "seek";
     case "setDepth":
+    case "depthStep":
       return "depth";
     case "command":
       return action.command;
@@ -559,6 +588,10 @@ export function applyAction(current: ViewState, action: Action): ViewState {
   }
   switch (action.kind) {
     case "move":
+      if (groupDepthShown(state)) {
+        const count = currentDepthView(state).rows.length;
+        return { ...state, depthCursor: clamp(state.depthCursor + action.delta, 0, Math.max(0, count - 1)) };
+      }
       return moveSelection(state, action.delta);
     case "moveTo": {
       const rows = visibleSpans(state);
@@ -679,7 +712,9 @@ export function applyAction(current: ViewState, action: Action): ViewState {
     case "replaySeek":
       return replaySeek(state, action.seq);
     case "setDepth":
-      return { ...state, depth: action.level };
+      return withDepth(state, action.level);
+    case "depthStep":
+      return depthStep(state, action.delta);
     case "selectRef":
       return selectByRef(state, action.ref);
     case "clearSelection":
@@ -868,6 +903,53 @@ function select(state: ViewState, span: SpanRow): ViewState {
   if (index < scrollTop) scrollTop = index;
   else if (index >= scrollTop + height) scrollTop = index - height + 1;
   return { ...selected, scrollTop: Math.max(0, scrollTop) };
+}
+
+/** A group level (app..symbol) is on screen instead of span rows. */
+export function groupDepthShown(state: ViewState): boolean {
+  return state.depth !== null && state.depth !== "call";
+}
+
+/** Rows for the current depth level and focus, from the shared projector (depth.ts). */
+export function currentDepthView(state: ViewState): DepthView {
+  return depthView(state.canonical, state.depth ?? "call", state.depthMapping, state.depthFocus);
+}
+
+function mergeCanonical(
+  current: CanonicalPageEnvelopeV2[],
+  incoming: CanonicalPageEnvelopeV2[]
+): CanonicalPageEnvelopeV2[] {
+  const keyOf = (page: CanonicalPageEnvelopeV2) =>
+    JSON.stringify([page.dataset.datasetId, page.dataset.projectId, page.selection?.traceId ?? null]);
+  const byKey = new Map(current.map((page) => [keyOf(page), page]));
+  for (const page of incoming) byKey.set(keyOf(page), page);
+  return [...byKey.values()];
+}
+
+/** Change level; a focus survives only while the level stays finer than the focused group. */
+function withDepth(state: ViewState, level: DepthLevel): ViewState {
+  const focus =
+    state.depthFocus !== null && depthRank(level) > depthRank(state.depthFocus.depth) ? state.depthFocus : null;
+  return { ...state, depth: level, depthFocus: focus, depthCursor: 0 };
+}
+
+/**
+ * `-` goes one level coarser. `+` focuses the highlighted group (membership from the
+ * shared projector, inside any existing focus) and goes one level finer.
+ */
+function depthStep(state: ViewState, delta: number): ViewState {
+  const level = state.depth ?? "call";
+  if (delta < 0) {
+    if (level === "app") return { ...state, notice: "depth: already at app" };
+    return withDepth(state, stepDepth(level, -1));
+  }
+  if (level === "call") return { ...state, notice: "depth: already at call" };
+  const row = currentDepthView(state).rows[state.depthCursor];
+  if (row === undefined || row.kind !== "group") return { ...state, notice: "depth: no group to focus" };
+  const focus = focusOn(state.canonical, row.depth, state.depthMapping, row.id, state.depthFocus);
+  if (focus === null) return { ...state, notice: "depth: group is not in the loaded pages" };
+  const next = stepDepth(level, 1);
+  return { ...withDepth({ ...state, depthFocus: focus }, next), notice: `depth: ${next} within ${focus.groupNode}` };
 }
 
 function withAdded(set: ReadonlySet<string>, value: string): Set<string> {

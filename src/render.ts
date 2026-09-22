@@ -14,15 +14,17 @@ import {
   fit,
   renderBookmarkList,
   renderCommandResultPane,
+  renderDepthPane,
   renderDetailPane,
   renderFooter,
   renderHeader,
+  renderRequestList,
   renderSpanRow,
   renderStackPane,
   renderTraceList,
   selectionBanner
 } from "./panes.js";
-import { visibleSpans, type SpanRow, type ViewState } from "./view-state.js";
+import { groupDepthShown, spanKey, visibleSpans, type SpanRow, type ViewState } from "./view-state.js";
 
 export { DETAIL_PANE_HEIGHT, TRACE_LIST_HEIGHT, connectionLine, renderDetailPane, selectionBanner } from "./panes.js";
 
@@ -49,7 +51,9 @@ function renderBody(state: ViewState, width: number, height: number): Frame {
   // is always exactly `height` rows.
   const available = Math.max(1, height - bannerLines.length);
   const traceBudget = Math.min(TRACE_LIST_HEIGHT + 1, Math.floor(available / 2));
-  const traceLines = renderTraceList(state, width).slice(0, Math.max(0, traceBudget));
+  // With canonical v2 pages loaded the list is request-centric (requests.ts).
+  const traceList = state.canonical.length > 0 ? renderRequestList(state, width) : renderTraceList(state, width);
+  const traceLines = traceList.slice(0, Math.max(0, traceBudget));
   const afterTraces = Math.max(1, available - traceLines.length);
 
   // The details pane only appears once detail is actually loaded: a placeholder would
@@ -65,17 +69,21 @@ function renderBody(state: ViewState, width: number, height: number): Frame {
   const resultBudget = state.commandResult === null ? 0 : Math.min(DETAIL_PANE_HEIGHT, Math.floor(afterStack / 2));
   const resultLines = resultBudget === 0 ? [] : renderCommandResultPane(state.commandResult!, width, resultBudget);
   const remaining = Math.max(1, afterStack - resultLines.length);
-  const rows = visibleSpans(state);
+  // At call depth a focus narrows the span rows to its shared-projector membership.
+  const members = state.depth === "call" && state.depthFocus !== null ? new Set(state.depthFocus.members) : null;
+  const rows = members === null ? visibleSpans(state) : visibleSpans(state).filter((row) => members.has(spanKey(row)));
 
   const spanLines =
     state.bookmarkList !== null
       ? pad(renderBookmarkList(state, width, remaining), remaining)
-      : rows.length === 0
-        ? pad([emptyMessage(state)], remaining)
-        : pad(
-            windowAround(rows, state, remaining).map((span) => renderSpanRow(span, state)),
-            remaining
-          );
+      : groupDepthShown(state)
+        ? pad(renderDepthPane(state, width, remaining), remaining)
+        : rows.length === 0
+          ? pad([emptyMessage(state)], remaining)
+          : pad(
+              windowAround(rows, state, remaining).map((span) => renderSpanRow(span, state)),
+              remaining
+            );
 
   return pad(
     [...bannerLines, ...traceLines, ...spanLines, ...resultLines, ...stackLines, ...detailLines].slice(0, height),

@@ -18,8 +18,12 @@ import { isAvailable } from "./capabilities.js";
 import { comparisonLines } from "./compare.js";
 import type { CommandResult, ResultMeta } from "./commands.js";
 import { ancestorChain, stopText } from "./stack.js";
+import { focusText, formatDepthRow } from "./depth.js";
+import { formatSelectorRow, selectorRows } from "./requests.js";
+import { tabCell } from "./serializers.js";
 import { valueMatchLines } from "./values.js";
 import {
+  currentDepthView,
   filtersActive,
   parentKey,
   spanKey,
@@ -429,11 +433,64 @@ export function commandResultLines(result: CommandResult): string[] {
       return valueMatchLines(result.result);
     case "compare":
       return comparisonLines(result.result);
+    case "sql": {
+      // A table of rows from the shared runner: never drawn as spans.
+      const table = result.result;
+      const rows = `${table.rows.length} row(s)${table.truncated ? ` truncated(${table.truncation?.reason ?? "limit"})` : ""}`;
+      return [
+        `sql ${table.schema}: ${rows}  (esc closes)`,
+        `  ${table.columns.map((column) => shown(tabCell(column))).join(" | ")}`,
+        ...table.rows.map((row) => `  ${row.map((cell) => shown(tabCell(cell))).join(" | ")}`),
+        `scope: project ${shown(table.scope.projectId)} snapshot ${shown(table.scope.snapshotId)} watermark ${table.scope.watermarkSeq}; ` +
+          `coverage: ${table.coverage.exhaustive ? "exhaustive" : "partial"}${table.coverage.retention ? ", retention gap" : ""}${table.coverage.loss ? ", loss" : ""}`
+      ];
+    }
   }
 }
 
 function spanLine(row: SpanRow): string {
   return `  ${row.errored ? "!" : " "} ${shown(row.nodeId)}  ${shown(row.traceId)}/${shown(row.spanId)}`;
+}
+
+/**
+ * The request selector: one row per inbound request span (full ref), trace-summary rows
+ * for traces without request metadata. Shown in place of the trace list once canonical v2
+ * pages are loaded.
+ */
+export function renderRequestList(state: ViewState, width: number): string[] {
+  const rows = selectorRows(state.canonical, state.traces);
+  if (rows.length === 0) return [];
+  const selected = state.selection ?? state.lastKnownSpan;
+  const spanSel = selected ? spanKey(selected) : null;
+  const traceSel = selected ? traceKey(selected) : null;
+  const shownRows = rows.slice(0, TRACE_LIST_HEIGHT);
+  const lines = shownRows.map((row) => {
+    const hit = row.mode === "request" ? row.key === spanSel : row.key === traceSel;
+    return fit(`${hit ? ">" : " "} ${formatSelectorRow(row)}`, width);
+  });
+  if (rows.length > shownRows.length) lines.push(fit(`   … ${rows.length - shownRows.length} more requests`, width));
+  lines.push(rule(width));
+  return lines;
+}
+
+/** Grouped depth rows (app..symbol) from the shared projector, with the highlighted row. */
+export function renderDepthPane(state: ViewState, width: number, height: number): string[] {
+  const view = currentDepthView(state);
+  const head = `depth ${view.level}${view.focus ? `  ${focusText(view.focus)}` : ""}  (- coarser, + focus/finer)`;
+  const lines = [fit(head, width)];
+  if (view.rows.length === 0) {
+    lines.push(
+      state.canonical.length === 0 ? "  no depth rows: no canonical v2 page loaded" : "  no depth rows in scope"
+    );
+    return lines;
+  }
+  const budget = Math.max(1, height - 1);
+  const cursor = Math.min(state.depthCursor, view.rows.length - 1);
+  const start = Math.max(0, Math.min(cursor - budget + 1, view.rows.length - budget));
+  view.rows.slice(Math.max(0, start), Math.max(0, start) + budget).forEach((row, offset) => {
+    lines.push(fit(`${Math.max(0, start) + offset === cursor ? ">" : " "} ${formatDepthRow(row)}`, width));
+  });
+  return lines;
 }
 
 function metaLine(meta: ResultMeta): string {

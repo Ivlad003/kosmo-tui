@@ -46,6 +46,9 @@ const plainKeys = new Map<string, Action>([
   ["m", { kind: "bookmark" }],
   ["'", { kind: "openBookmarks" }],
   ["s", { kind: "toggleStack" }],
+  // Architectural depth through the shared projector: `-` coarser, `+` focus and finer.
+  ["-", { kind: "depthStep", delta: -1 }],
+  ["+", { kind: "depthStep", delta: 1 }],
   // Reserved for later waves (design D1). They already decode, so each one is gated on
   // the effective capabilities and answers with a visible notice instead of nothing.
   ["=", { kind: "command", command: "compare" }],
