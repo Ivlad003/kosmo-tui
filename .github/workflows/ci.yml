@@ -1,0 +1,157 @@
+name: CI
+
+# Cross-repo CI (task 8.3). kosmo-tui is tested only against kosmo-callflow TARBALLS, never against
+# workspace links, packed in the same workflow from a checkout of kosmo-callflow:
+#   - kc=pinned: the kosmo-callflow commit this kosmo-tui revision was validated with (KC_PINNED_REF);
+#   - kc=latest: the head of kosmo-callflow's default branch, accepted only while every packed
+#     @kosmo-callflow/* version stays inside KC_SUPPORTED_RANGE (drift shows up here first).
+# Test matrix: Node 18.19.0 / 22.x / 24.x x SQLite driver cell (docs/contracts/tui-boundary.md §2.6 in
+# kosmo-callflow):
+#   none    - Node 18.19 without the optional better-sqlite3 peer: sql / sqlite targets must answer
+#             an explicit unavailable(sqlite-driver), exit 2, empty stdout;
+#   builtin - Node >= 22.13 without the peer: the built-in node:sqlite serves sql and sqlite targets;
+#   native  - the optional better-sqlite3 peer installed.
+# test/package.test.ts reads KOSMO_TUI_SQLITE_CELL and checks the real runtime against the cell; it
+# also asserts that an unsupported connect-stream major is an explicit version error.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  KC_REPOSITORY: Ivlad003/kosmo-callflow
+  # Bump together with a kosmo-tui release after `npm run deps:tarballs` + `npm test` pass locally.
+  KC_PINNED_REF: e7bd8f31915bd9ecdf1b5d4ceb32e77ae91ea532
+  KC_SUPPORTED_RANGE: "0.0.x"
+  KC_PACKAGES: "@kosmo-callflow/protocol @kosmo-callflow/query @kosmo-callflow/replay @kosmo-callflow/trace-artifacts @kosmo-callflow/trace-diff"
+
+jobs:
+  kc-tarballs:
+    name: kosmo-callflow tarballs (${{ matrix.kc }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kc: [pinned, latest]
+    steps:
+      - name: Checkout kosmo-callflow
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.KC_REPOSITORY }}
+          ref: ${{ matrix.kc == 'pinned' && env.KC_PINNED_REF || '' }}
+          path: kosmo-callflow
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+          cache-dependency-path: kosmo-callflow/package-lock.json
+
+      - name: Rust toolchain for the SWC plugin
+        working-directory: kosmo-callflow
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - name: Build kosmo-callflow
+        working-directory: kosmo-callflow
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Pack the five boundary packages (and their workspace dependencies)
+        working-directory: kosmo-callflow
+        run: npm run pack:public -- $KC_PACKAGES
+
+      - name: Packed versions stay inside the supported range
+        working-directory: kosmo-callflow
+        run: |
+          for version in $(node -e 'for (const p of require("./artifacts/tarballs/manifest.json").packages) console.log(p.version)'); do
+            npx --yes semver@7.7.2 -r "$KC_SUPPORTED_RANGE" "$version" >/dev/null || { echo "::error::$version is outside $KC_SUPPORTED_RANGE"; exit 1; }
+          done
+          echo "commit $(git rev-parse HEAD)" > artifacts/tarballs/SOURCE
+
+      - name: Upload tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: kc-tarballs-${{ matrix.kc }}
+          path: kosmo-callflow/artifacts/tarballs/
+          if-no-files-found: error
+
+  test:
+    name: kc=${{ matrix.kc }} / Node ${{ matrix.cell.node }} / sqlite=${{ matrix.cell.sqlite }}
+    needs: kc-tarballs
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kc: [pinned, latest]
+        cell:
+          - { node: "18.19.0", sqlite: none }
+          - { node: "18.19.0", sqlite: native }
+          - { node: "22.x", sqlite: builtin }
+          - { node: "22.x", sqlite: native }
+          - { node: "24.x", sqlite: builtin }
+          - { node: "24.x", sqlite: native }
+    steps:
+      - name: Checkout kosmo-tui
+        uses: actions/checkout@v4
+        with:
+          path: kosmo-tui
+
+      # package.json pins file:../kosmo-callflow/artifacts/tarballs/<name>.tgz, so the tarballs go
+      # to the sibling path the pins name; there is no kosmo-callflow source tree next to it.
+      - name: Download kosmo-callflow tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: kc-tarballs-${{ matrix.kc }}
+          path: kosmo-callflow/artifacts/tarballs
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.cell.node }}
+
+      - name: Install from the tarballs only
+        working-directory: kosmo-tui
+        run: npm run deps:tarballs -- --no-pack
+
+      - name: Remove the optional SQLite peer
+        if: matrix.cell.sqlite != 'native'
+        working-directory: kosmo-tui
+        run: rm -rf node_modules/better-sqlite3
+
+      - name: Typecheck
+        if: matrix.cell.node == '22.x' && matrix.cell.sqlite == 'native'
+        working-directory: kosmo-tui
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: kosmo-tui
+        run: npm run build
+
+      # Runs in every cell: package boundary, the real-runtime SQLite cell check (sql and a sqlite
+      # target via the built bin) and the explicit unsupported-version errors of every source.
+      - name: Boundary, driver cell and version errors
+        working-directory: kosmo-tui
+        env:
+          KOSMO_TUI_SQLITE_CELL: ${{ matrix.cell.sqlite }}
+        run: >
+          npx vitest run test/package.test.ts test/print.test.ts test/source-stream.test.ts
+          test/source-live.test.ts test/source-export.test.ts
+
+      # The SQLite-backed tests build their fixture databases with the better-sqlite3 dev peer
+      # (test/sqlite-fixtures.ts), so the full suite needs the native cell.
+      - name: Full test suite
+        if: matrix.cell.sqlite == 'native'
+        working-directory: kosmo-tui
+        env:
+          KOSMO_TUI_SQLITE_CELL: ${{ matrix.cell.sqlite }}
+        run: npx vitest run

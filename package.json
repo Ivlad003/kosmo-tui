@@ -26,14 +26,15 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit && prettier --check .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "deps:tarballs": "node scripts/deps-tarballs.mjs"
   },
   "dependencies": {
-    "@kosmo-callflow/protocol": "file:../kosmo-callflow/packages/protocol",
-    "@kosmo-callflow/query": "file:../kosmo-callflow/packages/query",
-    "@kosmo-callflow/replay": "file:../kosmo-callflow/packages/replay",
-    "@kosmo-callflow/trace-artifacts": "file:../kosmo-callflow/packages/trace-artifacts",
-    "@kosmo-callflow/trace-diff": "file:../kosmo-callflow/packages/trace-diff"
+    "@kosmo-callflow/protocol": "file:../kosmo-callflow/artifacts/tarballs/kosmo-callflow-protocol.tgz",
+    "@kosmo-callflow/query": "file:../kosmo-callflow/artifacts/tarballs/kosmo-callflow-query.tgz",
+    "@kosmo-callflow/replay": "file:../kosmo-callflow/artifacts/tarballs/kosmo-callflow-replay.tgz",
+    "@kosmo-callflow/trace-artifacts": "file:../kosmo-callflow/artifacts/tarballs/kosmo-callflow-trace-artifacts.tgz",
+    "@kosmo-callflow/trace-diff": "file:../kosmo-callflow/artifacts/tarballs/kosmo-callflow-trace-diff.tgz"
   },
   "peerDependencies": {
     "better-sqlite3": ">=9"
@@ -42,6 +43,13 @@
     "better-sqlite3": {
       "optional": true
     }
+  },
+  "overrides": {
+    "@kosmo-callflow/protocol": "$@kosmo-callflow/protocol",
+    "@kosmo-callflow/query": "$@kosmo-callflow/query",
+    "@kosmo-callflow/replay": "$@kosmo-callflow/replay",
+    "@kosmo-callflow/trace-artifacts": "$@kosmo-callflow/trace-artifacts",
+    "@kosmo-callflow/trace-diff": "$@kosmo-callflow/trace-diff"
   },
   "devDependencies": {
     "@types/node": "^22.18.6",

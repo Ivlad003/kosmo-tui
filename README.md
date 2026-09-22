@@ -36,6 +36,18 @@ npm test
 npm run lint   # tsc --noEmit + prettier --check (ESLint intentionally omitted to keep deps small)
 ```
 
-During the extraction the `@kosmo-callflow/*` dependencies are `file:` links to a sibling
-`kosmo-callflow` checkout. They are replaced by the published tarballs (KC task 1.11)
-before the first release.
+The `@kosmo-callflow/*` dependencies are pinned to tarballs packed from a sibling
+`kosmo-callflow` checkout (`file:../kosmo-callflow/artifacts/tarballs/<name>.tgz`, KC task 1.11),
+never to workspace links or the public registry (which holds stale `0.0.0` copies of some names):
+
+```sh
+(cd ../kosmo-callflow && npm ci && npm run build)
+npm run deps:tarballs            # packs the five packages there and installs exactly those tarballs
+npm run build && npm test
+```
+
+`deps:tarballs` installs the tarballs by path on purpose: a plain `npm install` keeps a stale copy
+when a tarball changed under the same name. `-- --no-pack` installs tarballs that are already in
+place (CI downloads them). `.github/workflows/ci.yml` runs the suite against a pinned and the
+latest kosmo-callflow on Node 18.19 / 22 / 24 with the SQLite driver cells none / built-in /
+better-sqlite3 (see `test/package.test.ts`, `KOSMO_TUI_SQLITE_CELL`).
