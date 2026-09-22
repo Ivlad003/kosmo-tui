@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Release candidate 2026-09-23 (local, unpublished)
+
+Local release candidate for task 8.5 of kosmo-callflow `extract-tui-trace-debugger`. Nothing was
+published. The tarball is `artifacts/kosmo-tui-0.0.0.tgz` (sha256 in kosmo-callflow
+`docs/releases/2026-09-23-kosmo-tui-rc.md`), packed from `f4a32cc` plus the framework fixture
+parity test. That document also records the kosmo-callflow compatibility tuple and the publish
+blockers. The version stays `0.0.0` until the owner picks one at publish time.
+
+- Framework fixture parity (8.5): `test/framework-fixture-parity.test.ts` reads the Express, Nest,
+  Next/Edge and Next Node (`next-node-action-request`) fixtures from the installed
+  `@kosmo-callflow/protocol` package, re-projects them with the installed projector, and checks
+  request rows, labels, depth and the viewer frame.
+- Next-specific evidence (`requestType`, `actionId`, `cache`, `rewrite`, `redirect`) now appears in
+  `frameworkSummary` and in the request selector row, so an action and a prefetch of the same
+  route no longer look identical (validation gap G1).
+
 ### Added
 
 - Repository skeleton: TypeScript strict/ESM/NodeNext, tsc build, vitest, prettier.

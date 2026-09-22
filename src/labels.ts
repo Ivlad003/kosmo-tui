@@ -95,6 +95,15 @@ export function frameworkSummary(evidence: CanonicalFrameworkEvidence): string {
       for (const field of ["method", "route", "status", "phase", "completion"] as const) {
         if (value[field] !== undefined) parts.push(`${field}=${String(value[field])}`);
       }
+      // Next-specific fields: without them an action and a prefetch of the same route (or
+      // an edge rewrite/redirect) read identically in the one-line summary.
+      if (value.requestType !== undefined) parts.push(`requestType=${value.requestType}`);
+      if (value.actionId !== undefined) parts.push(`actionId=${value.actionId}`);
+      if (value.cache !== undefined) {
+        parts.push(`cache=${value.cache.status}${value.cache.reason !== undefined ? `/${value.cache.reason}` : ""}`);
+      }
+      if (value.rewrite !== undefined) parts.push(`rewrite=${value.rewrite}`);
+      if (value.redirect !== undefined) parts.push(`redirect=${value.redirect}`);
       for (const field of evidence.maskedFields) parts.push(`${field}=masked`);
       return `framework: ${escapeTerminalControls(parts.join(" "))}`;
     }

@@ -49,6 +49,9 @@ export type RequestRow = {
   method: FieldText;
   route: FieldText;
   status: FieldText;
+  /** Next `requestType` (action/prefetch/rsc/document); without it an action and a
+   *  prefetch of the same route are indistinguishable in the selector. */
+  requestType: FieldText;
   duration: CanonicalDurationEvidence;
   runtime: string | null;
   state: RequestState;
@@ -201,6 +204,7 @@ export function requestRowsFromPage(page: CanonicalPageEnvelopeV2): RequestRow[]
         method: frameworkField(item.framework, "method"),
         route: routeOf(item),
         status: statusOf(item, state),
+        requestType: frameworkField(item.framework, "requestType"),
         duration: item.duration,
         runtime: item.runtime,
         state,
@@ -265,6 +269,7 @@ export function formatSelectorRow(row: SelectorRow): string {
     row.runtime ?? "unavailable(runtime)",
     stateText(row.state)
   ];
+  if (row.requestType.state === "recorded") parts.push(`requestType=${row.requestType.text}`);
   if (row.diagnostics.length > 0) parts.push(`issues=${row.diagnostics.join(",")}`);
   const cause = row.causalContext.find((ancestor) => ancestor.runtime === "browser") ?? row.causalContext[0];
   if (cause !== undefined) parts.push(`via ${cause.runtime ?? "unknown"}:${cause.label} ${cause.nodeId}`);
