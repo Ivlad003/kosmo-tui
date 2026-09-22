@@ -20,6 +20,7 @@ import {
   type ConnectSnapshotInput,
   type ConnectSnapshotManifestEntry
 } from "@kosmo-callflow/protocol";
+import * as protocolModule from "@kosmo-callflow/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkCommand, effectiveCapabilities } from "../src/capabilities.js";
 import { createSession } from "../src/session.js";
@@ -30,6 +31,8 @@ import { canonicalV2 } from "./source-fixtures.js";
 import { checkoutRecords, event } from "./replay-records.js";
 
 const POLICY = { readOnly: false, noEval: false, print: false };
+/** Reader caps newer protocol builds export (the trace cap test runs once the installed build has it). */
+const protocol = protocolModule as typeof protocolModule & { CONNECT_READER_MAX_TRACES?: number };
 const signal = () => new AbortController().signal;
 const KC_CLI = fileURLToPath(new URL("../../kosmo-callflow/packages/cli/dist/index.js", import.meta.url));
 
@@ -532,6 +535,33 @@ describe("follow deltas stay bounded on a long stream (review)", () => {
     expect(next.traces.map((row) => [row.traceId, row.startedAt])).toEqual([["t-7", 999_999]]);
     await source.close();
   }, 30_000);
+
+  it.skipIf(protocol.CONNECT_READER_MAX_TRACES === undefined)(
+    "past the reader's trace cap the source fails with an explicit trace-cache-cap error",
+    async () => {
+      const cap = protocol.CONNECT_READER_MAX_TRACES!;
+      const source = createStreamSource({
+        input: (async function* () {
+          yield lines({ ...headerFrameV2(snap, { eventsCount: 5 }), follow: true });
+          for (let index = 0; index <= cap; index += 1) yield `${JSON.stringify(summary(`t-${index}`, index))}\n`;
+        })()
+      });
+      const opened = await source.open(signal());
+      let error: SourceError | null = null;
+      while (error === null) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        error = await source.deltas!(opened.deltaCursor!, signal()).then(
+          () => null,
+          (failed: SourceError) => failed
+        );
+      }
+      expect(error).toMatchObject({ code: "stream-trace-cache-cap" });
+      // Bounded by the reader's cap: one tracked change per trace it holds.
+      expect(source.pendingChanges()).toBeLessThanOrEqual(cap);
+      await source.close();
+    },
+    60_000
+  );
 
   it("fails the source with an explicit error when a reader cap is hit, never silently", async () => {
     const pipe = new PassThrough();
