@@ -149,7 +149,7 @@ export type LoadedScope = {
 /** Reserved command keys whose actions arrive in later waves; they still gate on caps. */
 export type ReservedCommand = Extract<
   Command,
-  "finding" | "todo" | "finalizeReview" | "yank" | "compare" | "commandLine"
+  "finding" | "todo" | "finalizeReview" | "yank" | "compare" | "values" | "commandLine"
 >;
 
 /**
@@ -227,6 +227,8 @@ export type ViewState = {
   commandResult: CommandResult | null;
   /** `:depth` level for the shared canonical depth projection; null is the default view. */
   depth: DepthLevel | null;
+  /** `=` marks: A first, then B (compare.ts); full refs, at most two. */
+  compareRefs: SpanRef[];
 };
 
 export type Delta =
@@ -333,6 +335,7 @@ export function initialViewState(overrides: Partial<ViewState> = {}): ViewState 
     commandHistory: [],
     commandResult: null,
     depth: null,
+    compareRefs: [],
     ...overrides
   };
 }
@@ -643,6 +646,7 @@ export function applyAction(current: ViewState, action: Action): ViewState {
       return { ...state, stackOpen: !state.stackOpen };
     case "command":
       if (action.command === "commandLine") return { ...state, commandLine: openCommandLine() };
+      if (action.command === "compare") return markCompare(state);
       // Capability passed; the action itself lands in a later wave. Say so visibly.
       return { ...state, notice: `${action.command}: not available in this build yet` };
     case "commandInput":
@@ -753,6 +757,23 @@ export function showReplayFrame(
   detail: SpanDetail | null
 ): ViewState {
   return resolveSelection({ ...state, replay, traces: rows.traces, spans: rows.spans, detail });
+}
+
+/**
+ * `=`: mark the selection as compare A, then B. The session compares once two are
+ * marked; pressing `=` again on A unmarks it, and a third press starts a new pair.
+ */
+function markCompare(state: ViewState): ViewState {
+  if (!state.selection) return { ...state, notice: "compare: nothing selected" };
+  const ref = spanRefOf(state.selection);
+  const marks = state.compareRefs.length === 1 ? state.compareRefs : [];
+  if (marks.length === 1 && sameSpan(marks[0]!, ref)) {
+    return { ...state, compareRefs: [], notice: "compare: A cleared" };
+  }
+  if (marks.length === 0) {
+    return { ...state, compareRefs: [ref], notice: "compare: A marked; select B and press =" };
+  }
+  return { ...state, compareRefs: [marks[0]!, ref], notice: "compare: B marked; comparing A with B" };
 }
 
 /** `m`: mark or unmark the selection, including a pinned one that is off screen. */

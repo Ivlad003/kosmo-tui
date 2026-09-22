@@ -49,6 +49,8 @@ const plainKeys = new Map<string, Action>([
   // Reserved for later waves (design D1). They already decode, so each one is gated on
   // the effective capabilities and answers with a visible notice instead of nothing.
   ["=", { kind: "command", command: "compare" }],
+  // Equal-value candidates for the selected span's recorded values (values.ts).
+  ["w", { kind: "command", command: "values" }],
   ["f", { kind: "command", command: "finding" }],
   ["t", { kind: "command", command: "todo" }],
   ["R", { kind: "command", command: "finalizeReview" }],

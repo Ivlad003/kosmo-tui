@@ -229,12 +229,15 @@ describe("effective caps in keys and footer", () => {
 
   it("reserved keys decode and, when their capability exists, say they are not built yet", async () => {
     const caps = await capsOf({ implement: { canonical: true, details: true, records: true, deltas: true } });
-    for (const key of ["=", "y", "f"]) {
+    for (const key of ["y", "f"]) {
       const action = decodeKey(key);
       expect(action?.kind, key).toBe("command");
       const next = applyAction(seeded(caps), action!);
       expect(next.notice, key).toMatch(/: not available in this build yet$/);
     }
+    // `=` is no longer reserved: with its capability it marks compare A (5.7).
+    const marked = applyAction(seeded(caps), decodeKey("=")!);
+    expect(marked.notice).toMatch(/^compare: (A marked|nothing selected)/);
     // `:` is no longer reserved: with its capability it opens the command line (5b.1).
     const opened = applyAction(seeded(caps), decodeKey(":")!);
     expect(opened.notice).toBeNull();

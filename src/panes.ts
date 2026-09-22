@@ -15,8 +15,10 @@ import { escapeTerminalControls } from "@kosmo-callflow/trace-artifacts";
 import { truncateVisible } from "./ansi.js";
 import { resolveBookmarks } from "./bookmarks.js";
 import { isAvailable } from "./capabilities.js";
+import { comparisonLines } from "./compare.js";
 import type { CommandResult, ResultMeta } from "./commands.js";
 import { ancestorChain, stopText } from "./stack.js";
+import { valueMatchLines } from "./values.js";
 import {
   filtersActive,
   parentKey,
@@ -423,6 +425,10 @@ export function commandResultLines(result: CommandResult): string[] {
       lines.push(metaLine(result.meta));
       return lines;
     }
+    case "values":
+      return valueMatchLines(result.result);
+    case "compare":
+      return comparisonLines(result.result);
   }
 }
 

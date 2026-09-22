@@ -34,6 +34,8 @@ import {
   type SpanRefSpec,
   type Token
 } from "./command-line.js";
+import type { PairComparison } from "./compare.js";
+import type { ValueMatchResult } from "./values.js";
 import { DEFAULT_STACK_DEPTH, ancestorChain, stopText, type AncestorChain, type StackOptions } from "./stack.js";
 import {
   replaySeekIndex,
@@ -209,7 +211,11 @@ export type CommandResult =
       /** Only with `--static`; kept apart so possible edges never add to recorded counts. */
       static: StaticCallers | null;
       meta: ResultMeta;
-    };
+    }
+  /** `w`: equal-value candidates (values.ts); never presented as lineage. */
+  | { kind: "values"; command: "values"; result: ValueMatchResult }
+  /** `=`: explicit A/B pair comparison through the shared diffTraces (compare.ts). */
+  | { kind: "compare"; command: "compare"; result: PairComparison };
 
 export type CommandOutcome = { actions: Action[]; result: CommandResult };
 

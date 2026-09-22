@@ -27,6 +27,7 @@
 import {
   projectTraceTextDocumentV2,
   type CanonicalPageEnvelopeV2,
+  type CanonicalSpanProjectionItemV2,
   type TraceTextDocumentV2
 } from "@kosmo-callflow/protocol";
 import type { ReplayRecord, ReplayState } from "@kosmo-callflow/replay";
@@ -46,6 +47,8 @@ import {
   type SessionPolicy
 } from "./capabilities.js";
 import { StdoutFallback, buildCopyDocument, copyToClipboard, withAfterClose, type ClipboardDeps } from "./clipboard.js";
+import type { CommandResult } from "./commands.js";
+import { compareSpanPair } from "./compare.js";
 import { spanDocumentFor } from "./detail.js";
 import { decodeBookmarkKey, decodeCommandLineKey, decodeKey, decodeSearchKey } from "./keys.js";
 import { renderFrame } from "./render.js";
@@ -60,8 +63,17 @@ import {
   type PinnedReplay
 } from "./replay-pin.js";
 import type { EvidenceDocument, SanitizeContext } from "./review-format.js";
-import type { LiveDeltaBody, SnapshotRef, SourceOpenResult, SpanEvidence, TraceSource } from "./source.js";
+import type {
+  LiveDeltaBody,
+  SnapshotRef,
+  SourceOpenResult,
+  SpanEvidence,
+  TraceSelection,
+  TraceSource,
+  VersionedCanonicalPage
+} from "./source.js";
 import { isTooSmall, tooSmallFrame, type Terminal } from "./terminal.js";
+import { findValueCandidates } from "./values.js";
 import {
   applyAction,
   initialViewState,
@@ -795,6 +807,75 @@ export function createSession(options: SessionOptions): Session {
     notice(`yank: clipboard unavailable (${outcome.reason}); ${label} will be printed to stdout after exit${line}`);
   }
 
+  // -- value candidates and pair comparison -------------------------------------------
+
+  /** A v2 canonical page with typed value evidence, or why none can be read. */
+  async function canonicalV2(selection: TraceSelection, what: string): Promise<VersionedCanonicalPage | string> {
+    if (pinned !== null) {
+      return `replay frame: the snapshot projection would include later records; L returns to live`;
+    }
+    if (!source.canonical || snapshot === null || !(caps?.projectionVersions ?? []).includes(2)) {
+      return `${what} needs typed value evidence (projection v2)`;
+    }
+    try {
+      const page = await source.canonical(
+        snapshot,
+        selection,
+        { version: 2, detail: 2, values: true },
+        lifetime.signal
+      );
+      return page.version === 2 ? page : `${what} needs typed value evidence (projection v2)`;
+    } catch (error) {
+      return (error as Error).message ?? String(error);
+    }
+  }
+
+  function showResult(result: CommandResult): void {
+    state = applyAction(state, { kind: "commandResult", result });
+    invalidate();
+  }
+
+  /** `w`: equal-value candidates for the selected span, searched in its loaded trace. */
+  async function valueMatches(): Promise<void> {
+    if (!gate("values")) return;
+    const selection = state.selection;
+    if (selection === null) return notice("values: nothing selected");
+    const { datasetId, projectId, sessionId, traceId } = selection;
+    const page = await canonicalV2(
+      { kind: "trace", ref: { datasetId, projectId, sessionId, traceId } },
+      "value matching"
+    );
+    if (closed) return;
+    if (typeof page === "string") return notice(`values: unavailable(${page})`);
+    const partial = page.truncated || page.envelope.truncated || page.coverage.scope === "partial";
+    const result = findValueCandidates(page.envelope.items, selection, {
+      truncated: partial,
+      reason: partial ? (page.coverage.reason ?? "loaded page is partial") : null
+    });
+    showResult({ kind: "values", command: "values", result });
+  }
+
+  /** `=` with A and B marked: the shared diffTraces over the two spans. */
+  async function comparePair(a: SpanRef, b: SpanRef): Promise<void> {
+    const [left, right] = await Promise.all([spanItemV2(a), spanItemV2(b)]);
+    if (closed) return;
+    if (typeof left === "string") return notice(`compare: A unavailable(${left})`);
+    if (typeof right === "string") return notice(`compare: B unavailable(${right})`);
+    showResult({ kind: "compare", command: "compare", result: compareSpanPair(left, right) });
+  }
+
+  async function spanItemV2(ref: SpanRef): Promise<CanonicalSpanProjectionItemV2 | string> {
+    const page = await canonicalV2({ kind: "span", ref }, "compare");
+    if (typeof page === "string") return page;
+    if (page.version !== 2) return "compare needs typed value evidence (projection v2)";
+    const key = spanKey(ref);
+    const item = page.envelope.items.find(
+      (candidate): candidate is CanonicalSpanProjectionItemV2 =>
+        candidate.kind === "span" && spanKey((candidate as CanonicalSpanProjectionItemV2).span) === key
+    );
+    return item ?? "span is not in the projection";
+  }
+
   function projectionVersion(): 1 | 2 | null {
     const versions = caps?.projectionVersions ?? [];
     if (options.projectionVersion !== undefined)
@@ -885,6 +966,16 @@ export function createSession(options: SessionOptions): Session {
       case "command":
         if (action.command === "yank") {
           void yank();
+          return;
+        }
+        if (action.command === "values") {
+          void valueMatches();
+          return;
+        }
+        if (action.command === "compare") {
+          state = applyAction(state, action);
+          if (state.compareRefs.length === 2) void comparePair(state.compareRefs[0]!, state.compareRefs[1]!);
+          afterChange();
           return;
         }
         break;
