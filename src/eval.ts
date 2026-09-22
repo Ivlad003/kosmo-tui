@@ -32,6 +32,16 @@ import { spanKey, spanRefOf, type DetailValue, type SpanRef } from "./view-state
 
 export const EVAL_DEADLINE_MS = 2_000;
 export const EVAL_HEAP_MB = 64;
+/**
+ * The whole V8 heap (old + young generation) is bounded, not only old space: newer V8
+ * (Node 25) sizes the young generation far larger by default, so `--max-old-space-size`
+ * alone left a 256 MiB heap limit. Young = 3 × semi-space; old gets the rest.
+ */
+export const EVAL_SEMI_SPACE_MB = 1;
+export const EVAL_HEAP_FLAGS = [
+  `--max-semi-space-size=${EVAL_SEMI_SPACE_MB}`,
+  `--max-old-space-size=${EVAL_HEAP_MB - 3 * EVAL_SEMI_SPACE_MB}`
+] as const;
 export const EVAL_OUTPUT_MAX_BYTES = 51_200;
 /** Snapshot bounds; a larger scope is rejected, never silently sampled. */
 export const EVAL_SNAPSHOT_MAX_SPANS = 20_000;
@@ -275,11 +285,7 @@ export async function runLocalEval(options: EvalRunOptions): Promise<EvalOutcome
 
   const child = spawn(
     process.execPath,
-    [
-      `--max-old-space-size=${EVAL_HEAP_MB}`,
-      "--disallow-code-generation-from-strings",
-      options.childScript ?? defaultEvalChildScript()
-    ],
+    [...EVAL_HEAP_FLAGS, "--disallow-code-generation-from-strings", options.childScript ?? defaultEvalChildScript()],
     {
       env: evalChildEnv(options.env ?? process.env),
       stdio: ["pipe", "pipe", "pipe"],

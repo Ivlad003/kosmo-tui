@@ -9,6 +9,7 @@ import { chmodSync, existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { projectCanonicalPage } from "@kosmo-callflow/query/snapshot";
+import { nodeSqliteSupport } from "@kosmo-callflow/query/sql";
 import { readSqliteDatasetSnapshot, SqliteSourceError } from "@kosmo-callflow/query/sqlite";
 import { effectiveCapabilities } from "../src/capabilities.js";
 import { openTargetSource } from "../src/source-open.js";
@@ -48,8 +49,20 @@ async function rejection(promise: Promise<unknown>): Promise<SourceError> {
 }
 
 describe("sqlite source (task 4.4)", () => {
-  it("has both drivers in this Node (better-sqlite3 dev peer and unflagged node:sqlite)", () => {
-    expect(drivers.map((entry) => entry.name)).toEqual(["better-sqlite3", "node:sqlite"]);
+  it("has the better-sqlite3 dev peer, and node:sqlite exactly where this Node supports it", () => {
+    const support = nodeSqliteSupport();
+    const nodeSqlite = support.available && support.execArgv.every((flag) => process.execArgv.includes(flag));
+    expect(drivers.map((entry) => entry.name)).toEqual(
+      nodeSqlite ? ["better-sqlite3", "node:sqlite"] : ["better-sqlite3"]
+    );
+    if (!nodeSqlite) {
+      // e.g. Node 18.19: an explicit unavailable with the reason, never a silent fallback.
+      expect(detectSqliteDriver("node:sqlite")).toMatchObject({
+        ok: false,
+        reason: "sqlite-driver",
+        nodeSqlite: support.available ? "needs-flag" : "absent"
+      });
+    }
   });
 
   for (const { name, selection } of drivers) {

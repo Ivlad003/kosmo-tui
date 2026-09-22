@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { EXIT_OK, EXIT_SOURCE, EXIT_USAGE, parseArgv, run } from "../src/cli.js";
 import {
+  EVAL_HEAP_FLAGS,
+  EVAL_HEAP_MB,
   EVAL_OUTPUT_MAX_BYTES,
   buildEvalSnapshot,
   defaultEvalChildScript,
@@ -195,8 +197,11 @@ describe("host isolation is a convenience limit, not a sandbox", () => {
         heapLimitBytes: number;
       };
       expect(Object.keys(child.env).filter((name) => name !== "__CF_USER_TEXT_ENCODING")).toEqual(["TZ"]);
-      expect(child.execArgv).toContain("--max-old-space-size=64");
-      expect(child.heapLimitBytes).toBeLessThan(128 * 1024 * 1024);
+      expect(child.execArgv).toEqual(expect.arrayContaining([...EVAL_HEAP_FLAGS]));
+      // The WHOLE heap (old + young generation) is within the 64 MiB budget on every
+      // supported Node — Node 25's larger default young generation included.
+      expect(child.heapLimitBytes).toBeLessThanOrEqual(EVAL_HEAP_MB * 1024 * 1024);
+      expect(child.heapLimitBytes).toBeGreaterThan(48 * 1024 * 1024);
     } finally {
       if (previous === undefined) delete process.env.KOSMO_TOKEN;
       else process.env.KOSMO_TOKEN = previous;
