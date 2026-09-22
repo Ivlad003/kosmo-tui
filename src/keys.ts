@@ -42,6 +42,18 @@ const plainKeys = new Map<string, Action>([
   ["d", { kind: "toggleDsl" }],
   ["/", { kind: "search" }],
   ["e", { kind: "filterErrorsOnly" }],
+  // Session bookmarks and the recorded-ancestor stack pane.
+  ["m", { kind: "bookmark" }],
+  ["'", { kind: "openBookmarks" }],
+  ["s", { kind: "toggleStack" }],
+  // Reserved for later waves (design D1). They already decode, so each one is gated on
+  // the effective capabilities and answers with a visible notice instead of nothing.
+  ["=", { kind: "command", command: "compare" }],
+  ["f", { kind: "command", command: "finding" }],
+  ["t", { kind: "command", command: "todo" }],
+  ["R", { kind: "command", command: "finalizeReview" }],
+  ["y", { kind: "command", command: "yank" }],
+  [":", { kind: "command", command: "commandLine" }],
   ["q", { kind: "quit" }],
   ["\u0003", { kind: "quit" }],
   ["\u001b", { kind: "clearSelection" }]
@@ -67,4 +79,17 @@ export function decodeSearchKey(input: string): Action | undefined {
   if (input === "\u007f" || input === "\b") return { kind: "searchBackspace" };
   if (input.length === 0 || /[\u0000-\u001f\u007f-\u009f]/.test(input)) return undefined;
   return { kind: "searchInput", text: input };
+}
+
+/**
+ * Decode a key while the `'` bookmark jump list is open: move, jump, or close. Other
+ * keys are ignored so a stray letter cannot fire a command behind the list.
+ */
+export function decodeBookmarkKey(input: string): Action | undefined {
+  if (input === "\u0003") return { kind: "quit" };
+  if (input === "j" || input === "\u001b[B") return { kind: "bookmarkMove", delta: 1 };
+  if (input === "k" || input === "\u001b[A") return { kind: "bookmarkMove", delta: -1 };
+  if (input === "\r" || input === "\n") return { kind: "bookmarkJump" };
+  if (input === "\u001b" || input === "'" || input === "q") return { kind: "bookmarkClose" };
+  return undefined;
 }

@@ -13,7 +13,11 @@
 import { renderTraceText } from "@kosmo-callflow/protocol";
 import { escapeTerminalControls } from "@kosmo-callflow/trace-artifacts";
 import { truncateVisible } from "./ansi.js";
+import { resolveBookmarks } from "./bookmarks.js";
+import { isAvailable } from "./capabilities.js";
+import { ancestorChain, stopText } from "./stack.js";
 import {
+  filtersActive,
   parentKey,
   spanKey,
   traceKey,
@@ -158,6 +162,10 @@ export function selectionBanner(state: ViewState): string | null {
   if (state.selectionAbsence === "filter") {
     return "selection hidden by the current filter — showing last known values";
   }
+  if (state.selectionAbsence === "evicted") {
+    const name = state.lastKnownSpan ? shown(state.lastKnownSpan.nodeId) : shown(state.selection?.spanId ?? "");
+    return `selected span ${name} evicted from the loaded scope — showing last known values (reload to fetch it)`;
+  }
   return null;
 }
 
@@ -166,7 +174,7 @@ export function emptyMessage(state: ViewState): string {
   if (connection.kind === "disconnected") return "  no data: daemon unreachable";
   if (connection.sdk === "absent") return "  no data: SDK not attached to the application";
   if (connection.events === "none") return "  no data: SDK attached, nothing recorded yet";
-  if (state.filters.errorsOnly || state.filters.search) return "  no rows match the current filter";
+  if (filtersActive(state.filters)) return "  no rows match the current filter";
   return "  no rows";
 }
 
@@ -190,17 +198,103 @@ export function renderFooter(state: ViewState, width: number): string[] {
     // change the height of the body underneath it.
     return [rule(width), fit(`search: ${shown(state.searchInput)}_  (enter apply, esc cancel)`, width)];
   }
+  if (state.bookmarkList !== null) {
+    return [rule(width), fit("bookmarks: j/k move  enter jump  esc close", width)];
+  }
+  if (state.notice !== null) {
+    // Same single row as the hints, so a notice cannot change the body height.
+    return [rule(width), fit(`! ${shown(state.notice)}`, width)];
+  }
   const filters = [
     state.filters.errorsOnly ? "errors-only" : null,
-    state.filters.search === null ? null : `search="${shown(state.filters.search)}"`
+    state.filters.search === null ? null : `search="${shown(state.filters.search)}"`,
+    state.filters.nodeId ? `node=${shown(state.filters.nodeId)}` : null,
+    state.filters.spanKind ? `kind=${shown(state.filters.spanKind)}` : null
   ]
     .filter((part): part is string => part !== null)
     .join(" ");
-  const keys = state.replay
-    ? "j/k move  n/b step  L live  space expand  v view  d dsl  e errors  / search  q quit"
-    : "j/k move  space expand  p pause  v view  d dsl  e errors  / search  q quit";
-  const prefix = filters.length === 0 ? `${state.view}/${state.dsl}` : `${state.view}/${state.dsl}  [${filters}]`;
+  // Filters run over what is loaded; when the scope is known it is named, so an empty
+  // result is never read as "nothing in the dataset".
+  const scope = filters.length > 0 && state.scope !== null ? ` over loaded ${scopeText(state)}` : "";
+  const keys = keyHints(state);
+  const prefix =
+    filters.length === 0 ? `${state.view}/${state.dsl}` : `${state.view}/${state.dsl}  [${filters}${scope}]`;
   return [rule(width), fit(`${prefix}  ${keys}`, width)];
+}
+
+function scopeText(state: ViewState): string {
+  const scope = state.scope!;
+  const count = scope.total === null ? `${scope.loaded}` : `${scope.loaded}/${scope.total}`;
+  return `${count} rows${scope.truncated ? ", truncated" : ""}`;
+}
+
+/**
+ * Footer key hints. Without capabilities this is the kosmo-callflow footer verbatim;
+ * with them, only commands the session can actually serve are advertised.
+ */
+function keyHints(state: ViewState): string {
+  const caps = state.caps;
+  if (caps === null) {
+    return state.replay
+      ? "j/k move  n/b step  L live  space expand  v view  d dsl  e errors  / search  q quit"
+      : "j/k move  space expand  p pause  v view  d dsl  e errors  / search  q quit";
+  }
+  const hints = ["j/k move"];
+  if (state.replay && isAvailable(caps, "replayStep")) hints.push("n/b step", "L live");
+  hints.push("space expand");
+  if (!state.replay && isAvailable(caps, "pause")) hints.push("p pause");
+  hints.push("v view", "d dsl", "e errors", "/ search");
+  if (isAvailable(caps, "bookmark")) hints.push("m mark", "' marks");
+  if (isAvailable(caps, "stack")) hints.push("s stack");
+  if (isAvailable(caps, "finding")) hints.push("f/t review");
+  hints.push("q quit");
+  return hints.join("  ");
+}
+
+/** The `'` jump list; evicted or aged-out bookmarks stay listed as placeholders. */
+export function renderBookmarkList(state: ViewState, width: number, height: number): string[] {
+  const resolved = resolveBookmarks(state.bookmarks, state.spans, state.traces);
+  const index = state.bookmarkList?.index ?? -1;
+  const lines = [`bookmarks (${resolved.length})`];
+  const peers = state.bookmarks.map((bookmark) => bookmark.ref);
+  resolved.forEach((entry, position) => {
+    const marker = position === index ? ">" : " ";
+    const name = `${shown(entry.bookmark.nodeId)}${qualifier(
+      entry.bookmark.ref,
+      peers.filter((peer) => peer.traceId === entry.bookmark.ref.traceId)
+    )}`;
+    const where =
+      entry.state === "loaded"
+        ? ""
+        : entry.reason === "retention"
+          ? "  (placeholder: aged out of retention)"
+          : "  (placeholder: evicted from the loaded scope)";
+    lines.push(
+      `${marker} ${position + 1}. ${name} ${shown(entry.bookmark.ref.traceId)}/${shown(entry.bookmark.ref.spanId)}${where}`
+    );
+  });
+  return lines.slice(0, height).map((line) => fit(line, width));
+}
+
+/**
+ * The stack pane: the recorded ancestor chain of the selection, target first. It is
+ * never a live JavaScript stack, and it names where and why the walk stopped.
+ */
+export function renderStackPane(state: ViewState, width: number, height: number): string[] {
+  const lines = [rule(width), "stack (recorded ancestors, not a live JS stack)"];
+  const chain = state.selection
+    ? ancestorChain(state.spans, state.selection, { retentionGap: state.retentionGap }, state.lastKnownSpan)
+    : null;
+  if (chain === null) {
+    lines.push("  unavailable (no selected span loaded)");
+  } else {
+    chain.frames.forEach((frame, depth) => {
+      const peers = state.spans.filter((peer) => peer.traceId === frame.traceId && peer.spanId === frame.spanId);
+      lines.push(`  #${depth} ${shown(frame.nodeId)}${qualifier(frame, peers)}`);
+    });
+    lines.push(`  ${shown(stopText(chain.stop))}`);
+  }
+  return lines.slice(0, height).map((line) => fit(line, width));
 }
 
 /**

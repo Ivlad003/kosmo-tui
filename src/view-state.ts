@@ -17,6 +17,8 @@
 
 import type { TraceTextDocumentV1 } from "@kosmo-callflow/protocol";
 import { replaySpanKey, replayTraceKey, type ReplaySpanRef, type ReplayTraceRef } from "@kosmo-callflow/replay";
+import { isBookmarked, resolveBookmarks, toggleBookmark, type Bookmark } from "./bookmarks.js";
+import { checkCommand, type Capabilities, type Command } from "./capabilities.js";
 import { stepIndex, type ReplaySchedule, type ReplayTimeline } from "./replay.js";
 
 /** Full identity of one trace: `(datasetId, projectId, sessionId, traceId)`. */
@@ -69,6 +71,8 @@ export type SpanRow = SpanRef & {
   nodeId: string;
   depth: number;
   errored: boolean;
+  /** Semantic span kind when the projection records one; absent on v1 summaries. */
+  spanKind?: string;
 };
 
 export type Selection = SpanRef | null;
@@ -105,13 +109,36 @@ export type SpanDetail = SpanRef & {
   document: TraceTextDocumentV1 | null;
 };
 
-/** Why the selected row is not currently in the visible list. */
-export type SelectionAbsence = "retention" | "filter" | null;
+/**
+ * Why the selected row is not currently in the visible list: its trace aged out of
+ * retention, a filter hides it, or its row was evicted from the loaded scope while the
+ * trace is still loaded.
+ */
+export type SelectionAbsence = "retention" | "filter" | "evicted" | null;
 
+/** Filters apply to the loaded scope only; `scope` in state says how much that is. */
 export type Filters = {
   errorsOnly: boolean;
+  /** `/` search: substring of the node id. */
   search: string | null;
+  /** Exact node id. */
+  nodeId?: string | null;
+  /** Exact semantic span kind; rows without a kind never match. */
+  spanKind?: string | null;
 };
+
+/** How much of the dataset is loaded; filters and search run over this much only. */
+export type LoadedScope = {
+  loaded: number;
+  total: number | null;
+  truncated: boolean;
+};
+
+/** Reserved command keys whose actions arrive in later waves; they still gate on caps. */
+export type ReservedCommand = Extract<
+  Command,
+  "finding" | "todo" | "finalizeReview" | "yank" | "compare" | "commandLine"
+>;
 
 /**
  * The no-data states the spec requires be told apart: "daemon unreachable", "SDK not
@@ -167,6 +194,19 @@ export type ViewState = {
   scrollTop: number;
   /** Rows available for the list body; the terminal layer keeps this in sync on resize. */
   viewportHeight: number;
+  /**
+   * Effective capabilities (capabilities.ts). null is the legacy viewer, which gates
+   * nothing and keeps the kosmo-callflow footer.
+   */
+  caps: Capabilities | null;
+  /** One-line notice for the last explicit command, e.g. `replayStep: unavailable(...)`. */
+  notice: string | null;
+  /** Session bookmarks by full ref; they survive reloads and eviction. */
+  bookmarks: Bookmark[];
+  /** The `'` jump list while open. */
+  bookmarkList: { index: number } | null;
+  stackOpen: boolean;
+  scope: LoadedScope | null;
 };
 
 export type Delta =
@@ -177,7 +217,10 @@ export type Delta =
   | { kind: "connection"; connection: ConnectionState }
   | { kind: "policy"; effectivePolicy: string }
   | { kind: "resize"; viewportHeight: number }
-  | { kind: "detail"; detail: SpanDetail | null };
+  | { kind: "detail"; detail: SpanDetail | null }
+  /** Span rows dropped from the bounded cache; their traces stay loaded. */
+  | { kind: "evict"; spans: SpanRef[] }
+  | { kind: "scope"; scope: LoadedScope };
 
 export type Action =
   | { kind: "move"; delta: number }
@@ -198,6 +241,14 @@ export type Action =
   | { kind: "clearSelection" }
   | { kind: "replayStep"; delta: number }
   | { kind: "returnToLive" }
+  | { kind: "setFilter"; nodeId?: string | null; spanKind?: string | null }
+  | { kind: "bookmark" }
+  | { kind: "openBookmarks" }
+  | { kind: "bookmarkMove"; delta: number }
+  | { kind: "bookmarkJump" }
+  | { kind: "bookmarkClose" }
+  | { kind: "toggleStack" }
+  | { kind: "command"; command: ReservedCommand }
   | { kind: "quit" };
 
 export const defaultBacklogCap = 1_000;
@@ -227,6 +278,12 @@ export function initialViewState(overrides: Partial<ViewState> = {}): ViewState 
     searchInput: null,
     scrollTop: 0,
     viewportHeight: 20,
+    caps: null,
+    notice: null,
+    bookmarks: [],
+    bookmarkList: null,
+    stackOpen: false,
+    scope: null,
     ...overrides
   };
 }
@@ -274,20 +331,41 @@ function reduceDelta(state: ViewState, delta: Delta): ViewState {
       return { ...state, viewportHeight: Math.max(1, Math.floor(delta.viewportHeight)) };
     case "detail":
       return { ...state, detail: delta.detail };
+    case "evict": {
+      const evicted = new Set(delta.spans.map(spanKey));
+      return preservingScreenRow(state, (draft) => ({
+        ...draft,
+        spans: draft.spans.filter((row) => !evicted.has(spanKey(row)))
+      }));
+    }
+    case "scope":
+      return { ...state, scope: delta.scope };
   }
 }
 
 /**
- * Apply a list mutation while keeping the selected row on the same screen line: the
- * selection's absolute index moves as rows sort in around it, so scrollTop is
- * compensated by the same amount.
+ * Apply a list mutation while keeping the viewport anchored: the selected row stays on
+ * the same screen line as rows sort in around it. When the selection is not on screen
+ * (hidden, evicted, or no selection), the row at the top of the viewport is the anchor
+ * instead, so arrivals above it do not scroll the view either.
  */
 function preservingScreenRow(state: ViewState, mutate: (draft: ViewState) => ViewState): ViewState {
-  const before = selectionIndex(state);
+  const rowsBefore = visibleSpans(state);
   const next = resolveSelection(mutate(state));
-  const after = selectionIndex(next);
-  if (before === -1 || after === -1) return next;
-  return { ...next, scrollTop: Math.max(0, next.scrollTop + (after - before)) };
+  const rowsAfter = visibleSpans(next);
+  const selected = state.selection ? spanKey(state.selection) : null;
+  const selBefore = selected === null ? -1 : rowsBefore.findIndex((row) => spanKey(row) === selected);
+  const selAfter = selected === null ? -1 : rowsAfter.findIndex((row) => spanKey(row) === selected);
+  if (selBefore !== -1 && selAfter !== -1) {
+    return { ...next, scrollTop: Math.max(0, next.scrollTop + (selAfter - selBefore)) };
+  }
+  const top = Math.min(state.scrollTop, Math.max(0, rowsBefore.length - Math.max(1, state.viewportHeight)));
+  const anchor = rowsBefore[top];
+  if (!anchor) return next;
+  const anchorKey = spanKey(anchor);
+  const anchorAfter = rowsAfter.findIndex((row) => spanKey(row) === anchorKey);
+  if (anchorAfter === -1) return next;
+  return { ...next, scrollTop: Math.max(0, next.scrollTop + (anchorAfter - top)) };
 }
 
 /** Index of the selection within the currently visible rows, or -1. */
@@ -328,7 +406,7 @@ function resolveSelection(state: ViewState): ViewState {
   if (!span) {
     const trace = traceKey(state.selection);
     const traceStillPresent = state.traces.some((row) => traceKey(row) === trace);
-    return { ...state, selectionAbsence: traceStillPresent ? "filter" : "retention" };
+    return { ...state, selectionAbsence: traceStillPresent ? "evicted" : "retention" };
   }
   if (!passesFilters(span, state.filters)) {
     return { ...state, selectionAbsence: "filter", lastKnownSpan: span };
@@ -339,7 +417,26 @@ function resolveSelection(state: ViewState): ViewState {
 export function passesFilters(span: SpanRow, filters: Filters): boolean {
   if (filters.errorsOnly && !span.errored) return false;
   if (filters.search && !span.nodeId.includes(filters.search)) return false;
+  if (filters.nodeId && span.nodeId !== filters.nodeId) return false;
+  if (filters.spanKind && span.spanKind !== filters.spanKind) return false;
   return true;
+}
+
+export function filtersActive(filters: Filters): boolean {
+  return filters.errorsOnly || Boolean(filters.search) || Boolean(filters.nodeId) || Boolean(filters.spanKind);
+}
+
+/** The pinned selection that is not on screen, with why; null when it is visible or unset. */
+export type SelectedPlaceholder = {
+  ref: SpanRef;
+  reason: Exclude<SelectionAbsence, null>;
+  lastKnown: SpanRow | null;
+};
+
+export function selectedPlaceholder(state: ViewState): SelectedPlaceholder | null {
+  if (!state.selection || state.selectionAbsence === null) return null;
+  const last = state.lastKnownSpan && sameSpan(state.lastKnownSpan, state.selection) ? state.lastKnownSpan : null;
+  return { ref: spanRefOf(state.selection), reason: state.selectionAbsence, lastKnown: last };
 }
 
 /** Key of a span's parent inside the same trace ref, or null for a root. */
@@ -363,7 +460,37 @@ export function visibleSpans(state: ViewState): SpanRow[] {
     );
 }
 
-export function applyAction(state: ViewState, action: Action): ViewState {
+/** The capability-gated command behind an action, if any. */
+function commandOf(action: Action): Command | null {
+  switch (action.kind) {
+    case "replayStep":
+      return "replayStep";
+    case "returnToLive":
+      return "returnToLive";
+    case "togglePause":
+      return "pause";
+    case "bookmark":
+      return "bookmark";
+    case "openBookmarks":
+      return "bookmarkList";
+    case "toggleStack":
+      return "stack";
+    case "command":
+      return action.command;
+    default:
+      return null;
+  }
+}
+
+export function applyAction(current: ViewState, action: Action): ViewState {
+  // A notice answers exactly one command; the next action clears it.
+  const state = current.notice === null ? current : { ...current, notice: null };
+  const command = commandOf(action);
+  if (command !== null && state.caps !== null) {
+    const check = checkCommand(state.caps, command);
+    // An explicit command the session cannot serve says so; it is never a silent no-op.
+    if (!check.ok) return { ...state, notice: check.notice };
+  }
   switch (action.kind) {
     case "move":
       return moveSelection(state, action.delta);
@@ -406,14 +533,52 @@ export function applyAction(state: ViewState, action: Action): ViewState {
     case "searchCommit": {
       if (state.searchInput === null) return state;
       const search = state.searchInput.length === 0 ? null : state.searchInput;
-      // resolveSelection, not a move: a filter that hides the selected span pins it and
-      // explains itself rather than retargeting the selection.
-      return resolveSelection({ ...state, searchInput: null, filters: { ...state.filters, search } });
+      // Not a move: a filter that hides the selected span pins it and explains itself
+      // rather than retargeting the selection.
+      return preservingScreenRow(state, (draft) => ({
+        ...draft,
+        searchInput: null,
+        filters: { ...draft.filters, search }
+      }));
     }
     case "searchCancel":
       return state.searchInput === null ? state : { ...state, searchInput: null };
     case "filterErrorsOnly":
-      return resolveSelection({ ...state, filters: { ...state.filters, errorsOnly: !state.filters.errorsOnly } });
+      return preservingScreenRow(state, (draft) => ({
+        ...draft,
+        filters: { ...draft.filters, errorsOnly: !draft.filters.errorsOnly }
+      }));
+    case "setFilter":
+      return preservingScreenRow(state, (draft) => ({
+        ...draft,
+        filters: {
+          ...draft.filters,
+          ...(action.nodeId !== undefined ? { nodeId: action.nodeId || null } : {}),
+          ...(action.spanKind !== undefined ? { spanKind: action.spanKind || null } : {})
+        }
+      }));
+    case "bookmark":
+      return markSelection(state);
+    case "openBookmarks":
+      return state.bookmarks.length === 0
+        ? { ...state, notice: "bookmarks: none yet (m marks the selected span)" }
+        : { ...state, bookmarkList: { index: 0 } };
+    case "bookmarkMove":
+      return state.bookmarkList === null
+        ? state
+        : {
+            ...state,
+            bookmarkList: { index: clamp(state.bookmarkList.index + action.delta, 0, state.bookmarks.length - 1) }
+          };
+    case "bookmarkJump":
+      return jumpToBookmark(state);
+    case "bookmarkClose":
+      return state.bookmarkList === null ? state : { ...state, bookmarkList: null };
+    case "toggleStack":
+      return { ...state, stackOpen: !state.stackOpen };
+    case "command":
+      // Capability passed; the action itself lands in a later wave. Say so visibly.
+      return { ...state, notice: `${action.command}: not available in this build yet` };
     case "clearSelection":
       return { ...state, selection: null, selectionAbsence: null, lastKnownSpan: null };
     case "replayStep":
@@ -447,6 +612,51 @@ function replayStep(state: ViewState, delta: number): ViewState {
     traces: frame.state.traces,
     spans: frame.state.spans
   });
+}
+
+/** `m`: mark or unmark the selection, including a pinned one that is off screen. */
+function markSelection(state: ViewState): ViewState {
+  if (!state.selection) return { ...state, notice: "bookmark: nothing selected" };
+  const key = spanKey(state.selection);
+  const row =
+    state.spans.find((candidate) => spanKey(candidate) === key) ??
+    (state.lastKnownSpan && spanKey(state.lastKnownSpan) === key ? state.lastKnownSpan : null);
+  if (!row) return { ...state, notice: "bookmark: selected span is not loaded" };
+  const bookmarks = toggleBookmark(state.bookmarks, row);
+  return { ...state, bookmarks, notice: isBookmarked(bookmarks, row) ? "bookmark set" : "bookmark removed" };
+}
+
+/**
+ * Jump to the highlighted bookmark by full ref. A loaded span is selected and its
+ * ancestors expanded; an evicted or aged-out one becomes a pinned selection with its
+ * placeholder reason. The jump never lands on a different span.
+ */
+function jumpToBookmark(state: ViewState): ViewState {
+  if (state.bookmarkList === null) return state;
+  const bookmark = state.bookmarks[state.bookmarkList.index];
+  const closed: ViewState = { ...state, bookmarkList: null };
+  if (!bookmark) return closed;
+  const [resolved] = resolveBookmarks([bookmark], state.spans, state.traces);
+  if (resolved!.state === "loaded") {
+    const expanded = withAncestorsExpanded(closed, resolved!.row);
+    return resolveSelection(select(expanded, resolved!.row));
+  }
+  const last = state.lastKnownSpan && sameSpan(state.lastKnownSpan, bookmark.ref) ? state.lastKnownSpan : null;
+  return resolveSelection({ ...closed, selection: spanRefOf(bookmark.ref), lastKnownSpan: last });
+}
+
+function withAncestorsExpanded(state: ViewState, row: SpanRow): ViewState {
+  const byKey = new Map(state.spans.map((span) => [spanKey(span), span]));
+  const expanded = new Set(state.expanded);
+  const seen = new Set<string>();
+  let parent = parentKey(row);
+  while (parent !== null && !seen.has(parent)) {
+    seen.add(parent);
+    expanded.add(parent);
+    const next = byKey.get(parent);
+    parent = next ? parentKey(next) : null;
+  }
+  return { ...state, expanded };
 }
 
 function resume(state: ViewState): ViewState {

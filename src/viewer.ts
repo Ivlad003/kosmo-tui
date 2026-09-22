@@ -11,7 +11,8 @@
 import { parseDurationMs } from "./duration.js";
 import { renderFrame } from "./render.js";
 import type { Terminal } from "./terminal.js";
-import { decodeKey, decodeSearchKey } from "./keys.js";
+import type { Capabilities } from "./capabilities.js";
+import { decodeBookmarkKey, decodeKey, decodeSearchKey } from "./keys.js";
 import {
   applyAction,
   applyDelta,
@@ -41,6 +42,8 @@ export type ViewerOptions = {
   connection?: ConnectionState;
   /** Starts the viewer in `--replay` mode over a recorded timeline (27.5). */
   replay?: ReplaySession;
+  /** Effective capabilities; they drive footer hints and gate explicit commands. */
+  capabilities?: Capabilities;
   /** Injected clock, so scheduled replay stepping is testable without real sleeps. */
   now?: () => number;
   onExit?: () => void;
@@ -85,7 +88,8 @@ export function startViewer(options: ViewerOptions): Viewer {
   let state = initialViewState({
     viewportHeight: Math.max(1, size.rows - 4),
     ...(options.connection ? { connection: options.connection } : {}),
-    ...(options.replay ? { replay: options.replay } : {})
+    ...(options.replay ? { replay: options.replay } : {}),
+    ...(options.capabilities ? { caps: options.capabilities } : {})
   });
   let lastStepAt = clock();
   for (const delta of options.initial ?? []) {
@@ -107,7 +111,13 @@ export function startViewer(options: ViewerOptions): Viewer {
     if (closed) return;
     // While the `/` prompt is open the keyboard belongs to the prompt, so a typed "q"
     // is a letter rather than quit.
-    const action = state.searchInput === null ? decodeKey(key) : decodeSearchKey(key);
+    // Likewise the bookmark jump list owns the keyboard while it is open.
+    const action =
+      state.searchInput !== null
+        ? decodeSearchKey(key)
+        : state.bookmarkList !== null
+          ? decodeBookmarkKey(key)
+          : decodeKey(key);
     if (!action) return;
     if (action.kind === "quit") {
       close();

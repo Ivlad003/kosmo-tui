@@ -12,10 +12,12 @@ import {
   TRACE_LIST_HEIGHT,
   emptyMessage,
   fit,
+  renderBookmarkList,
   renderDetailPane,
   renderFooter,
   renderHeader,
   renderSpanRow,
+  renderStackPane,
   renderTraceList,
   selectionBanner
 } from "./panes.js";
@@ -53,18 +55,24 @@ function renderBody(state: ViewState, width: number, height: number): Frame {
   // steal a row to say nothing and invite filling it with invented values.
   const detailBudget = state.detail === null ? 0 : Math.min(DETAIL_PANE_HEIGHT, Math.floor(afterTraces / 2));
   const detailLines = detailBudget === 0 ? [] : renderDetailPane(state.detail!, state, width, detailBudget);
-  const remaining = Math.max(1, afterTraces - detailLines.length);
+  const afterDetail = Math.max(1, afterTraces - detailLines.length);
+  // The stack pane is opt-in (`s`) and takes at most a third of what is left.
+  const stackBudget = state.stackOpen ? Math.min(DETAIL_PANE_HEIGHT, Math.floor(afterDetail / 3)) : 0;
+  const stackLines = stackBudget === 0 ? [] : renderStackPane(state, width, stackBudget);
+  const remaining = Math.max(1, afterDetail - stackLines.length);
   const rows = visibleSpans(state);
 
   const spanLines =
-    rows.length === 0
-      ? pad([emptyMessage(state)], remaining)
-      : pad(
-          windowAround(rows, state, remaining).map((span) => renderSpanRow(span, state)),
-          remaining
-        );
+    state.bookmarkList !== null
+      ? pad(renderBookmarkList(state, width, remaining), remaining)
+      : rows.length === 0
+        ? pad([emptyMessage(state)], remaining)
+        : pad(
+            windowAround(rows, state, remaining).map((span) => renderSpanRow(span, state)),
+            remaining
+          );
 
-  return pad([...bannerLines, ...traceLines, ...spanLines, ...detailLines].slice(0, height), height);
+  return pad([...bannerLines, ...traceLines, ...spanLines, ...stackLines, ...detailLines].slice(0, height), height);
 }
 
 /**
