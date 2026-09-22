@@ -11,8 +11,10 @@
  *    "different source revision/node" note, never `changed`.
  *  - Masked, truncated, sampled, gapped, count-only, not-recorded or still-running
  *    evidence on either side makes the verdict `inconclusive`: missing data cannot be
- *    told apart from a behaviour change. The shared diff treats `masked` as complete, so
- *    the gate is applied here before its verdict is accepted.
+ *    told apart from a behaviour change. The shared diff already answers `inconclusive`
+ *    (`incomplete-evidence`) for masked/truncated/sampled statuses; this gate also covers
+ *    what its status vocabulary cannot carry (partial masking, partial coverage,
+ *    lifecycle, per-value not-recorded reasons) before its verdict is accepted.
  *  - Duration is reported on its own line and never feeds the verdict: two spans with
  *    identical behaviour and different durations are `equivalent`.
  */

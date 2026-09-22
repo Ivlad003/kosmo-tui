@@ -68,45 +68,38 @@ describe("compareSpanPair", () => {
     );
   });
 
-  it("masked evidence is inconclusive although the shared diff alone would call it equivalent", () => {
+  it("masked evidence is inconclusive on both layers: the shared diff and the TUI gate agree", () => {
     const a = call("a", { ret: { state: "masked" } });
     const b = call("b", { ret: { state: "masked" } });
-    // Guard for why the TUI gates masked itself: diffTraces counts "masked" as complete.
-    expect(
-      diffTraces({
-        scope: "spans",
-        base: [
-          {
-            traceId: "t",
-            spanId: "a",
-            parentSpanId: null,
-            nodeId: "n",
-            kind: "function",
-            ordinal: 0,
-            depth: 0,
-            seq: 1,
-            status: "masked"
-          }
-        ],
-        head: [
-          {
-            traceId: "t",
-            spanId: "b",
-            parentSpanId: null,
-            nodeId: "n",
-            kind: "function",
-            ordinal: 0,
-            depth: 0,
-            seq: 2,
-            status: "masked"
-          }
-        ]
-      }).verdict
-    ).toBe("equivalent");
+    const span = (spanId: string, seq: number, status: "masked" | "recorded") => ({
+      traceId: "t",
+      spanId,
+      parentSpanId: null,
+      nodeId: "n",
+      kind: "function",
+      ordinal: 0,
+      depth: 0,
+      seq,
+      status
+    });
+    // The shared diff itself refuses a verdict over masked values (incomplete-evidence).
+    const shared = diffTraces({ scope: "spans", base: [span("a", 1, "masked")], head: [span("b", 2, "masked")] });
+    expect(shared.verdict).toBe("inconclusive");
+    expect(shared.findings.map((finding) => finding.code)).toContain("incomplete-evidence");
     const result = compareSpanPair(a, b);
     expect(result.verdict).toBe("inconclusive");
+    expect(result.diff?.verdict).toBe("inconclusive");
     expect(result.notes[0]).toContain("A ret masked");
     expect(comparisonLines(result).join("\n")).toContain('neither "same" nor "different" can be claimed');
+  });
+
+  it("keeps its own gate where the shared diff sees complete evidence (partial masking)", () => {
+    // A partially masked recorded value maps to status "recorded": the shared diff alone
+    // would call the pair equivalent, so the TUI gate is what keeps it inconclusive.
+    const partial = { state: "recorded", value: 10, partiallyMasked: true } as CanonicalSpanProjectionItemV2["ret"];
+    const result = compareSpanPair(call("a", { ret: partial }), call("b", { ret: partial }));
+    expect(result.verdict).toBe("inconclusive");
+    expect(result.notes[0]).toContain("A ret partially masked");
   });
 
   it("truncated, partially masked, sampled, not-recorded and running evidence is inconclusive", () => {
