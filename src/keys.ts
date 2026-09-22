@@ -85,6 +85,7 @@ export function decodeSearchKey(input: string): Action | undefined {
   if (input === "\r" || input === "\n") return { kind: "searchCommit" };
   if (input === "\u001b") return { kind: "searchCancel" };
   if (input === "\u007f" || input === "\b") return { kind: "searchBackspace" };
+  if (input === "\u001b[C") return { kind: "searchKeep" };
   if (input.length === 0 || /[\u0000-\u001f\u007f-\u009f]/.test(input)) return undefined;
   return { kind: "searchInput", text: input };
 }

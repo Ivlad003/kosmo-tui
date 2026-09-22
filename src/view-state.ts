@@ -93,6 +93,8 @@ export type SpanRow = SpanRef & {
   errored: boolean;
   /** Semantic span kind when the projection records one; absent on v1 summaries. */
   spanKind?: string;
+  /** The framework route the projection recorded for this span (e.g. `/orders/:id`); search matches it. */
+  route?: string;
 };
 
 export type Selection = SpanRef | null;
@@ -216,6 +218,11 @@ export type ViewState = {
   /** Live search buffer while the `/` prompt is open; null when it is closed. */
   searchInput: string | null;
   /**
+   * The prompt still holds the untouched prefilled search: Backspace clears it whole,
+   * typing appends (refines), the right arrow deselects it.
+   */
+  searchSelected: boolean;
+  /**
    * Index of the first visible row. Held in state, not derived, so rows inserted above
    * the selection can be compensated for and the selected row keeps its screen position.
    */
@@ -277,7 +284,9 @@ export type Delta =
   | { kind: "baseline"; traces: TraceRow[]; spans: SpanRow[]; gap: boolean }
   | { kind: "scope"; scope: LoadedScope }
   /** Canonical v2 pages; each replaces the loaded page of the same dataset/project/trace. */
-  | { kind: "canonical"; pages: CanonicalPageEnvelopeV2[] };
+  | { kind: "canonical"; pages: CanonicalPageEnvelopeV2[] }
+  /** Canonical pages evicted from the byte budget (or whose rows were), by dataset/project/trace. */
+  | { kind: "dropCanonical"; traces: Array<{ datasetId: string; projectId: string; traceId: string }> };
 
 export type Action =
   | { kind: "move"; delta: number }
@@ -294,6 +303,7 @@ export type Action =
   | { kind: "searchBackspace" }
   | { kind: "searchCommit" }
   | { kind: "searchCancel" }
+  | { kind: "searchKeep" }
   | { kind: "filterErrorsOnly" }
   | { kind: "clearSelection" }
   | { kind: "replayStep"; delta: number }
@@ -353,6 +363,7 @@ export function initialViewState(overrides: Partial<ViewState> = {}): ViewState 
     replay: null,
     detail: null,
     searchInput: null,
+    searchSelected: false,
     scrollTop: 0,
     viewportHeight: 20,
     caps: null,
@@ -439,6 +450,11 @@ export function reduceDelta(state: ViewState, delta: Delta): ViewState {
       return { ...state, scope: delta.scope };
     case "canonical":
       return { ...state, canonical: mergeCanonical(state.canonical, delta.pages) };
+    case "dropCanonical": {
+      const dropped = new Set(delta.traces.map(canonicalPageKey));
+      const canonical = state.canonical.filter((page) => !dropped.has(canonicalKeyOf(page)));
+      return canonical.length === state.canonical.length ? state : { ...state, canonical };
+    }
   }
 }
 
@@ -515,7 +531,8 @@ function resolveSelection(state: ViewState): ViewState {
 
 export function passesFilters(span: SpanRow, filters: Filters): boolean {
   if (filters.errorsOnly && !span.errored) return false;
-  if (filters.search && !span.nodeId.includes(filters.search)) return false;
+  if (filters.search && !span.nodeId.includes(filters.search) && !(span.route?.includes(filters.search) ?? false))
+    return false;
   if (filters.nodeId && span.nodeId !== filters.nodeId) return false;
   if (filters.spanKind && span.spanKind !== filters.spanKind) return false;
   return true;
@@ -629,15 +646,25 @@ export function applyAction(current: ViewState, action: Action): ViewState {
     case "toggleDsl":
       return { ...state, dsl: state.dsl === "lisp" ? "tab" : "lisp" };
     case "search":
-      // Opening the prompt seeds it with the active search, so refining a filter does
-      // not mean retyping it.
-      return { ...state, searchInput: state.filters.search ?? "" };
+      // Opening the prompt seeds it with the active search, so refining a filter does not
+      // mean retyping it. While the prefill is untouched ("selected"), Backspace clears it
+      // whole, so "/ Backspace Enter" clears the filter; the right arrow keeps it for
+      // character-by-character editing.
+      return { ...state, searchInput: state.filters.search ?? "", searchSelected: Boolean(state.filters.search) };
     case "searchInput":
-      return state.searchInput === null ? state : { ...state, searchInput: state.searchInput + action.text };
+      if (state.searchInput === null) return state;
+      return {
+        ...state,
+        // Typing refines (appends to) the prefilled search, as the kosmo-callflow viewer does.
+        searchInput: state.searchInput + action.text,
+        searchSelected: false
+      };
+    case "searchKeep":
+      return state.searchInput === null ? state : { ...state, searchSelected: false };
     case "searchBackspace":
-      return state.searchInput === null || state.searchInput.length === 0
-        ? state
-        : { ...state, searchInput: state.searchInput.slice(0, -1) };
+      if (state.searchInput === null) return state;
+      if (state.searchSelected) return { ...state, searchInput: "", searchSelected: false };
+      return state.searchInput.length === 0 ? state : { ...state, searchInput: state.searchInput.slice(0, -1) };
     case "searchCommit": {
       if (state.searchInput === null) return state;
       const search = state.searchInput.length === 0 ? null : state.searchInput;
@@ -646,11 +673,12 @@ export function applyAction(current: ViewState, action: Action): ViewState {
       return preservingScreenRow(state, (draft) => ({
         ...draft,
         searchInput: null,
+        searchSelected: false,
         filters: { ...draft.filters, search }
       }));
     }
     case "searchCancel":
-      return state.searchInput === null ? state : { ...state, searchInput: null };
+      return state.searchInput === null ? state : { ...state, searchInput: null, searchSelected: false };
     case "filterErrorsOnly":
       return preservingScreenRow(state, (draft) => ({
         ...draft,
@@ -924,14 +952,25 @@ export function currentDepthView(state: ViewState): DepthView {
   return depthView(state.canonical, state.depth ?? "call", state.depthMapping, state.depthFocus);
 }
 
+/** Identity of a loaded canonical page: one per dataset/project/trace (the session's cache key too). */
+export function canonicalPageKey(trace: { datasetId: string; projectId: string; traceId: string | null }): string {
+  return JSON.stringify([trace.datasetId, trace.projectId, trace.traceId]);
+}
+
+export function canonicalKeyOf(page: CanonicalPageEnvelopeV2): string {
+  return canonicalPageKey({
+    datasetId: page.dataset.datasetId,
+    projectId: page.dataset.projectId,
+    traceId: page.selection?.traceId ?? null
+  });
+}
+
 function mergeCanonical(
   current: CanonicalPageEnvelopeV2[],
   incoming: CanonicalPageEnvelopeV2[]
 ): CanonicalPageEnvelopeV2[] {
-  const keyOf = (page: CanonicalPageEnvelopeV2) =>
-    JSON.stringify([page.dataset.datasetId, page.dataset.projectId, page.selection?.traceId ?? null]);
-  const byKey = new Map(current.map((page) => [keyOf(page), page]));
-  for (const page of incoming) byKey.set(keyOf(page), page);
+  const byKey = new Map(current.map((page) => [canonicalKeyOf(page), page]));
+  for (const page of incoming) byKey.set(canonicalKeyOf(page), page);
   return [...byKey.values()];
 }
 

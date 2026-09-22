@@ -80,6 +80,8 @@ import { isTooSmall, tooSmallFrame, type Terminal } from "./terminal.js";
 import { findValueCandidates } from "./values.js";
 import {
   applyAction,
+  canonicalKeyOf,
+  canonicalPageKey,
   initialViewState,
   reduceDelta,
   showReplayFrame,
@@ -109,6 +111,8 @@ const RECORD_PAGE_LIMIT = 1_000;
 export const CANONICAL_PAGE_TRACES = 20;
 /** Trace rows read per `>` (load more) from the pinned snapshot. */
 export const TRACE_PAGE_LIMIT = 50;
+/** Reconnect/backoff delays kept in `stats().reconnectDelays` (the most recent ones). */
+export const RECONNECT_DELAYS_KEPT = 32;
 const REPLACEMENT_CHAR = String.fromCharCode(0xfffd);
 
 export type SessionTimers = {
@@ -280,6 +284,8 @@ type PinnedSession = {
   index: number;
   state: ReplayState | null;
   autoplayPaused: boolean;
+  /** What the last seek could not show (a hole, no later pinned record); kept on later notices. */
+  frameNote: string | null;
 };
 
 export function createSession(options: SessionOptions): Session {
@@ -323,6 +329,13 @@ export function createSession(options: SessionOptions): Session {
   let polling: PollingState = { state: "off", reason: null };
   let failures = 0;
   let needsBaseline = false;
+  /** Consecutive resets (409 / reset reload failures) with no successful delta read between them. */
+  let resetRun = 0;
+  /** A backed-off baseline reload is due at the next poll instead of a delta read. */
+  let reloadDue = false;
+  /** Single flight for canonical page loads; a request during a load runs once more after it. */
+  let canonicalRun: Promise<void> | null = null;
+  let canonicalAgain = false;
 
   let generation = 0;
   let selectedKey: string | null = null;
@@ -370,7 +383,7 @@ export function createSession(options: SessionOptions): Session {
 
   // -- rows and the bounded cache ------------------------------------------------------
 
-  function trackRows(traces: TraceRow[], spans: SpanRow[]): void {
+  function trackRows(traces: TraceRow[], spans: SpanRow[], pages: CanonicalPageEnvelopeV2[] = []): void {
     const evicted: string[] = [];
     for (const row of traces) evicted.push(...cache.set(`t${traceKey(row)}`, true, jsonBytes(row)));
     for (const row of spans) {
@@ -378,14 +391,35 @@ export function createSession(options: SessionOptions): Session {
       cache.get(`t${traceKey(row)}`);
       evicted.push(...cache.set(`s${spanKey(row)}`, true, jsonBytes(row)));
     }
+    // Canonical pages share the byte budget with rows and details (they are the largest entries).
+    for (const page of pages) evicted.push(...cache.set(`c${canonicalKeyOf(page)}`, true, jsonBytes(page)));
     const evictSpans: SpanRef[] = [];
     const evictTraces: TraceRef[] = [];
+    const dropPages = new Map<string, { datasetId: string; projectId: string; traceId: string }>();
+    const dropPage = (ref: { datasetId: string; projectId: string; traceId: string }): void => {
+      const key = canonicalPageKey(ref);
+      dropPages.set(key, { datasetId: ref.datasetId, projectId: ref.projectId, traceId: ref.traceId });
+    };
     for (const key of evicted) {
       if (key.startsWith("d")) continue;
       const parts = JSON.parse(key.slice(1)) as string[];
+      if (key.startsWith("c")) {
+        const [datasetId, projectId, traceId] = parts as [string, string, string];
+        dropPage({ datasetId, projectId, traceId });
+        continue;
+      }
       const [datasetId, projectId, sessionId, traceId, spanId] = parts as [string, string, string, string, string?];
       if (key.startsWith("s")) evictSpans.push({ datasetId, projectId, sessionId, traceId, spanId: spanId! });
       else evictTraces.push({ datasetId, projectId, sessionId, traceId });
+    }
+    // A page whose rows are evicted goes with them; the trace is read again if it comes back.
+    for (const ref of [...evictSpans, ...evictTraces]) {
+      dropPage(ref);
+      canonicalLoaded.delete(traceKey(ref));
+    }
+    if (dropPages.size > 0) {
+      for (const key of dropPages.keys()) cache.delete(`c${key}`);
+      state = reduceDelta(state, { kind: "dropCanonical", traces: [...dropPages.values()] });
     }
     if (evictSpans.length === 0 && evictTraces.length === 0) return;
     stats.evictedRows += evictSpans.length + evictTraces.length;
@@ -403,6 +437,10 @@ export function createSession(options: SessionOptions): Session {
 
   function applyBaselineRows(traces: TraceRow[], spans: SpanRow[], gap: boolean): void {
     cache.clear();
+    // A baseline replaces every row: its canonical pages are read again, and any backlog
+    // overflow it replaced is no longer outstanding.
+    canonicalLoaded.clear();
+    state = { ...state, canonical: [], backlogOverflowed: false };
     state = reduceDelta(state, { kind: "baseline", traces, spans, gap });
     trackRows(traces, spans);
   }
@@ -467,6 +505,8 @@ export function createSession(options: SessionOptions): Session {
   }
 
   function applyFrame(frame: LiveDeltaBody): void {
+    // A trace announced again (new spans, a status change) has its canonical page re-read.
+    for (const row of frame.traces) canonicalLoaded.delete(traceKey(row));
     state = reduceDelta(state, { kind: "traces", rows: frame.traces });
     state = reduceDelta(state, { kind: "spans", rows: frame.spans });
     if (frame.dropped.length > 0 || frame.gap)
@@ -496,11 +536,18 @@ export function createSession(options: SessionOptions): Session {
     stats.maxDeltaInFlight = Math.max(stats.maxDeltaInFlight, stats.deltaInFlight);
     let next: number | null = pollMs;
     try {
-      const body = await source.deltas(deltaCursor, lifetime.signal);
-      if (closed) return;
-      failures = 0;
-      polling = { state: "active", reason: null };
-      await handleBody(body);
+      if (reloadDue) {
+        // A backed-off reload after repeated resets, instead of a delta read.
+        reloadDue = false;
+        await reloadBaseline(true, `retention reset (409, ${resetRun} in a row): baseline replaced`);
+      } else {
+        const body = await source.deltas(deltaCursor, lifetime.signal);
+        if (closed) return;
+        failures = 0;
+        resetRun = 0;
+        polling = { state: "active", reason: null };
+        await handleBody(body);
+      }
     } catch (error) {
       if (closed) return;
       next = await handleFailure(error);
@@ -535,6 +582,7 @@ export function createSession(options: SessionOptions): Session {
         notice: `retention reset (epoch ${String(from)} → ${body.snapshot.retentionEpoch}): baseline replaced`
       };
       afterChange();
+      void loadCanonicalPages();
       return;
     }
     snapshot = body.snapshot;
@@ -551,10 +599,21 @@ export function createSession(options: SessionOptions): Session {
     applyFrame(body);
     state = reduceDelta(state, { kind: "connection", connection: sourceConnection(true) });
     afterChange();
+    // Traces that arrived by delta get span rows like the initial page (bounded per load).
+    if (body.traces.length > 0) void loadCanonicalPages();
   }
 
   function resetDuringReplay(from: number | undefined, to: number | "new"): string {
-    return `retention reset on the live source (epoch ${String(from)} → ${to}); replay stays on pinned snapshot ${pinned!.pin.snapshot.snapshotId}; L loads the new live baseline`;
+    const text = `retention reset on the live source (epoch ${String(from)} → ${to}); replay stays on pinned snapshot ${pinned!.pin.snapshot.snapshotId}; L loads the new live baseline`;
+    // What the frame could not show stays said: a reset notice does not hide a hole.
+    return pinned!.frameNote === null ? text : `${pinned!.frameNote}; ${text}`;
+  }
+
+  function recordDelay(delay: number): void {
+    stats.reconnectDelays.push(delay);
+    if (stats.reconnectDelays.length > RECONNECT_DELAYS_KEPT) {
+      stats.reconnectDelays.splice(0, stats.reconnectDelays.length - RECONNECT_DELAYS_KEPT);
+    }
   }
 
   /** Returns the delay before the next read, or null when polling stops. */
@@ -567,7 +626,7 @@ export function createSession(options: SessionOptions): Session {
         stopPolling(`auth failed (${failure.status})`);
         notice(`live updates stopped: auth failed (${failure.status}); fix credentials and reopen`);
         return null;
-      case "reset":
+      case "reset": {
         bumpGeneration();
         if (pinned !== null) {
           needsBaseline = true;
@@ -575,16 +634,28 @@ export function createSession(options: SessionOptions): Session {
           notice(resetDuringReplay(snapshot?.retentionEpoch, "new"));
           return null;
         }
+        resetRun += 1;
+        if (resetRun > 1) {
+          // Resets in a row (or a reload that is itself reset): back off like a reconnect.
+          const delay = reconnectDelayMs(resetRun - 1, random);
+          recordDelay(delay);
+          reloadDue = true;
+          notice(
+            `retention reset again (409, ${resetRun} in a row); reloading the baseline in ${Math.round(delay / 100) / 10}s`
+          );
+          return delay;
+        }
         try {
           await reloadBaseline(true, "retention reset (409): baseline replaced");
           return pollMs;
         } catch (reloadError) {
           return handleFailure(reloadError);
         }
+      }
       case "retry": {
         failures += 1;
         const delay = reconnectDelayMs(failures, random);
-        stats.reconnectDelays.push(delay);
+        recordDelay(delay);
         polling = { state: "reconnecting", reason: failure.message };
         state = reduceDelta(state, {
           kind: "connection",
@@ -736,7 +807,8 @@ export function createSession(options: SessionOptions): Session {
         schedule: scheduleFor(replayPin, request),
         index: -1,
         state: null,
-        autoplayPaused: false
+        autoplayPaused: false,
+        frameNote: null
       };
       bumpGeneration();
     } else if (request.speed !== undefined || request.stepIntervalMs !== undefined) {
@@ -786,10 +858,20 @@ export function createSession(options: SessionOptions): Session {
     selectedKey = state.selection ? spanKey(state.selection) : null;
     const parts: string[] = [];
     if (outcome.hole) {
-      const next = outcome.hole.nextRecord === null ? "" : `, next record at seq ${outcome.hole.nextRecord}`;
-      parts.push(`seq ${outcome.requested}: no record; showing state after seq ${outcome.applied}${next}`);
+      if (outcome.hole.nextRecord === null) {
+        // Past the last pinned record: the frame is the last recorded state of the LOADED
+        // traces, not the dataset at that seq. Say so rather than land there silently.
+        parts.push(
+          `seq ${outcome.requested}: no pinned record after seq ${outcome.applied} (pinned records cover the loaded traces only${state.retentionGap ? "; earlier records may be gone to retention" : ""}); showing state after seq ${outcome.applied}`
+        );
+      } else {
+        parts.push(
+          `seq ${outcome.requested}: no record; showing state after seq ${outcome.applied}, next record at seq ${outcome.hole.nextRecord}`
+        );
+      }
     }
     if (outcome.knownGaps > 0) parts.push(`${outcome.knownGaps} known loss gap(s) up to this seq`);
+    pinned.frameNote = parts.length > 0 ? parts.join("; ") : null;
     if (parts.length > 0) state = { ...state, notice: parts.join("; ") };
     invalidate();
   }
@@ -961,7 +1043,25 @@ export function createSession(options: SessionOptions): Session {
    * projection whatever `--projection-version` chose for documents; without v2 the view
    * keeps its trace-summary rows and nothing is invented.
    */
-  async function loadCanonicalPages(): Promise<void> {
+  function loadCanonicalPages(): Promise<void> {
+    if (canonicalRun !== null) {
+      canonicalAgain = true;
+      return canonicalRun;
+    }
+    canonicalRun = (async () => {
+      try {
+        do {
+          canonicalAgain = false;
+          await loadCanonicalOnce();
+        } while (canonicalAgain && !closed);
+      } finally {
+        canonicalRun = null;
+      }
+    })();
+    return canonicalRun;
+  }
+
+  async function loadCanonicalOnce(): Promise<void> {
     if (closed || pinned !== null || snapshot === null || !source.canonical) return;
     if (!(caps?.projectionVersions ?? []).includes(2)) return;
     const pin = snapshot;
@@ -994,7 +1094,7 @@ export function createSession(options: SessionOptions): Session {
     const rows = pages.flatMap(spanRowsFromCanonicalV2);
     state = reduceDelta(state, { kind: "canonical", pages });
     state = reduceDelta(state, { kind: "spans", rows });
-    trackRows([], rows);
+    trackRows([], rows, pages);
     afterChange();
     invalidate();
   }
@@ -1363,6 +1463,7 @@ export function createSession(options: SessionOptions): Session {
     for (const frame of queue.drain()) applyFrame(frame);
     afterChange();
     invalidate();
+    void loadCanonicalPages();
   }
 
   // -- lifecycle -----------------------------------------------------------------------
@@ -1517,7 +1618,15 @@ export function spanRowsFromCanonicalV2(envelope: CanonicalPageEnvelopeV2): Span
       nodeId: item.node.nodeId,
       depth,
       errored: item.error.state === "recorded",
-      ...(item.spanKind ? { spanKind: item.spanKind } : {})
+      ...(item.spanKind ? { spanKind: item.spanKind } : {}),
+      ...(routeOf(item) === undefined ? {} : { route: routeOf(item) })
     };
   });
+}
+
+/** The framework route recorded on a span (`/orders/:orderId`), when there is one. */
+function routeOf(item: CanonicalSpanProjectionItemV2): string | undefined {
+  if (item.framework.state !== "recorded") return undefined;
+  const route = (item.framework.value as { route?: unknown }).route;
+  return typeof route === "string" && route.length > 0 ? route : undefined;
 }

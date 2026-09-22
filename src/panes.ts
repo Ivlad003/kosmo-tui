@@ -219,7 +219,10 @@ export function renderFooter(state: ViewState, width: number): string[] {
   if (state.searchInput !== null) {
     // The prompt replaces the hints rather than adding a row, so opening search cannot
     // change the height of the body underneath it.
-    return [rule(width), fit(`search: ${shown(state.searchInput)}_  (enter apply, esc cancel)`, width)];
+    const hint = state.searchSelected
+      ? "(type to refine, backspace clears, enter apply, esc cancel)"
+      : "(enter apply, esc cancel)";
+    return [rule(width), fit(`search: ${shown(state.searchInput)}_  ${hint}`, width)];
   }
   if (state.bookmarkList !== null) {
     return [rule(width), fit("bookmarks: j/k move  enter jump  esc close", width)];
