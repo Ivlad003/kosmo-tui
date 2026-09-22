@@ -17,6 +17,7 @@
 import {
   projectTraceTextDocument,
   type CanonicalPageEnvelope,
+  type TraceEventView,
   type TraceTextDocumentV1
 } from "@kosmo-callflow/protocol";
 import { sanitizeEvidenceText } from "@kosmo-callflow/trace-artifacts";
@@ -30,33 +31,8 @@ import type {
   TraceRow
 } from "./view-state.js";
 
-/**
- * One row of `GET /api/v1/traces/{traceId}`, as the daemon projects it.
- *
- * Wire-contract type defined locally for now: kosmo-callflow declares it in its CLI
- * package, which kosmo-tui must not import. It should move to
- * `@kosmo-callflow/protocol` with the versioned connect frames (task 1.9).
- */
-export type TraceEventView = {
-  seq: number;
-  sessionId: string;
-  traceId: string;
-  spanId: string;
-  parentSpanId: string | null;
-  type: "enter" | "exit" | "error" | "suspend" | "commit";
-  nodeId: string;
-  ts: number;
-  level?: string;
-  payload?: Record<string, unknown>;
-  lifecycle?: string;
-  /**
-   * The SDK's source-clock reading, when one was recorded. Kept distinct from `ts`,
-   * which is a recording-side number (see replay-clock.md).
-   */
-  clock?: { domain: "monotonic" | "wall"; value: number };
-  /** The capture policy in force; `aggregate` means window metrics, not per-call order. */
-  capture?: { mode?: string };
-};
+/** One row of `GET /api/v1/traces/{traceId}`; the wire type is owned by the protocol. */
+export type { TraceEventView };
 
 /**
  * The dataset the events were read from. An event row names its session but not its

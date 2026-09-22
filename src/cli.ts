@@ -26,6 +26,9 @@ import {
 import { runEvalCommand } from "./eval.js";
 import { controllingTerminalAvailable } from "./terminal-input.js";
 
+/** Target kind → concrete source; the viewer/print handlers open their source through this. */
+export { openTargetSource, type OpenTargetDeps, type OpenTargetInput, type OpenTargetResult } from "./source-open.js";
+
 export const EXIT_OK = 0;
 export const EXIT_USAGE = 1;
 export const EXIT_SOURCE = 2;
