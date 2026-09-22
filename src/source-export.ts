@@ -276,7 +276,7 @@ export function createExportSource(options: ExportSourceOptions): ExportSource {
         values: hasRecords ? { level: "full" } : { level: "none", reason: "no-runtime-records" },
         probes: loaded.probes.length > 0 ? { available: true } : { available: false, reason: "no-probe-records" },
         staticGraph: { available: false, reason: "no-static-graph-reader" },
-        sql: { available: false, reason: "sql-reader-pending" }
+        sql: { available: false, reason: "sql-needs-sqlite-source" }
       };
       return {
         snapshot: loaded.snapshot,

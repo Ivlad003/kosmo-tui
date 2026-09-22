@@ -55,8 +55,12 @@ describe("portable export source (4.2)", () => {
       projectionVersions: [1, 2],
       replay: { available: true },
       follow: { available: false, reason: "static-snapshot" },
-      probes: { available: false, reason: "no-probe-records" }
+      probes: { available: false, reason: "no-probe-records" },
+      // `:sql` reads only a sqlite source (trace-programmable-access); an export never
+      // opens some other local database in its place.
+      sql: { available: false, reason: "sql-needs-sqlite-source" }
     });
+    expect(checkCommand(caps, "sql")).toMatchObject({ ok: false, notice: "sql: unavailable(sql-needs-sqlite-source)" });
 
     const ref = opened.firstPage.items[0]!;
     const v2 = await source.canonical!(opened.snapshot, { kind: "trace", ref }, { version: 2 }, signal());

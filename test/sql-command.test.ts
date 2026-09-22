@@ -239,7 +239,7 @@ describe(":sql in the TUI (task 5b.2)", () => {
       kind: "unavailable",
       reason: "sql-needs-sqlite-source"
     });
-    const exported = initialViewState({ caps: sqlCaps({ available: false, reason: "sql-reader-pending" }) });
+    const exported = initialViewState({ caps: sqlCaps({ available: false, reason: "sql-needs-sqlite-source" }) });
     let called = false;
     const outcome = await runCommandLine(exported, ":sql SELECT 1", {
       sql: async () => {
@@ -247,7 +247,7 @@ describe(":sql in the TUI (task 5b.2)", () => {
         throw new Error("must not run");
       }
     });
-    expect(outcome?.result).toMatchObject({ kind: "unavailable", reason: "sql-reader-pending" });
+    expect(outcome?.result).toMatchObject({ kind: "unavailable", reason: "sql-needs-sqlite-source" });
     expect(called).toBe(false);
 
     const source = createSqliteSource({ path: copyStore() });
