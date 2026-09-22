@@ -221,6 +221,7 @@ describe("portable export source (4.2)", () => {
       env: {},
       cwd: tmp
     });
-    expect(sqlite).toMatchObject({ ok: false, code: "sqlite-reader-pending", exitCode: 2 });
+    // The SQLite reader landed (4.4): a sqlite target opens the sqlite source, not a stub.
+    expect(sqlite.ok && sqlite.source.kind).toBe("sqlite");
   });
 });

@@ -7,12 +7,15 @@
  *  - export file → portable export source;
  *  - `-` (stdin) → NDJSON stream source, which gets NO fetch: stdin data never makes
  *    kosmo-tui contact a daemon;
- *  - sqlite → `unavailable(sqlite-reader-pending)` until the SQLite reader lands (4.4).
+ *  - sqlite → the static SQLite snapshot source (4.4); a missing driver is an explicit
+ *    `unavailable(sqlite-driver)` when the source opens.
  */
 
 import type { ProjectCandidate, ResolvedTarget } from "./detect.js";
 import { createExportSource, type ExportFs } from "./source-export.js";
 import { createLiveSource, resolveLiveConfig, type LiveFetch } from "./source-live.js";
+import { createSqliteSource } from "./source-sqlite.js";
+import type { SqliteDriverSelection } from "./sqlite-driver.js";
 import { createStreamSource, type StreamInput } from "./source-stream.js";
 import type { TraceSource } from "./source.js";
 
@@ -30,6 +33,8 @@ export type OpenTargetDeps = {
   exportFs?: ExportFs;
   /** The data stdin for `-`; defaults to `process.stdin`. */
   stdinData?: StreamInput;
+  /** SQLite driver selection; defaults to feature detection. */
+  sqliteDriver?: SqliteDriverSelection;
 };
 
 export type OpenTargetResult =
@@ -71,11 +76,12 @@ export async function openTargetSource(input: OpenTargetInput, deps: OpenTargetD
       };
     case "sqlite":
       return {
-        ok: false,
-        code: "sqlite-reader-pending",
-        message:
-          "kosmo-tui: unavailable(sqlite-reader-pending): the SQLite reader is not in this build; open a portable export or the live daemon instead",
-        exitCode: 2
+        ok: true,
+        source: createSqliteSource({
+          path: target.path,
+          ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+          ...(deps.sqliteDriver ? { driver: deps.sqliteDriver } : {})
+        })
       };
   }
 }
