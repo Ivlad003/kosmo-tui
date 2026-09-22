@@ -168,7 +168,15 @@ describe("parseArgv", () => {
     expect(parseError(["sql", "select", "1"])).toMatch(/quote/);
     expect(parseError(["sql", "select 1", "--format", "lisp"])).toMatch(/table/);
     expect(parseError(["sql", "select 1", "--depth", "app"])).toMatch(/not accepted by the sql/);
-    expect(parseError(["eval", "1", "-r"])).toMatch(/not accepted by the eval/);
+    // -r / --no-eval are accepted so eval can refuse as unavailable (D3), not as a usage error.
+    expect(parsed(["eval", "1", "-r", "--no-eval", "--trace", "t1"])).toEqual({
+      command: "eval",
+      code: "1",
+      trace: "t1",
+      readOnly: true,
+      noEval: true
+    });
+    expect(parseError(["eval", "1", "--depth", "app"])).toMatch(/not accepted by the eval/);
     expect(parseError(["eval", "1", "--print"])).toMatch(/not accepted/);
   });
 

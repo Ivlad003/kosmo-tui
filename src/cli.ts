@@ -23,6 +23,7 @@ import {
   type ProjectConfigReader,
   type ResolvedTarget
 } from "./detect.js";
+import { runEvalCommand } from "./eval.js";
 import { controllingTerminalAvailable } from "./terminal-input.js";
 
 export const EXIT_OK = 0;
@@ -72,7 +73,17 @@ export type ViewerArgs = ViewOptions & {
 };
 
 export type SqlArgs = { command: "sql"; query: string; source?: string; project?: string; format?: OutputFormat };
-export type EvalArgs = { command: "eval"; code: string; source?: string; project?: string; format?: OutputFormat };
+export type EvalArgs = {
+  command: "eval";
+  code: string;
+  source?: string;
+  project?: string;
+  format?: OutputFormat;
+  trace?: string;
+  /** Set by `-r` / `--no-eval`: the action is refused as unavailable before any child starts. */
+  readOnly?: true;
+  noEval?: true;
+};
 export type HelpArgs = { command: "help" } | { command: "version" };
 export type ParsedArgs = ViewerArgs | SqlArgs | EvalArgs | HelpArgs;
 
@@ -82,7 +93,9 @@ export const USAGE = `Usage:
   kosmo-tui [target] [options]           interactive viewer
   kosmo-tui [target] --print [lisp|tab|json] [options]
   kosmo-tui sql <query> [--source <target>] [--project <id>] [--format json|tab]
-  kosmo-tui eval <code> [--source <target>] [--project <id>] [--format lisp|tab|json]
+  kosmo-tui eval <code> [--source <target>] [--trace <id>] [--project <id>] [--format json]
+        trusted local code only: node:vm is a separate JS context, not a security
+        boundary. -r / --no-eval disable eval.
 
 Target: none (cwd live project) | - (NDJSON on stdin) | http(s)://endpoint |
         ./export.json | ./store.sqlite | <traceId>. Use --trace <id> for a literal id
@@ -115,6 +128,9 @@ function parseDurationMs(value: string, minMs: number, maxMs: number): number | 
   if (ms < minMs || ms > maxMs) return undefined;
   return ms;
 }
+
+/** Viewer flags the eval subcommand also accepts (D3: -r / --no-eval switch local eval off). */
+const EVAL_ACCEPTED = new Set(["--trace", "-r", "--no-eval"]);
 
 const VIEWER_ONLY = new Set([
   "--trace",
@@ -235,8 +251,10 @@ export function parseArgv(argv: readonly string[]): ParseResult {
 
   const sub = positionals[0];
   if (sub === "sql" || sub === "eval") {
+    const evalFlags = sub === "eval" ? EVAL_ACCEPTED : new Set<string>();
     for (const flag of seen.keys()) {
-      if (VIEWER_ONLY.has(flag)) return fail(`${flag} is not accepted by the ${sub} subcommand`);
+      if (VIEWER_ONLY.has(flag) && !evalFlags.has(flag))
+        return fail(`${flag} is not accepted by the ${sub} subcommand`);
     }
     if (positionals.length < 2) return fail(`${sub} requires ${sub === "sql" ? "a query" : "code"} argument`);
     if (positionals.length > 2)
@@ -253,7 +271,17 @@ export function parseArgv(argv: readonly string[]): ParseResult {
     };
     return {
       ok: true,
-      args: sub === "sql" ? { command: "sql", query: body, ...common } : { command: "eval", code: body, ...common }
+      args:
+        sub === "sql"
+          ? { command: "sql", query: body, ...common }
+          : {
+              command: "eval",
+              code: body,
+              ...common,
+              ...(str("--trace") !== undefined ? { trace: str("--trace")! } : {}),
+              ...(seen.has("-r") ? { readOnly: true as const } : {}),
+              ...(seen.has("--no-eval") ? { noEval: true as const } : {})
+            }
     };
   }
 
@@ -550,7 +578,7 @@ export async function run(proc: Proc, deps: RunDeps = {}): Promise<number> {
     } else if (args.command === "sql") {
       code = await (deps.runSql ?? notImplemented("sql"))({ args, target, project, proc, signal: controller.signal });
     } else {
-      code = await (deps.runEval ?? notImplemented("eval"))({ args, target, project, proc, signal: controller.signal });
+      code = await (deps.runEval ?? runEvalCommand)({ args, target, project, proc, signal: controller.signal });
     }
     return signalled ?? code;
   } catch (error) {
