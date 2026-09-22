@@ -44,6 +44,13 @@ export type Terminal = {
   onResize(listener: (size: TerminalSize) => void): void;
   /** Restore raw mode, cursor and screen. Safe to call more than once. */
   close(): void;
+  /**
+   * Put the keyboard back into raw mode. Another process sharing the terminal can undo
+   * it: every Node process restores the termios it saw at startup when it exits, so a
+   * `node … | kosmo-tui -` producer leaves the terminal cooked (line-buffered, echoing)
+   * behind the viewer's back. A no-op after close or on a non-TTY input.
+   */
+  reclaimInput?(): void;
 };
 
 export const MIN_COLS = 40;
@@ -120,6 +127,12 @@ export function createTerminal(input: TerminalInput, output: TerminalOutput): Te
     },
     onResize(listener) {
       resizeListeners.push(listener);
+    },
+    reclaimInput() {
+      if (closed || !input.isTTY) return;
+      // Node skips a same-mode setRawMode(true), so toggle to make it apply again.
+      input.setRawMode?.(false);
+      input.setRawMode?.(true);
     },
     close() {
       if (closed) return;

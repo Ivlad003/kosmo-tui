@@ -115,6 +115,9 @@ async function reviewRoot(invocation: Invocation<ViewerArgs>, readConfig: Projec
   }
 }
 
+/** Second raw-mode reclaim after data EOF (see openViewerSession). */
+const RECLAIM_AFTER_EOF_MS = 300;
+
 /** `deps.openViewer` default. */
 export async function openViewerSession(invocation: Invocation<ViewerArgs>, deps: ViewerDeps = {}): Promise<number> {
   const { args, target, project, proc, signal } = invocation;
@@ -162,11 +165,31 @@ export async function openViewerSession(invocation: Invocation<ViewerArgs>, deps
 
     const raw = (deps.createTerminal ?? createTerminal)(keyboard.port.input, proc.stdout as unknown as TerminalOutput);
     // Ctrl+C in raw mode is a keystroke, not a signal: it still exits 130.
+    let sessionKeys = false;
     raw.onKey((key) => {
       if (key.includes(CTRL_C)) finish({ code: EXIT_SIGINT });
+      // Until the source is open the session has no key handler yet: `q` still quits, so a
+      // slow or stalled stdin stream never traps the user behind a loading screen.
+      else if (!sessionKeys && key === "q") finish({ code: EXIT_OK });
     });
+    if (target.kind === "stdin") {
+      // The producer on the other end of the data pipe usually shares this terminal as
+      // its stdin; when it exits, Node restores the termios it started with (cooked +
+      // echo), which silently undoes our raw mode. Its exit is what closes the pipe, so
+      // raw mode is reclaimed at data EOF — and once more shortly after, for a producer
+      // whose exit trails the EOF.
+      const stdin = proc.stdin as unknown as { once(event: "end", listener: () => void): unknown };
+      stdin.once("end", () => {
+        raw.reclaimInput?.();
+        setTimeout(() => raw.reclaimInput?.(), RECLAIM_AFTER_EOF_MS).unref?.();
+      });
+    }
     const terminal: Terminal = {
       ...raw,
+      onKey(listener) {
+        sessionKeys = true;
+        raw.onKey(listener);
+      },
       paint(frame) {
         if (outcome !== undefined) return;
         try {
