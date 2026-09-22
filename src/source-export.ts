@@ -115,7 +115,11 @@ function probeValue(record: Record<string, unknown>): DetailValue {
   return valueOf(record.value);
 }
 
-export type ExportSource = TraceSource & { readonly sourceId: string };
+export type ExportSource = TraceSource & {
+  readonly sourceId: string;
+  /** The pinned dataset snapshot the shared graph selectors read (snapshot-selectors.ts). */
+  datasetSnapshot(snapshot?: SnapshotRef): TraceDatasetSnapshot;
+};
 
 export function createExportSource(options: ExportSourceOptions): ExportSource {
   const maxBytes = options.maxBytes ?? EXPORT_MAX_BYTES;
@@ -254,6 +258,11 @@ export function createExportSource(options: ExportSourceOptions): ExportSource {
     kind: "export",
     get sourceId() {
       return loaded?.sourceId ?? "export";
+    },
+
+    datasetSnapshot(snapshot) {
+      if (loaded === null) throw new SourceError("not-open", "kosmo-tui: the export source is not open");
+      return (snapshot === undefined ? loaded : requireLoaded(snapshot)).dataset;
     },
 
     async open(signal): Promise<SourceOpenResult> {

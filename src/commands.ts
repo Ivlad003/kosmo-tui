@@ -34,7 +34,9 @@ import {
   type SpanRefSpec,
   type Token
 } from "./command-line.js";
+import type { TraceSqlResult } from "@kosmo-callflow/query/sql";
 import type { PairComparison } from "./compare.js";
+import type { SqlOutcome } from "./sql.js";
 import type { ValueMatchResult } from "./values.js";
 import { DEFAULT_STACK_DEPTH, ancestorChain, stopText, type AncestorChain, type StackOptions } from "./stack.js";
 import {
@@ -160,7 +162,7 @@ export type ResultMeta = {
 };
 
 export type CommandErrorCode =
-  "parse" | "unknown-command" | "usage" | "ambiguous-ref" | "unknown-ref" | "invalid-regex";
+  "parse" | "unknown-command" | "usage" | "ambiguous-ref" | "unknown-ref" | "invalid-regex" | "sql";
 
 export type CommandResult =
   | { kind: "receipt"; command: string; notice: string }
@@ -215,7 +217,9 @@ export type CommandResult =
   /** `w`: equal-value candidates (values.ts); never presented as lineage. */
   | { kind: "values"; command: "values"; result: ValueMatchResult }
   /** `=`: explicit A/B pair comparison through the shared diffTraces (compare.ts). */
-  | { kind: "compare"; command: "compare"; result: PairComparison };
+  | { kind: "compare"; command: "compare"; result: PairComparison }
+  /** `:sql`: the shared runner's typed table (rows, never spans), with its own scope/coverage. */
+  | { kind: "sql"; command: "sql"; query: string; result: TraceSqlResult };
 
 export type CommandOutcome = { actions: Action[]; result: CommandResult };
 
@@ -291,6 +295,11 @@ export type CommandDeps = {
    * a seek nothing will perform.
    */
   liveSeek?: boolean;
+  /**
+   * `:sql` over the pinned SQLite snapshot (sql.ts `sqlPortForSource`). Only a sqlite
+   * source provides it; without it `:sql` is unavailable instead of opening another DB.
+   */
+  sql?: (query: string) => Promise<SqlOutcome>;
 };
 
 type Context = {
@@ -325,7 +334,9 @@ const COMMANDS: Record<string, CommandSpec> = {
     requires: "commandLine",
     run: runFilter
   },
-  bookmark: { usage: ":bookmark [list]", requires: "bookmark", run: runBookmark }
+  bookmark: { usage: ":bookmark [list]", requires: "bookmark", run: runBookmark },
+  // The query is taken verbatim by runCommandLine before tokenizing (see rawSqlQuery).
+  sql: { usage: ":sql <select statement>", requires: "sql", run: () => usage("sql") }
 };
 
 export const COMMAND_NAMES = Object.keys(COMMANDS);
@@ -344,6 +355,8 @@ export async function runCommandLine(
   line: string,
   deps: CommandDeps = {}
 ): Promise<CommandOutcome | null> {
+  const sqlQuery = rawSqlQuery(line);
+  if (sqlQuery !== null) return runSqlLine(state, sqlQuery, deps);
   const parsed = parseCommandLine(line);
   if (parsed.ok === "empty") return null;
   if (!parsed.ok) return fail(null, "parse", `parse error: ${parsed.error}`);
@@ -367,6 +380,30 @@ export async function runCommandLine(
     if (!check.ok) return unavailable(command.name, check.reason);
   }
   return spec.run({ state, command, selectors: deps.selectors ?? localGraphSelectors, deps });
+}
+
+/**
+ * `:sql` takes the rest of the line verbatim: SQL quotes, `;` inside literals and `--`
+ * comments are SQL syntax, not command-line quoting or flags. Null for any other line.
+ */
+function rawSqlQuery(line: string): string | null {
+  const match = /^\s*:?\s*sql(?:[ \t]+([\s\S]*))?$/.exec(line);
+  return match ? (match[1] ?? "").trim() : null;
+}
+
+async function runSqlLine(state: ViewState, query: string, deps: CommandDeps): Promise<CommandOutcome> {
+  if (state.caps !== null) {
+    const check = checkCommand(state.caps, "sql");
+    if (!check.ok) return unavailable("sql", check.reason);
+  }
+  if (query === "") return usage("sql");
+  if (deps.sql === undefined) return unavailable("sql", "sql-needs-sqlite-source");
+  const outcome = await deps.sql(query);
+  if (!outcome.ok) {
+    const reason = outcome.reason === undefined ? "" : `(${outcome.reason})`;
+    return fail("sql", "sql", `sql: ${outcome.code}${reason}: ${outcome.message}`);
+  }
+  return { actions: [], result: { kind: "sql", command: "sql", query, result: outcome.result } };
 }
 
 /* ---------------------------------------------------------------- view actions */

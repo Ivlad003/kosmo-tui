@@ -24,6 +24,7 @@ import {
   type ResolvedTarget
 } from "./detect.js";
 import { runEvalCommand } from "./eval.js";
+import { runSqlCommand } from "./sql.js";
 import { controllingTerminalAvailable } from "./terminal-input.js";
 
 /** Target kind → concrete source; the viewer/print handlers open their source through this. */
@@ -75,7 +76,15 @@ export type ViewerArgs = ViewOptions & {
   refreshMs?: number;
 };
 
-export type SqlArgs = { command: "sql"; query: string; source?: string; project?: string; format?: OutputFormat };
+export type SqlArgs = {
+  command: "sql";
+  query: string;
+  source?: string;
+  project?: string;
+  trace?: string;
+  /** Undefined means the table default, JSON. */
+  format?: OutputFormat;
+};
 export type EvalArgs = {
   command: "eval";
   code: string;
@@ -95,7 +104,7 @@ export type ParseResult = { ok: true; args: ParsedArgs } | { ok: false; message:
 export const USAGE = `Usage:
   kosmo-tui [target] [options]           interactive viewer
   kosmo-tui [target] --print [lisp|tab|json] [options]
-  kosmo-tui sql <query> [--source <target>] [--project <id>] [--format json|tab]
+  kosmo-tui sql <query> [--source <events.sqlite>] [--project <id>] [--trace <id>] [--print json|tab]
   kosmo-tui eval <code> [--source <target>] [--trace <id>] [--project <id>] [--format json]
         trusted local code only: node:vm is a separate JS context, not a security
         boundary. -r / --no-eval disable eval.
@@ -134,6 +143,8 @@ function parseDurationMs(value: string, minMs: number, maxMs: number): number | 
 
 /** Viewer flags the eval subcommand also accepts (D3: -r / --no-eval switch local eval off). */
 const EVAL_ACCEPTED = new Set(["--trace", "-r", "--no-eval"]);
+/** Viewer flags the sql subcommand also accepts: a trace scope and the output format. */
+const SQL_ACCEPTED = new Set(["--trace", "--print"]);
 
 const VIEWER_ONLY = new Set([
   "--trace",
@@ -254,7 +265,7 @@ export function parseArgv(argv: readonly string[]): ParseResult {
 
   const sub = positionals[0];
   if (sub === "sql" || sub === "eval") {
-    const evalFlags = sub === "eval" ? EVAL_ACCEPTED : new Set<string>();
+    const evalFlags = sub === "eval" ? EVAL_ACCEPTED : SQL_ACCEPTED;
     for (const flag of seen.keys()) {
       if (VIEWER_ONLY.has(flag) && !evalFlags.has(flag))
         return fail(`${flag} is not accepted by the ${sub} subcommand`);
@@ -264,8 +275,14 @@ export function parseArgv(argv: readonly string[]): ParseResult {
       return fail(`${sub} accepts one ${sub === "sql" ? "query" : "code"} argument; quote it`);
     const body = positionals[1]!;
     if (body.trim() === "") return fail(`${sub} ${sub === "sql" ? "query" : "code"} is empty`);
-    if (sub === "sql" && format === "lisp") {
-      return fail("sql returns a table; --format lisp is only for projections (use json or tab)");
+    if (sub === "sql") {
+      const printValue = seen.get("--print");
+      const printFormat = typeof printValue === "string" ? (printValue as OutputFormat) : undefined;
+      if (printFormat !== undefined && format !== undefined && printFormat !== format) {
+        return fail(`--print ${printFormat} conflicts with --format ${format}`);
+      }
+      format = printFormat ?? format;
+      if (format === "lisp") return fail("sql returns a table; lisp is only for projections (use json or tab)");
     }
     const common = {
       ...(str("--source") !== undefined ? { source: str("--source")! } : {}),
@@ -276,7 +293,12 @@ export function parseArgv(argv: readonly string[]): ParseResult {
       ok: true,
       args:
         sub === "sql"
-          ? { command: "sql", query: body, ...common }
+          ? {
+              command: "sql",
+              query: body,
+              ...common,
+              ...(str("--trace") !== undefined ? { trace: str("--trace")! } : {})
+            }
           : {
               command: "eval",
               code: body,
@@ -579,7 +601,7 @@ export async function run(proc: Proc, deps: RunDeps = {}): Promise<number> {
         ? await (deps.runPrint ?? notImplemented("--print"))(invocation)
         : await (deps.openViewer ?? notImplemented("the interactive viewer"))(invocation);
     } else if (args.command === "sql") {
-      code = await (deps.runSql ?? notImplemented("sql"))({ args, target, project, proc, signal: controller.signal });
+      code = await (deps.runSql ?? runSqlCommand)({ args, target, project, proc, signal: controller.signal });
     } else {
       code = await (deps.runEval ?? runEvalCommand)({ args, target, project, proc, signal: controller.signal });
     }
