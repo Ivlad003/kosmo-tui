@@ -3,6 +3,7 @@
  * holes, explicit out-of-range refusal, future supplements invisible, full identity,
  * and speed only on comparable clocks.
  */
+import { createTraceDatasetSnapshot, projectCanonicalPage } from "@kosmo-callflow/query/snapshot";
 import { describe, expect, it } from "vitest";
 import {
   delayAfter,
@@ -13,6 +14,7 @@ import {
   stepSeq,
   type SeekOutcome
 } from "../src/replay-pin.js";
+import { evidenceFromCanonicalV2 } from "../src/source-common.js";
 import { checkoutRecords, event, supplement } from "./replay-records.js";
 import { snapshotRef } from "./session-fakes.js";
 
@@ -157,5 +159,36 @@ describe("speed needs a comparable source clock", () => {
     expect(delayAfter(pin, schedule, 0)).toBe(schedule.mode === "speed-fallback" ? schedule.intervalMs : -1);
     // Stepping is independent of the clock.
     expect(stepSeq(pin, 0, 1)).toBe(2);
+  });
+});
+
+describe("a partially masked value reads the same in a replay frame and in the snapshot view", () => {
+  it("shows the recorded part with the [masked] marker in place instead of masking the whole value", () => {
+    const records = [
+      event({ seq: 10, type: "enter", payload: { args: [{ card: "[masked]", sku: "sku-1" }, 2] } }),
+      event({ seq: 12, type: "exit", payload: { ret: "[masked]" } })
+    ];
+    const frame = detailAtCutoff(ok(seekPinned(pinReplay(records, snapshotRef({ watermark: 12 })), 12)).state, REF)!;
+    const page = projectCanonicalPage(
+      createTraceDatasetSnapshot({
+        identity: {
+          datasetId: REF.datasetId,
+          projectId: REF.projectId,
+          source: "live",
+          watermarkSeq: 12,
+          retentionEpoch: 0
+        },
+        records: records as never
+      }),
+      { projectionVersion: 2, traceId: REF.traceId }
+    );
+    const snapshot = evidenceFromCanonicalV2(page, REF, snapshotRef({ watermark: 12 }))!;
+
+    // Partial: recorded, the withheld field still reads [masked], the rest is visible.
+    expect(frame.args).toEqual({ state: "recorded", text: '[{"card":"[masked]","sku":"sku-1"},2]' });
+    expect(frame.args).toEqual(snapshot.args);
+    // Whole: masked in both.
+    expect(frame.ret).toEqual({ state: "masked" });
+    expect(snapshot.ret).toEqual({ state: "masked" });
   });
 });

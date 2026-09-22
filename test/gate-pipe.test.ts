@@ -202,9 +202,10 @@ pty("gate 8.2: producer | kosmo-tui - in a real PTY", () => {
       expect(opened).not.toMatch(/malformed|source failed/);
       // Keys work after EOF: select, expand, detail from the v2 canonical snapshot.
       await press(s, "g");
-      // (The detail pane's sanitizer renders the route part of an http node id as
-      // `[external-path]`; the row itself keeps the recorded id.)
-      await press(s, "\r", /^detail: http#POST .*\[complete\]$/m);
+      // The detail pane's sanitizer keeps the route of an http node id readable: a URL route
+      // is not a filesystem path, so it is never rendered as `[external-path]`.
+      const detail = await press(s, "\r", /^detail: http#POST \/orders\/\S+ \[complete\]$/m);
+      expect(detail).not.toContain("[external-path]");
       await press(s, "\t");
       await press(s, "l");
       // Roots come first in the tree order; walk down to the first expanded child.

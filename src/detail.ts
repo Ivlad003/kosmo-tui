@@ -157,20 +157,20 @@ function durationOf(enter: TraceEventView | undefined, exit: TraceEventView | un
   return { state: "recorded", ms };
 }
 
+/**
+ * The same rule as the canonical projection (`valueEvidence` in @kosmo-callflow/protocol
+ * projection-v2) the snapshot view renders: only a value masked WHOLE is `masked`. A value
+ * with a masked part (`[{"card":"[masked]","sku":"sku-1"}]`) is recorded and shown with the
+ * daemon's `[masked]` marker in place of the withheld part, so a replay frame and the
+ * snapshot detail of the same span read the same.
+ */
 export function valueOf(value: unknown): DetailValue {
   if (value === undefined) return { state: "not-recorded" };
-  if (containsMask(value)) return { state: "masked" };
+  if (value === maskedMarker) return { state: "masked" };
   const text = stringify(value);
   return text === undefined
     ? { state: "unavailable", reason: "value not representable" }
     : { state: "recorded", text: sanitizeEvidenceText(text).value };
-}
-
-function containsMask(value: unknown): boolean {
-  if (value === maskedMarker) return true;
-  if (Array.isArray(value)) return value.some(containsMask);
-  if (value !== null && typeof value === "object") return Object.values(value).some(containsMask);
-  return false;
 }
 
 function stringify(value: unknown): string | undefined {

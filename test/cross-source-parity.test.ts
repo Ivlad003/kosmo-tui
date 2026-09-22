@@ -190,10 +190,9 @@ describe("4.5 cross-source semantic parity through kosmo-tui sources", () => {
             const verdict = compareSourceFacts(perTrace, reference, { meta, facts: spanFacts(page) });
             expect(verdict.verdict, `${meta.source} ${traceId}: ${JSON.stringify(verdict)}`).toBe("equal");
             if (verdict.verdict !== "equal") continue;
-            if (meta.source === "export") {
-              expect(verdict.exportRedacted.length).toBeGreaterThan(0);
-              expect(verdict.exportRedacted.every((entry) => entry.endsWith(".framework.route"))).toBe(true);
-            } else expect(verdict.exportRedacted).toEqual([]);
+            // No source redacts on top of the live masking: the Express route pattern
+            // ("/orders/:orderId") is a URL route, not a filesystem path, so the export keeps it.
+            expect(verdict.exportRedacted, `${meta.source} ${traceId}`).toEqual([]);
           }
         }
         // Every source states the golden: each one normalized on its own.

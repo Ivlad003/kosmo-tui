@@ -3,12 +3,12 @@
   "projectId": "cross-source",
   "sessionId": "cross-source-session",
   "traces": {
-    "ok": "28230f486dfe8809fa0cb524fd7d725d",
-    "errored": "53680d703f3bc2b73019cbc14d643c5e"
+    "ok": "47ba9d8a287e3ce899bd3efbb9b6e512",
+    "errored": "408044efac3080ca99749ac0daee3b1a"
   },
   "order": [
-    "28230f486dfe8809fa0cb524fd7d725d",
-    "53680d703f3bc2b73019cbc14d643c5e"
+    "47ba9d8a287e3ce899bd3efbb9b6e512",
+    "408044efac3080ca99749ac0daee3b1a"
   ],
   "files": {
     "sqlite": "events.sqlite",
@@ -19,7 +19,7 @@
   },
   "live": {
     "canonical": {
-      "28230f486dfe8809fa0cb524fd7d725d": {
+      "47ba9d8a287e3ce899bd3efbb9b6e512": {
         "projectionVersion": 2,
         "dataset": {
           "datasetId": "live:cross-source",
@@ -30,19 +30,19 @@
           "retentionEpoch": 0
         },
         "selection": {
-          "traceId": "28230f486dfe8809fa0cb524fd7d725d"
+          "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512"
         },
         "order": "causal",
         "items": [
           {
             "kind": "span",
-            "id": "span:v2:dbaebedb3078585dece9646f",
+            "id": "span:v2:e225da31f59caab7b6e1b49d",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-              "spanId": "c1ca29fd93cb07da"
+              "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+              "spanId": "28f899339d25babe"
             },
             "spanKind": "http",
             "node": {
@@ -110,20 +110,20 @@
             },
             "duration": {
               "state": "recorded",
-              "ms": 10.956916999999976,
+              "ms": 9.796500000000037,
               "source": "payload-duration",
               "domain": "unknown"
             }
           },
           {
             "kind": "span",
-            "id": "span:v2:7aad79ea92bf4d089db6496a",
+            "id": "span:v2:6ac2fc390edd712386dbcb69",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-              "spanId": "db760e0a3de36535"
+              "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+              "spanId": "de6b13b7a8a154f8"
             },
             "spanKind": "middleware",
             "node": {
@@ -148,8 +148,8 @@
                 "datasetId": "live:cross-source",
                 "projectId": "cross-source",
                 "sessionId": "cross-source-session",
-                "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                "spanId": "c1ca29fd93cb07da"
+                "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                "spanId": "28f899339d25babe"
               }
             },
             "causalLinks": [
@@ -158,15 +158,15 @@
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                  "spanId": "c1ca29fd93cb07da"
+                  "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                  "spanId": "28f899339d25babe"
                 },
                 "to": {
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                  "spanId": "db760e0a3de36535"
+                  "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                  "spanId": "de6b13b7a8a154f8"
                 },
                 "provenance": "runtime"
               }
@@ -218,20 +218,20 @@
             },
             "duration": {
               "state": "recorded",
-              "ms": 4.7781250000000455,
+              "ms": 4.436500000000024,
               "source": "payload-duration",
               "domain": "unknown"
             }
           },
           {
             "kind": "span",
-            "id": "span:v2:8e92f1ea6d64a578920e8e8a",
+            "id": "span:v2:58757634ecdbf6da58e53884",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-              "spanId": "10e500c60f6e5281"
+              "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+              "spanId": "3eca5a8ddab6f712"
             },
             "spanKind": "handler",
             "node": {
@@ -256,8 +256,8 @@
                 "datasetId": "live:cross-source",
                 "projectId": "cross-source",
                 "sessionId": "cross-source-session",
-                "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                "spanId": "c1ca29fd93cb07da"
+                "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                "spanId": "28f899339d25babe"
               }
             },
             "causalLinks": [
@@ -266,15 +266,15 @@
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                  "spanId": "c1ca29fd93cb07da"
+                  "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                  "spanId": "28f899339d25babe"
                 },
                 "to": {
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                  "spanId": "10e500c60f6e5281"
+                  "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                  "spanId": "3eca5a8ddab6f712"
                 },
                 "provenance": "runtime"
               }
@@ -328,20 +328,20 @@
             },
             "duration": {
               "state": "recorded",
-              "ms": 3.6992500000000064,
+              "ms": 3.08133399999997,
               "source": "payload-duration",
               "domain": "unknown"
             }
           },
           {
             "kind": "span",
-            "id": "span:v2:fe8c18175acfc6e5e1b884e3",
+            "id": "span:v2:9c871f804f3c82eafbd05790",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-              "spanId": "0c3cea0993ce0873"
+              "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+              "spanId": "51a029f79de99e69"
             },
             "spanKind": "function",
             "node": {
@@ -371,8 +371,8 @@
                 "datasetId": "live:cross-source",
                 "projectId": "cross-source",
                 "sessionId": "cross-source-session",
-                "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                "spanId": "10e500c60f6e5281"
+                "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                "spanId": "3eca5a8ddab6f712"
               }
             },
             "causalLinks": [
@@ -381,15 +381,15 @@
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                  "spanId": "10e500c60f6e5281"
+                  "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                  "spanId": "3eca5a8ddab6f712"
                 },
                 "to": {
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                  "spanId": "0c3cea0993ce0873"
+                  "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                  "spanId": "51a029f79de99e69"
                 },
                 "provenance": "runtime"
               }
@@ -439,20 +439,20 @@
             },
             "duration": {
               "state": "recorded",
-              "ms": 0.7879169999999931,
+              "ms": 0.7773329999999987,
               "source": "payload-duration",
               "domain": "unknown"
             }
           },
           {
             "kind": "span",
-            "id": "span:v2:b91f2bad6c3f1c0361385de1",
+            "id": "span:v2:83882701260ce79f861b8e15",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-              "spanId": "e3e64352ff6f4258"
+              "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+              "spanId": "f158ca54d3aa07a2"
             },
             "spanKind": "function",
             "node": {
@@ -482,8 +482,8 @@
                 "datasetId": "live:cross-source",
                 "projectId": "cross-source",
                 "sessionId": "cross-source-session",
-                "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                "spanId": "0c3cea0993ce0873"
+                "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                "spanId": "51a029f79de99e69"
               }
             },
             "causalLinks": [
@@ -492,15 +492,15 @@
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                  "spanId": "0c3cea0993ce0873"
+                  "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                  "spanId": "51a029f79de99e69"
                 },
                 "to": {
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                  "spanId": "e3e64352ff6f4258"
+                  "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                  "spanId": "f158ca54d3aa07a2"
                 },
                 "provenance": "runtime"
               }
@@ -538,20 +538,20 @@
             },
             "duration": {
               "state": "recorded",
-              "ms": 0.14341699999999946,
+              "ms": 0.16325000000006185,
               "source": "payload-duration",
               "domain": "unknown"
             }
           },
           {
             "kind": "span",
-            "id": "span:v2:b77c5417327f9635e309d24b",
+            "id": "span:v2:225651bd7ccd78e7e8f003cd",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-              "spanId": "1d5d0bbcf1adeb19"
+              "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+              "spanId": "dd6572413813f976"
             },
             "spanKind": "function",
             "node": {
@@ -581,8 +581,8 @@
                 "datasetId": "live:cross-source",
                 "projectId": "cross-source",
                 "sessionId": "cross-source-session",
-                "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                "spanId": "0c3cea0993ce0873"
+                "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                "spanId": "51a029f79de99e69"
               }
             },
             "causalLinks": [
@@ -591,15 +591,15 @@
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                  "spanId": "0c3cea0993ce0873"
+                  "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                  "spanId": "51a029f79de99e69"
                 },
                 "to": {
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "28230f486dfe8809fa0cb524fd7d725d",
-                  "spanId": "1d5d0bbcf1adeb19"
+                  "traceId": "47ba9d8a287e3ce899bd3efbb9b6e512",
+                  "spanId": "dd6572413813f976"
                 },
                 "provenance": "runtime"
               }
@@ -637,7 +637,7 @@
             },
             "duration": {
               "state": "recorded",
-              "ms": 0.07512499999995725,
+              "ms": 0.07658300000002782,
               "source": "payload-duration",
               "domain": "unknown"
             }
@@ -650,7 +650,7 @@
         },
         "truncated": false
       },
-      "53680d703f3bc2b73019cbc14d643c5e": {
+      "408044efac3080ca99749ac0daee3b1a": {
         "projectionVersion": 2,
         "dataset": {
           "datasetId": "live:cross-source",
@@ -661,19 +661,19 @@
           "retentionEpoch": 0
         },
         "selection": {
-          "traceId": "53680d703f3bc2b73019cbc14d643c5e"
+          "traceId": "408044efac3080ca99749ac0daee3b1a"
         },
         "order": "causal",
         "items": [
           {
             "kind": "span",
-            "id": "span:v2:c3ac30a849d0db0e764d7af0",
+            "id": "span:v2:db98f0ee0f3bfb7c9b492016",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-              "spanId": "2f4fa56ec52ca6d6"
+              "traceId": "408044efac3080ca99749ac0daee3b1a",
+              "spanId": "54b9cf5d8b4f8bb4"
             },
             "spanKind": "http",
             "node": {
@@ -741,20 +741,20 @@
             },
             "duration": {
               "state": "recorded",
-              "ms": 2.057916999999975,
+              "ms": 1.952415999999971,
               "source": "payload-duration",
               "domain": "unknown"
             }
           },
           {
             "kind": "span",
-            "id": "span:v2:31d8a2623fdf6b20ece163be",
+            "id": "span:v2:105550ddd00164a74ec8bc1d",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-              "spanId": "3ff3bd4fcde7f8cc"
+              "traceId": "408044efac3080ca99749ac0daee3b1a",
+              "spanId": "040204331b91b6ee"
             },
             "spanKind": "middleware",
             "node": {
@@ -779,8 +779,8 @@
                 "datasetId": "live:cross-source",
                 "projectId": "cross-source",
                 "sessionId": "cross-source-session",
-                "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                "spanId": "2f4fa56ec52ca6d6"
+                "traceId": "408044efac3080ca99749ac0daee3b1a",
+                "spanId": "54b9cf5d8b4f8bb4"
               }
             },
             "causalLinks": [
@@ -789,15 +789,15 @@
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                  "spanId": "2f4fa56ec52ca6d6"
+                  "traceId": "408044efac3080ca99749ac0daee3b1a",
+                  "spanId": "54b9cf5d8b4f8bb4"
                 },
                 "to": {
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                  "spanId": "3ff3bd4fcde7f8cc"
+                  "traceId": "408044efac3080ca99749ac0daee3b1a",
+                  "spanId": "040204331b91b6ee"
                 },
                 "provenance": "runtime"
               }
@@ -849,20 +849,20 @@
             },
             "duration": {
               "state": "recorded",
-              "ms": 0.34050000000002,
+              "ms": 0.2529579999999214,
               "source": "payload-duration",
               "domain": "unknown"
             }
           },
           {
             "kind": "span",
-            "id": "span:v2:46fe38a3588e29910a3c710f",
+            "id": "span:v2:341879ccea21352aa7858c00",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-              "spanId": "5155137aa7dbb6db"
+              "traceId": "408044efac3080ca99749ac0daee3b1a",
+              "spanId": "b64e7c7a9e82addf"
             },
             "spanKind": "handler",
             "node": {
@@ -887,8 +887,8 @@
                 "datasetId": "live:cross-source",
                 "projectId": "cross-source",
                 "sessionId": "cross-source-session",
-                "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                "spanId": "2f4fa56ec52ca6d6"
+                "traceId": "408044efac3080ca99749ac0daee3b1a",
+                "spanId": "54b9cf5d8b4f8bb4"
               }
             },
             "causalLinks": [
@@ -897,15 +897,15 @@
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                  "spanId": "2f4fa56ec52ca6d6"
+                  "traceId": "408044efac3080ca99749ac0daee3b1a",
+                  "spanId": "54b9cf5d8b4f8bb4"
                 },
                 "to": {
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                  "spanId": "5155137aa7dbb6db"
+                  "traceId": "408044efac3080ca99749ac0daee3b1a",
+                  "spanId": "b64e7c7a9e82addf"
                 },
                 "provenance": "runtime"
               }
@@ -970,13 +970,13 @@
           },
           {
             "kind": "span",
-            "id": "span:v2:bdac5095f80e32338836a311",
+            "id": "span:v2:ad6892693c0953df9bf15a75",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-              "spanId": "322112e00e5ae376"
+              "traceId": "408044efac3080ca99749ac0daee3b1a",
+              "spanId": "c34c0589bccf94de"
             },
             "spanKind": "function",
             "node": {
@@ -1006,8 +1006,8 @@
                 "datasetId": "live:cross-source",
                 "projectId": "cross-source",
                 "sessionId": "cross-source-session",
-                "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                "spanId": "5155137aa7dbb6db"
+                "traceId": "408044efac3080ca99749ac0daee3b1a",
+                "spanId": "b64e7c7a9e82addf"
               }
             },
             "causalLinks": [
@@ -1016,15 +1016,15 @@
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                  "spanId": "5155137aa7dbb6db"
+                  "traceId": "408044efac3080ca99749ac0daee3b1a",
+                  "spanId": "b64e7c7a9e82addf"
                 },
                 "to": {
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                  "spanId": "322112e00e5ae376"
+                  "traceId": "408044efac3080ca99749ac0daee3b1a",
+                  "spanId": "c34c0589bccf94de"
                 },
                 "provenance": "runtime"
               }
@@ -1083,13 +1083,13 @@
           },
           {
             "kind": "span",
-            "id": "span:v2:7c40ef506b31a9ce0824f37c",
+            "id": "span:v2:284d3da8d31fb3d620d9cc90",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-              "spanId": "045693c4c2167514"
+              "traceId": "408044efac3080ca99749ac0daee3b1a",
+              "spanId": "2e0f5e662c7e3a7e"
             },
             "spanKind": "function",
             "node": {
@@ -1119,8 +1119,8 @@
                 "datasetId": "live:cross-source",
                 "projectId": "cross-source",
                 "sessionId": "cross-source-session",
-                "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                "spanId": "322112e00e5ae376"
+                "traceId": "408044efac3080ca99749ac0daee3b1a",
+                "spanId": "c34c0589bccf94de"
               }
             },
             "causalLinks": [
@@ -1129,15 +1129,15 @@
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                  "spanId": "322112e00e5ae376"
+                  "traceId": "408044efac3080ca99749ac0daee3b1a",
+                  "spanId": "c34c0589bccf94de"
                 },
                 "to": {
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                  "spanId": "045693c4c2167514"
+                  "traceId": "408044efac3080ca99749ac0daee3b1a",
+                  "spanId": "2e0f5e662c7e3a7e"
                 },
                 "provenance": "runtime"
               }
@@ -1175,20 +1175,20 @@
             },
             "duration": {
               "state": "recorded",
-              "ms": 0.05600000000004002,
+              "ms": 0.055833000000006905,
               "source": "payload-duration",
               "domain": "unknown"
             }
           },
           {
             "kind": "span",
-            "id": "span:v2:3330cd1ec5958bc8b5d3cc9a",
+            "id": "span:v2:a9bdeca09e0c8ce609983954",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-              "spanId": "3288a5dc865b42f6"
+              "traceId": "408044efac3080ca99749ac0daee3b1a",
+              "spanId": "76adb7333198a1fb"
             },
             "spanKind": "function",
             "node": {
@@ -1218,8 +1218,8 @@
                 "datasetId": "live:cross-source",
                 "projectId": "cross-source",
                 "sessionId": "cross-source-session",
-                "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                "spanId": "322112e00e5ae376"
+                "traceId": "408044efac3080ca99749ac0daee3b1a",
+                "spanId": "c34c0589bccf94de"
               }
             },
             "causalLinks": [
@@ -1228,15 +1228,15 @@
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                  "spanId": "322112e00e5ae376"
+                  "traceId": "408044efac3080ca99749ac0daee3b1a",
+                  "spanId": "c34c0589bccf94de"
                 },
                 "to": {
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                  "spanId": "3288a5dc865b42f6"
+                  "traceId": "408044efac3080ca99749ac0daee3b1a",
+                  "spanId": "76adb7333198a1fb"
                 },
                 "provenance": "runtime"
               }
@@ -1274,20 +1274,20 @@
             },
             "duration": {
               "state": "recorded",
-              "ms": 0.04779200000007222,
+              "ms": 0.05133299999999963,
               "source": "payload-duration",
               "domain": "unknown"
             }
           },
           {
             "kind": "span",
-            "id": "span:v2:e6ed2a897bf31a333ca0f6c9",
+            "id": "span:v2:9ccf0361605664df0bf54815",
             "span": {
               "datasetId": "live:cross-source",
               "projectId": "cross-source",
               "sessionId": "cross-source-session",
-              "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-              "spanId": "65431fc8e7d04f4d"
+              "traceId": "408044efac3080ca99749ac0daee3b1a",
+              "spanId": "fa5598331689d492"
             },
             "spanKind": "filter",
             "node": {
@@ -1312,8 +1312,8 @@
                 "datasetId": "live:cross-source",
                 "projectId": "cross-source",
                 "sessionId": "cross-source-session",
-                "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                "spanId": "2f4fa56ec52ca6d6"
+                "traceId": "408044efac3080ca99749ac0daee3b1a",
+                "spanId": "54b9cf5d8b4f8bb4"
               }
             },
             "causalLinks": [
@@ -1322,15 +1322,15 @@
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                  "spanId": "2f4fa56ec52ca6d6"
+                  "traceId": "408044efac3080ca99749ac0daee3b1a",
+                  "spanId": "54b9cf5d8b4f8bb4"
                 },
                 "to": {
                   "datasetId": "live:cross-source",
                   "projectId": "cross-source",
                   "sessionId": "cross-source-session",
-                  "traceId": "53680d703f3bc2b73019cbc14d643c5e",
-                  "spanId": "65431fc8e7d04f4d"
+                  "traceId": "408044efac3080ca99749ac0daee3b1a",
+                  "spanId": "fa5598331689d492"
                 },
                 "provenance": "runtime"
               }
@@ -1383,7 +1383,7 @@
             },
             "duration": {
               "state": "recorded",
-              "ms": 0.39266699999996035,
+              "ms": 0.33704199999999673,
               "source": "payload-duration",
               "domain": "unknown"
             }

@@ -127,10 +127,11 @@ gate("gate 8.1: export in a real PTY without daemon or browser", () => {
       const back = await press(s, "b", new RegExp(`REPLAY \\d+/\\d+ seq=(?!${errorRecord.seq} )\\d+ `));
       const backSeq = Number(/REPLAY \d+\/\d+ seq=(\d+) /.exec(back)![1]);
       expect(backSeq).toBeLessThan(errorRecord.seq);
-      // The selected span at that earlier cutoff: running, its args recorded (the replay
-      // path shows a value with any masked field as masked, never the raw secret).
+      // The selected span at that earlier cutoff: running, its args recorded. The replay
+      // frame reads like the snapshot: only the password is masked, the rest is shown, and
+      // the raw secret never is.
       const detail = await s.waitForScreen(new RegExp(`detail: ${escapeRegExp(errored.nodeId)} \\[running\\]`));
-      expect(detail).toMatch(/^ {2}args: \[masked\]$/m);
+      expect(detail).toMatch(/^ {2}args: \[\{"orderId":"o-2","card":"declined","password":"\[masked\]"/m);
       expect(detail).not.toContain("hunter2-secret");
       // Back to the snapshot (findings are recorded against it, not a replay frame); the
       // snapshot's typed evidence shows the args with only the password masked.

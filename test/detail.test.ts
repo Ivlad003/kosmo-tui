@@ -33,13 +33,23 @@ describe("span details", () => {
   });
 
   it("marks a masked argument as masked instead of printing what was recorded in its place", () => {
-    const events = [event({ seq: 1, spanId: "root", type: "enter", payload: { args: [{ password: "[masked]" }] } })];
+    const events = [event({ seq: 1, spanId: "root", type: "enter", payload: { args: "[masked]" } })];
 
     const detail = spanDetailFromEvents(events, ref("t-1", "root"), null)!;
 
     expect(detail.args).toEqual({ state: "masked" });
     expect(paneFor(detail)).toContain("args: [masked]");
-    expect(paneFor(detail)).not.toContain("password");
+  });
+
+  it("shows a partially masked argument partially, like the snapshot view: the masked part stays masked", () => {
+    const events = [
+      event({ seq: 1, spanId: "root", type: "enter", payload: { args: [{ card: "[masked]", sku: "sku-1" }] } })
+    ];
+
+    const detail = spanDetailFromEvents(events, ref("t-1", "root"), null)!;
+
+    expect(detail.args).toEqual({ state: "recorded", text: '[{"card":"[masked]","sku":"sku-1"}]' });
+    expect(paneFor(detail)).toContain('args: [{"card":"[masked]","sku":"sku-1"}]');
   });
 
   it("says a value was not recorded rather than showing a plausible default", () => {
