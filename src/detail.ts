@@ -181,7 +181,7 @@ function durationOf(enter: TraceEventView | undefined, exit: TraceEventView | un
   return { state: "recorded", ms };
 }
 
-function valueOf(value: unknown): DetailValue {
+export function valueOf(value: unknown): DetailValue {
   if (value === undefined) return { state: "not-recorded" };
   if (containsMask(value)) return { state: "masked" };
   const text = stringify(value);

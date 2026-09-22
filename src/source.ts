@@ -152,6 +152,8 @@ export type SourceOpenResult = {
   firstPage: TracePage;
   /** False for sources without a stable dataset identity: those never auto-resume reviews. */
   stableDataset: boolean;
+  /** Opaque cursor for the first `deltas` read after this open; the session falls back to `snapshotId`. */
+  deltaCursor?: string;
 };
 
 export interface TraceSource {

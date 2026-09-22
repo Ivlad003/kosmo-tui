@@ -142,6 +142,8 @@ export type LoadedScope = {
   loaded: number;
   total: number | null;
   truncated: boolean;
+  /** Why the scope is cut short (a cache cap, an eviction); shown in the header when set. */
+  reason?: string;
 };
 
 /** Reserved command keys whose actions arrive in later waves; they still gate on caps. */
@@ -236,8 +238,15 @@ export type Delta =
   | { kind: "policy"; effectivePolicy: string }
   | { kind: "resize"; viewportHeight: number }
   | { kind: "detail"; detail: SpanDetail | null }
-  /** Span rows dropped from the bounded cache; their traces stay loaded. */
-  | { kind: "evict"; spans: SpanRef[] }
+  /** Span rows dropped from the bounded cache; their traces stay loaded unless listed in `traces`. */
+  | { kind: "evict"; spans: SpanRef[]; traces?: TraceRef[] }
+  /**
+   * A new baseline (409 / retention epoch reset, or `L` back to live): every row is
+   * replaced in one step, stale rows disappear, and a pinned selection that no longer
+   * exists becomes a placeholder. `gap` records that data between the two baselines is
+   * unknown.
+   */
+  | { kind: "baseline"; traces: TraceRow[]; spans: SpanRow[]; gap: boolean }
   | { kind: "scope"; scope: LoadedScope };
 
 export type Action =
@@ -345,7 +354,8 @@ export function applyDelta(state: ViewState, delta: Delta): ViewState {
   return reduceDelta(state, delta);
 }
 
-function reduceDelta(state: ViewState, delta: Delta): ViewState {
+/** Fold a delta regardless of pause (session-owned deltas: details, scope, baselines). */
+export function reduceDelta(state: ViewState, delta: Delta): ViewState {
   switch (delta.kind) {
     case "traces":
       return preservingScreenRow(state, (draft) => ({ ...draft, traces: mergeTraces(draft.traces, delta.rows) }));
@@ -373,11 +383,20 @@ function reduceDelta(state: ViewState, delta: Delta): ViewState {
       return { ...state, detail: delta.detail };
     case "evict": {
       const evicted = new Set(delta.spans.map(spanKey));
+      const traces = new Set((delta.traces ?? []).map(traceKey));
       return preservingScreenRow(state, (draft) => ({
         ...draft,
-        spans: draft.spans.filter((row) => !evicted.has(spanKey(row)))
+        traces: traces.size === 0 ? draft.traces : draft.traces.filter((row) => !traces.has(traceKey(row))),
+        spans: draft.spans.filter((row) => !evicted.has(spanKey(row)) && !traces.has(traceKey(row)))
       }));
     }
+    case "baseline":
+      return preservingScreenRow(state, (draft) => ({
+        ...draft,
+        traces: mergeTraces([], delta.traces),
+        spans: mergeSpans([], delta.spans),
+        retentionGap: draft.retentionGap || delta.gap
+      }));
     case "scope":
       return { ...state, scope: delta.scope };
   }
@@ -721,6 +740,19 @@ function replaySeek(state: ViewState, seq: number): ViewState {
     traces: frame.state.traces,
     spans: frame.state.spans
   });
+}
+
+/**
+ * Show one frame of a pinned replay (replay-pin.ts) whose rows were derived on demand.
+ * Like `replayStep`, the selection is carried across by full ref and re-resolved.
+ */
+export function showReplayFrame(
+  state: ViewState,
+  replay: ReplaySession,
+  rows: { traces: TraceRow[]; spans: SpanRow[] },
+  detail: SpanDetail | null
+): ViewState {
+  return resolveSelection({ ...state, replay, traces: rows.traces, spans: rows.spans, detail });
 }
 
 /** `m`: mark or unmark the selection, including a pinned one that is off screen. */

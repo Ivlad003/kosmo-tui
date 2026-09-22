@@ -92,6 +92,7 @@ export function connectionLine(state: ViewState): string {
   if (state.behindLive) parts.push("behind live");
   if (state.retentionGap) parts.push("retention gap");
   if (state.backlogOverflowed) parts.push("backlog overflow");
+  if (state.scope?.truncated && state.scope.reason) parts.push(`truncated: ${shown(state.scope.reason)}`);
   if (state.replay) parts.push(...replayParts(state));
   parts.push(`capture: ${state.effectivePolicy === null ? "unavailable" : shown(state.effectivePolicy)}`);
   return parts.join(" | ");
