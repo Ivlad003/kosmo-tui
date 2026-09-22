@@ -464,13 +464,17 @@ export function commandResultLines(result: CommandResult): string[] {
       ];
     }
     case "sql": {
-      // A table of rows from the shared runner: never drawn as spans.
+      // A table of rows from the shared runner: never drawn as spans. The runner already
+      // escaped every control character in its strings, so they are shown as they are
+      // (tabCell would escape the runner's backslashes a second time); `shown` still
+      // guards the terminal. Non-strings use the lossless Tab cell form.
       const table = result.result;
       const rows = `${table.rows.length} row(s)${table.truncated ? ` truncated(${table.truncation?.reason ?? "limit"})` : ""}`;
+      const cellText = (cell: unknown): string => shown(typeof cell === "string" ? cell : tabCell(cell));
       return [
         `sql ${table.schema}: ${rows}  (esc closes)`,
-        `  ${table.columns.map((column) => shown(tabCell(column))).join(" | ")}`,
-        ...table.rows.map((row) => `  ${row.map((cell) => shown(tabCell(cell))).join(" | ")}`),
+        `  ${table.columns.map(cellText).join(" | ")}`,
+        ...table.rows.map((row) => `  ${row.map(cellText).join(" | ")}`),
         `scope: project ${shown(table.scope.projectId)} snapshot ${shown(table.scope.snapshotId)} watermark ${table.scope.watermarkSeq}; ` +
           `coverage: ${table.coverage.exhaustive ? "exhaustive" : "partial"}${table.coverage.retention ? ", retention gap" : ""}${table.coverage.loss ? ", loss" : ""}`
       ];

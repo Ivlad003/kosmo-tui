@@ -7,12 +7,13 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { TraceSqlResult } from "@kosmo-callflow/query/sql";
+import { createTraceDatasetSnapshot, type TraceSnapshotRecord } from "@kosmo-callflow/query/snapshot";
+import { runTraceSqlOverSqlite, type TraceSqlResult } from "@kosmo-callflow/query/sql";
 import type { Capabilities } from "../src/capabilities.js";
 import { EXIT_OK, EXIT_SOURCE, EXIT_USAGE, parseArgv, run } from "../src/cli.js";
 import { runCommandLine } from "../src/commands.js";
 import { commandResultLines } from "../src/panes.js";
-import { createSqliteSource } from "../src/source-sqlite.js";
+import { createSqliteSource, type SqliteSource } from "../src/source-sqlite.js";
 import { runSqlCommand, sqlPortForSource } from "../src/sql.js";
 import { detectSqliteDriver } from "../src/sqlite-driver.js";
 import { initialViewState } from "../src/view-state.js";
@@ -260,6 +261,113 @@ describe(":sql in the TUI (task 5b.2)", () => {
       kind: "error",
       code: "usage"
     });
+    await source.close();
+  });
+});
+
+/** Largest gap between event-loop ticks while `work` runs. */
+async function maxTickGap<T>(work: () => Promise<T>): Promise<{ gap: number; value: T }> {
+  let last = Date.now();
+  let gap = 0;
+  const ticker = setInterval(() => {
+    const now = Date.now();
+    gap = Math.max(gap, now - last);
+    last = now;
+  }, 10);
+  try {
+    const value = await work();
+    return { gap: Math.max(gap, Date.now() - last), value };
+  } finally {
+    clearInterval(ticker);
+  }
+}
+
+describe("SQL runs off the render thread, under one deadline (S-M2)", () => {
+  it(":sql over a large pinned snapshot keeps the event loop ticking", async () => {
+    const records = Array.from(
+      { length: 15_000 },
+      (_, index) =>
+        ({
+          seq: index + 1,
+          projectId: FIXTURE_PROJECT,
+          sessionId: "s1",
+          localSeq: index + 1,
+          traceId: "t1",
+          spanId: `s${index}`,
+          parentSpanId: null,
+          type: "enter",
+          nodeId: "src/cart.ts#apply",
+          kind: "function",
+          runtime: "node",
+          serviceName: "api",
+          ts: index + 1,
+          level: "shallow",
+          payload: { a: `/Users/x/f${index}.ts`, b: "token=1", c: "x", d: "y" },
+          flags: {}
+        }) as TraceSnapshotRecord
+    );
+    const snapshot = createTraceDatasetSnapshot({
+      identity: {
+        datasetId: `live:${FIXTURE_PROJECT}`,
+        projectId: FIXTURE_PROJECT,
+        source: "live",
+        watermarkSeq: records.length,
+        retentionEpoch: 0
+      },
+      records
+    });
+    const driver = detectSqliteDriver();
+    expect(driver.ok).toBe(true);
+    const source = {
+      datasetSnapshot: () => snapshot,
+      sqlDriver: () => (driver.ok ? driver.sql : undefined)
+    } as unknown as SqliteSource;
+    const state = initialViewState({ caps: sqlCaps({ available: true }) });
+    const { gap, value } = await maxTickGap(() =>
+      runCommandLine(state, ":sql SELECT count(*) AS n FROM events", { sql: sqlPortForSource(source) })
+    );
+    expect(value?.result).toMatchObject({ kind: "sql", result: { rows: [[15_000]] } });
+    // Sanitizing 15k rows in-process blocked the loop for well over a second.
+    expect(gap).toBeLessThan(250);
+  }, 20_000);
+
+  it("kosmo-tui sql reads the store inside the worker, under the deadline", async () => {
+    const file = copyStore();
+    const proc = fakeProc(["sql", "SELECT count(*) FROM events", "--source", file], {
+      stdoutTty: false,
+      cwd: tempDir()
+    });
+    const code = await run(proc, {
+      runSql: (invocation) => runSqlCommand(invocation, { runnerDeps: { deadlineMs: 1 } })
+    });
+    expect(code).toBe(EXIT_SOURCE);
+    expect(proc.out).toBe("");
+    expect(proc.err).toContain("sql-timeout");
+  });
+});
+
+describe("SQL output escaping parity (S-L1)", () => {
+  it("prints the runner's escaped bytes once: same JSON as the shared runner (MCP trace.sql), no raw CSI", async () => {
+    const file = copyStore();
+    const query = "SELECT char(155) || '[31m' AS v, char(127) AS d";
+    const result = await sql([query, "--source", file]);
+    expect(result.code).toBe(EXIT_OK);
+    expect(result.out).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
+    const printed = table(result.out);
+    expect(printed.rows).toEqual([["\\u009b[31m", "\\u007f"]]);
+    // trace.sql (MCP/CLI) returns exactly this runner envelope for the same store.
+    const direct = await runTraceSqlOverSqlite(file, { sql: query });
+    expect(JSON.stringify(printed)).toBe(JSON.stringify(direct));
+    expect(result.out).toBe(`${JSON.stringify(direct)}\n`);
+
+    // The :sql pane shows the escaped text once, not with doubled backslashes.
+    const source = createSqliteSource({ path: file });
+    await source.open(new AbortController().signal);
+    const state = initialViewState({ caps: sqlCaps({ available: true }) });
+    const outcome = await runCommandLine(state, `:sql ${query}`, { sql: sqlPortForSource(source) });
+    const lines = commandResultLines(outcome!.result);
+    expect(lines).toContain("  \\u009b[31m | \\u007f");
+    expect(lines.join("\n")).not.toMatch(/[\u007f-\u009f\u001b]/);
     await source.close();
   });
 });

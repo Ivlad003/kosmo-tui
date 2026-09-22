@@ -2,11 +2,14 @@
  * Thin SQL adapters (task 5b.2; trace-programmable-access "SQL над ізольованою read
  * model", design D12): `kosmo-tui sql "<query>"` and the TUI `:sql` command.
  *
- * Neither adapter implements SQL. Both hand one pinned `TraceDatasetSnapshot` to the
- * shared runner `runTraceSql` of `@kosmo-callflow/query/sql`, which owns validation,
- * the sanitized project-scoped read model, the 5 s child deadline and row/byte
- * truncation. kosmo-tui only chooses WHICH database to read and serializes the typed
- * table result.
+ * Neither adapter implements SQL. The shared runner of `@kosmo-callflow/query/sql` owns
+ * validation, the sanitized project-scoped read model, output escaping, the 5 s worker
+ * deadline and row/byte truncation, and does all heavy work in its killable worker:
+ *  - `kosmo-tui sql` passes only the database path and scope (`runTraceSqlOverSqlite`):
+ *    the read-only source read happens in the worker, under the deadline;
+ *  - `:sql` streams the viewer's pinned snapshot (`runTraceSql`) cooperatively, so the
+ *    render loop keeps ticking while the worker sanitizes and queries.
+ * kosmo-tui only chooses WHICH database to read and serializes the typed table result.
  *
  * Database choice never falls back:
  *  - `--source <path>` reads exactly that file, and only when it is a SQLite store;
@@ -18,20 +21,27 @@
  */
 
 import path from "node:path";
-import { runTraceSql, TraceSqlError, type TraceSqlResult, type TraceSqlRunnerDeps } from "@kosmo-callflow/query/sql";
+import {
+  runTraceSql,
+  runTraceSqlOverSqlite,
+  TraceSqlError,
+  type TraceSqlResult,
+  type TraceSqlRunnerDeps
+} from "@kosmo-callflow/query/sql";
+import { SqliteSourceError } from "@kosmo-callflow/query/sqlite";
 import type { TraceDatasetSnapshot } from "@kosmo-callflow/query/snapshot";
 import { EXIT_OK, EXIT_SOURCE, EXIT_USAGE, type Invocation, type SqlArgs } from "./cli.js";
 import { SourceError } from "./source-common.js";
-import { createSqliteSource, type SqliteSnapshotReader, type SqliteSource } from "./source-sqlite.js";
+import { sqliteSourceError, type SqliteSource } from "./source-sqlite.js";
 import { serializeResult } from "./serializers.js";
-import type { SqliteDriverSelection } from "./sqlite-driver.js";
+import { detectSqliteDriver, type SqliteDriverSelection } from "./sqlite-driver.js";
 
 export type SqlRunner = typeof runTraceSql;
+export type SqlFileRunner = typeof runTraceSqlOverSqlite;
 
 export type SqlCommandDeps = {
   driver?: SqliteDriverSelection;
-  read?: SqliteSnapshotReader;
-  run?: SqlRunner;
+  runFile?: SqlFileRunner;
   runnerDeps?: TraceSqlRunnerDeps;
 };
 
@@ -49,8 +59,9 @@ export function sqlFailure(error: unknown): Extract<SqlOutcome, { ok: false }> {
       exitCode: error.code === "sql-rejected" ? EXIT_USAGE : EXIT_SOURCE
     };
   }
-  if (error instanceof SourceError) {
-    return { ok: false, code: error.code, message: error.message.slice(0, 1_000), exitCode: EXIT_SOURCE };
+  if (error instanceof SourceError || error instanceof SqliteSourceError) {
+    const source = sqliteSourceError(error);
+    return { ok: false, code: source.code, message: source.message.slice(0, 1_000), exitCode: EXIT_SOURCE };
   }
   const message = error instanceof Error ? error.message : String(error);
   return { ok: false, code: "sql-error", message: message.slice(0, 1_000), exitCode: EXIT_SOURCE };
@@ -130,7 +141,11 @@ export function resolveSqlDatabase(invocation: Invocation<SqlArgs>): SqlDatabase
   };
 }
 
-/** `deps.runSql` default: the `kosmo-tui sql` subcommand. Stdout is written once, only on success. */
+/**
+ * `deps.runSql` default: the `kosmo-tui sql` subcommand. Only the path and scope go to
+ * the runner; the worker reads the file under the deadline. Stdout is written once, only
+ * on success.
+ */
 export async function runSqlCommand(invocation: Invocation<SqlArgs>, deps: SqlCommandDeps = {}): Promise<number> {
   const { args, proc } = invocation;
   const error = (text: string): void => {
@@ -141,25 +156,26 @@ export async function runSqlCommand(invocation: Invocation<SqlArgs>, deps: SqlCo
     error(database.message);
     return database.exitCode;
   }
-  const source = createSqliteSource({
-    path: database.path,
-    ...(database.projectId === undefined ? {} : { projectId: database.projectId }),
-    ...(args.trace === undefined ? {} : { traceId: args.trace }),
-    ...(deps.driver ? { driver: deps.driver } : {}),
-    ...(deps.read ? { read: deps.read } : {})
-  });
   let outcome: SqlOutcome;
-  try {
-    await source.open(invocation.signal);
-    outcome = await sqlPortForSource(source, {
-      ...(args.trace === undefined ? {} : { traceId: args.trace }),
-      ...(deps.run ? { run: deps.run } : {}),
-      ...(deps.runnerDeps ? { runnerDeps: deps.runnerDeps } : {})
-    })(args.query);
-  } catch (failure) {
-    outcome = sqlFailure(failure);
-  } finally {
-    await source.close();
+  const driver = deps.driver ?? detectSqliteDriver();
+  if (!driver.ok) {
+    outcome = sqlFailure(new SourceError("unavailable", driver.message));
+  } else {
+    try {
+      invocation.signal.throwIfAborted();
+      const result = await (deps.runFile ?? runTraceSqlOverSqlite)(
+        database.path,
+        {
+          sql: args.query,
+          ...(database.projectId === undefined ? {} : { projectId: database.projectId }),
+          ...(args.trace === undefined ? {} : { traceId: args.trace })
+        },
+        { resolveDriver: () => driver.sql, ...deps.runnerDeps }
+      );
+      outcome = { ok: true, result };
+    } catch (failure) {
+      outcome = sqlFailure(failure);
+    }
   }
   if (!outcome.ok) {
     error(
