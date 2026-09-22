@@ -1,0 +1,584 @@
+{
+  "formatVersion": 1,
+  "datasetId": "28230f486dfe8809fa0cb524fd7d725d:1-12",
+  "projectId": "cross-source",
+  "rootMode": "portable",
+  "completeness": {
+    "retentionEpoch": 1,
+    "earliestSeq": 1,
+    "gaps": []
+  },
+  "graph": {
+    "nodes": {
+      "http#POST /orders/o-1": {
+        "nodeId": "http#POST /orders/o-1",
+        "label": "POST /orders/o-1"
+      },
+      "express:middleware:jsonParser#1": {
+        "nodeId": "express:middleware:jsonParser#1",
+        "label": "1"
+      },
+      "express:handler:createOrder#2": {
+        "nodeId": "express:handler:createOrder#2",
+        "label": "2"
+      },
+      "lib/cart.cjs#checkout": {
+        "nodeId": "lib/cart.cjs#checkout",
+        "label": "checkout"
+      },
+      "lib/cart.cjs#priceOf": {
+        "nodeId": "lib/cart.cjs#priceOf",
+        "label": "priceOf"
+      }
+    },
+    "changes": []
+  },
+  "traces": [
+    {
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "projectId": "cross-source",
+      "sessionId": "cross-source-session",
+      "firstSeq": 1,
+      "lastSeq": 12,
+      "spans": {
+        "[\"local\",\"cross-source\",\"cross-source-session\",\"28230f486dfe8809fa0cb524fd7d725d\",\"c1ca29fd93cb07da\"]": {
+          "spanId": "c1ca29fd93cb07da",
+          "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+          "projectId": "cross-source",
+          "sessionId": "cross-source-session",
+          "nodeId": "http#POST /orders/o-1",
+          "parentSpanId": null,
+          "lifecycle": "completed",
+          "firstSeq": 1,
+          "lastSeq": 12,
+          "payload": {
+            "durationMs": 10.956916999999976,
+            "framework": {
+              "name": "express",
+              "role": "request",
+              "transport": "http",
+              "method": "POST",
+              "route": {
+                "$type": "redacted",
+                "reason": "absolute-path"
+              },
+              "completion": "finish",
+              "status": 200
+            }
+          },
+          "supplements": [],
+          "commits": []
+        },
+        "[\"local\",\"cross-source\",\"cross-source-session\",\"28230f486dfe8809fa0cb524fd7d725d\",\"db760e0a3de36535\"]": {
+          "spanId": "db760e0a3de36535",
+          "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+          "projectId": "cross-source",
+          "sessionId": "cross-source-session",
+          "nodeId": "express:middleware:jsonParser#1",
+          "parentSpanId": "c1ca29fd93cb07da",
+          "lifecycle": "completed",
+          "firstSeq": 2,
+          "lastSeq": 3,
+          "payload": {
+            "registrationAnchor": "app.cjs:10:5",
+            "framework": {
+              "name": "express",
+              "role": "step",
+              "handler": "jsonParser",
+              "completion": "completed"
+            },
+            "durationMs": 4.7781250000000455
+          },
+          "supplements": [],
+          "commits": []
+        },
+        "[\"local\",\"cross-source\",\"cross-source-session\",\"28230f486dfe8809fa0cb524fd7d725d\",\"10e500c60f6e5281\"]": {
+          "spanId": "10e500c60f6e5281",
+          "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+          "projectId": "cross-source",
+          "sessionId": "cross-source-session",
+          "nodeId": "express:handler:createOrder#2",
+          "parentSpanId": "c1ca29fd93cb07da",
+          "lifecycle": "completed",
+          "firstSeq": 4,
+          "lastSeq": 11,
+          "payload": {
+            "registrationAnchor": "app.cjs:11:5",
+            "framework": {
+              "name": "express",
+              "role": "step",
+              "route": {
+                "$type": "redacted",
+                "reason": "absolute-path"
+              },
+              "handler": "createOrder",
+              "completion": "finish",
+              "status": 200
+            },
+            "durationMs": 3.6992500000000064
+          },
+          "supplements": [],
+          "commits": []
+        },
+        "[\"local\",\"cross-source\",\"cross-source-session\",\"28230f486dfe8809fa0cb524fd7d725d\",\"0c3cea0993ce0873\"]": {
+          "spanId": "0c3cea0993ce0873",
+          "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+          "projectId": "cross-source",
+          "sessionId": "cross-source-session",
+          "nodeId": "lib/cart.cjs#checkout",
+          "parentSpanId": "10e500c60f6e5281",
+          "lifecycle": "completed",
+          "firstSeq": 5,
+          "lastSeq": 10,
+          "payload": {
+            "lexicalName": "checkout",
+            "filePath": "lib/cart.cjs",
+            "location": {
+              "line": 6,
+              "column": 0
+            },
+            "args": [
+              {
+                "orderId": "o-1",
+                "card": "ok",
+                "password": "[masked]",
+                "items": {
+                  "$type": "truncated-depth"
+                }
+              }
+            ],
+            "durationMs": 0.7879169999999931,
+            "ret": {
+              "orderId": "o-1",
+              "total": 54
+            }
+          },
+          "supplements": [],
+          "commits": []
+        },
+        "[\"local\",\"cross-source\",\"cross-source-session\",\"28230f486dfe8809fa0cb524fd7d725d\",\"e3e64352ff6f4258\"]": {
+          "spanId": "e3e64352ff6f4258",
+          "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+          "projectId": "cross-source",
+          "sessionId": "cross-source-session",
+          "nodeId": "lib/cart.cjs#priceOf",
+          "parentSpanId": "0c3cea0993ce0873",
+          "lifecycle": "completed",
+          "firstSeq": 6,
+          "lastSeq": 7,
+          "payload": {
+            "lexicalName": "priceOf",
+            "filePath": "lib/cart.cjs",
+            "location": {
+              "line": 2,
+              "column": 0
+            },
+            "args": [
+              "book",
+              2
+            ],
+            "durationMs": 0.14341699999999946,
+            "ret": 24
+          },
+          "supplements": [],
+          "commits": []
+        },
+        "[\"local\",\"cross-source\",\"cross-source-session\",\"28230f486dfe8809fa0cb524fd7d725d\",\"1d5d0bbcf1adeb19\"]": {
+          "spanId": "1d5d0bbcf1adeb19",
+          "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+          "projectId": "cross-source",
+          "sessionId": "cross-source-session",
+          "nodeId": "lib/cart.cjs#priceOf",
+          "parentSpanId": "0c3cea0993ce0873",
+          "lifecycle": "completed",
+          "firstSeq": 8,
+          "lastSeq": 9,
+          "payload": {
+            "lexicalName": "priceOf",
+            "filePath": "lib/cart.cjs",
+            "location": {
+              "line": 2,
+              "column": 0
+            },
+            "args": [
+              "pen",
+              1
+            ],
+            "durationMs": 0.07512499999995725,
+            "ret": 30
+          },
+          "supplements": [],
+          "commits": []
+        }
+      },
+      "errors": [],
+      "gaps": []
+    }
+  ],
+  "records": [
+    {
+      "v": 1,
+      "projectId": "cross-source",
+      "seq": 1,
+      "committedAtWall": 1790114614562,
+      "localSeq": 1,
+      "idempotencyKey": "cross-source-session:1",
+      "sessionId": "cross-source-session",
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "spanId": "c1ca29fd93cb07da",
+      "parentSpanId": null,
+      "type": "enter",
+      "nodeId": "http#POST /orders/o-1",
+      "kind": "http",
+      "runtime": "node",
+      "serviceName": "orders",
+      "ts": 809.142334,
+      "level": "shallow",
+      "payload": {},
+      "flags": {},
+      "lifecycle": "started"
+    },
+    {
+      "v": 1,
+      "projectId": "cross-source",
+      "seq": 2,
+      "committedAtWall": 1790114614562,
+      "localSeq": 2,
+      "idempotencyKey": "cross-source-session:2",
+      "sessionId": "cross-source-session",
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "spanId": "db760e0a3de36535",
+      "parentSpanId": "c1ca29fd93cb07da",
+      "type": "enter",
+      "nodeId": "express:middleware:jsonParser#1",
+      "kind": "middleware",
+      "runtime": "node",
+      "serviceName": "orders",
+      "ts": 810.770167,
+      "level": "shallow",
+      "payload": {
+        "registrationAnchor": "app.cjs:10:5",
+        "framework": {
+          "name": "express",
+          "role": "step",
+          "handler": "jsonParser"
+        }
+      },
+      "flags": {},
+      "lifecycle": "started"
+    },
+    {
+      "v": 1,
+      "projectId": "cross-source",
+      "seq": 3,
+      "committedAtWall": 1790114614579,
+      "localSeq": 3,
+      "idempotencyKey": "cross-source-session:3",
+      "sessionId": "cross-source-session",
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "spanId": "db760e0a3de36535",
+      "parentSpanId": "c1ca29fd93cb07da",
+      "type": "exit",
+      "nodeId": "express:middleware:jsonParser#1",
+      "kind": "middleware",
+      "runtime": "node",
+      "serviceName": "orders",
+      "ts": 815.533959,
+      "level": "shallow",
+      "payload": {
+        "durationMs": 4.7781250000000455,
+        "framework": {
+          "name": "express",
+          "role": "step",
+          "handler": "jsonParser",
+          "completion": "completed"
+        }
+      },
+      "flags": {},
+      "lifecycle": "completed"
+    },
+    {
+      "v": 1,
+      "projectId": "cross-source",
+      "seq": 4,
+      "committedAtWall": 1790114614579,
+      "localSeq": 4,
+      "idempotencyKey": "cross-source-session:4",
+      "sessionId": "cross-source-session",
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "spanId": "10e500c60f6e5281",
+      "parentSpanId": "c1ca29fd93cb07da",
+      "type": "enter",
+      "nodeId": "express:handler:createOrder#2",
+      "kind": "handler",
+      "runtime": "node",
+      "serviceName": "orders",
+      "ts": 816.094625,
+      "level": "shallow",
+      "payload": {
+        "registrationAnchor": "app.cjs:11:5",
+        "framework": {
+          "name": "express",
+          "role": "step",
+          "route": {
+            "$type": "redacted",
+            "reason": "absolute-path"
+          },
+          "handler": "createOrder"
+        }
+      },
+      "flags": {},
+      "lifecycle": "started"
+    },
+    {
+      "v": 1,
+      "projectId": "cross-source",
+      "seq": 5,
+      "committedAtWall": 1790114614579,
+      "localSeq": 5,
+      "idempotencyKey": "cross-source-session:5",
+      "sessionId": "cross-source-session",
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "spanId": "0c3cea0993ce0873",
+      "parentSpanId": "10e500c60f6e5281",
+      "type": "enter",
+      "nodeId": "lib/cart.cjs#checkout",
+      "kind": "function",
+      "runtime": "node",
+      "serviceName": "orders",
+      "ts": 816.531625,
+      "level": "shallow",
+      "payload": {
+        "lexicalName": "checkout",
+        "filePath": "lib/cart.cjs",
+        "location": {
+          "line": 6,
+          "column": 0
+        },
+        "args": [
+          {
+            "orderId": "o-1",
+            "card": "ok",
+            "password": "[masked]",
+            "items": {
+              "$type": "truncated-depth"
+            }
+          }
+        ]
+      },
+      "flags": {
+        "truncated": true
+      }
+    },
+    {
+      "v": 1,
+      "projectId": "cross-source",
+      "seq": 6,
+      "committedAtWall": 1790114614579,
+      "localSeq": 6,
+      "idempotencyKey": "cross-source-session:6",
+      "sessionId": "cross-source-session",
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "spanId": "e3e64352ff6f4258",
+      "parentSpanId": "0c3cea0993ce0873",
+      "type": "enter",
+      "nodeId": "lib/cart.cjs#priceOf",
+      "kind": "function",
+      "runtime": "node",
+      "serviceName": "orders",
+      "ts": 816.666417,
+      "level": "shallow",
+      "payload": {
+        "lexicalName": "priceOf",
+        "filePath": "lib/cart.cjs",
+        "location": {
+          "line": 2,
+          "column": 0
+        },
+        "args": [
+          "book",
+          2
+        ]
+      },
+      "flags": {}
+    },
+    {
+      "v": 1,
+      "projectId": "cross-source",
+      "seq": 7,
+      "committedAtWall": 1790114614579,
+      "localSeq": 7,
+      "idempotencyKey": "cross-source-session:7",
+      "sessionId": "cross-source-session",
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "spanId": "e3e64352ff6f4258",
+      "parentSpanId": "0c3cea0993ce0873",
+      "type": "exit",
+      "nodeId": "lib/cart.cjs#priceOf",
+      "kind": "function",
+      "runtime": "node",
+      "serviceName": "orders",
+      "ts": 816.78525,
+      "level": "shallow",
+      "payload": {
+        "durationMs": 0.14341699999999946,
+        "ret": 24
+      },
+      "flags": {}
+    },
+    {
+      "v": 1,
+      "projectId": "cross-source",
+      "seq": 8,
+      "committedAtWall": 1790114614579,
+      "localSeq": 8,
+      "idempotencyKey": "cross-source-session:8",
+      "sessionId": "cross-source-session",
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "spanId": "1d5d0bbcf1adeb19",
+      "parentSpanId": "0c3cea0993ce0873",
+      "type": "enter",
+      "nodeId": "lib/cart.cjs#priceOf",
+      "kind": "function",
+      "runtime": "node",
+      "serviceName": "orders",
+      "ts": 816.911334,
+      "level": "shallow",
+      "payload": {
+        "lexicalName": "priceOf",
+        "filePath": "lib/cart.cjs",
+        "location": {
+          "line": 2,
+          "column": 0
+        },
+        "args": [
+          "pen",
+          1
+        ]
+      },
+      "flags": {}
+    },
+    {
+      "v": 1,
+      "projectId": "cross-source",
+      "seq": 9,
+      "committedAtWall": 1790114614579,
+      "localSeq": 9,
+      "idempotencyKey": "cross-source-session:9",
+      "sessionId": "cross-source-session",
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "spanId": "1d5d0bbcf1adeb19",
+      "parentSpanId": "0c3cea0993ce0873",
+      "type": "exit",
+      "nodeId": "lib/cart.cjs#priceOf",
+      "kind": "function",
+      "runtime": "node",
+      "serviceName": "orders",
+      "ts": 816.954834,
+      "level": "shallow",
+      "payload": {
+        "durationMs": 0.07512499999995725,
+        "ret": 30
+      },
+      "flags": {}
+    },
+    {
+      "v": 1,
+      "projectId": "cross-source",
+      "seq": 10,
+      "committedAtWall": 1790114614579,
+      "localSeq": 10,
+      "idempotencyKey": "cross-source-session:10",
+      "sessionId": "cross-source-session",
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "spanId": "0c3cea0993ce0873",
+      "parentSpanId": "10e500c60f6e5281",
+      "type": "exit",
+      "nodeId": "lib/cart.cjs#checkout",
+      "kind": "function",
+      "runtime": "node",
+      "serviceName": "orders",
+      "ts": 817.108042,
+      "level": "shallow",
+      "payload": {
+        "durationMs": 0.7879169999999931,
+        "ret": {
+          "orderId": "o-1",
+          "total": 54
+        }
+      },
+      "flags": {}
+    },
+    {
+      "v": 1,
+      "projectId": "cross-source",
+      "seq": 11,
+      "committedAtWall": 1790114614579,
+      "localSeq": 11,
+      "idempotencyKey": "cross-source-session:11",
+      "sessionId": "cross-source-session",
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "spanId": "10e500c60f6e5281",
+      "parentSpanId": "c1ca29fd93cb07da",
+      "type": "exit",
+      "nodeId": "express:handler:createOrder#2",
+      "kind": "handler",
+      "runtime": "node",
+      "serviceName": "orders",
+      "ts": 819.562875,
+      "level": "shallow",
+      "payload": {
+        "durationMs": 3.6992500000000064,
+        "framework": {
+          "name": "express",
+          "role": "step",
+          "route": {
+            "$type": "redacted",
+            "reason": "absolute-path"
+          },
+          "handler": "createOrder",
+          "completion": "finish",
+          "status": 200
+        }
+      },
+      "flags": {},
+      "lifecycle": "completed"
+    },
+    {
+      "v": 1,
+      "projectId": "cross-source",
+      "seq": 12,
+      "committedAtWall": 1790114614579,
+      "localSeq": 12,
+      "idempotencyKey": "cross-source-session:12",
+      "sessionId": "cross-source-session",
+      "traceId": "28230f486dfe8809fa0cb524fd7d725d",
+      "spanId": "c1ca29fd93cb07da",
+      "parentSpanId": null,
+      "type": "exit",
+      "nodeId": "http#POST /orders/o-1",
+      "kind": "http",
+      "runtime": "node",
+      "serviceName": "orders",
+      "ts": 819.829084,
+      "level": "shallow",
+      "payload": {
+        "durationMs": 10.956916999999976,
+        "framework": {
+          "name": "express",
+          "role": "request",
+          "transport": "http",
+          "method": "POST",
+          "route": {
+            "$type": "redacted",
+            "reason": "absolute-path"
+          },
+          "completion": "finish",
+          "status": 200
+        }
+      },
+      "flags": {},
+      "lifecycle": "completed"
+    }
+  ]
+}

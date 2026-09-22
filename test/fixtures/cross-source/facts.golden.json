@@ -1,0 +1,480 @@
+{
+  "t0": [
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t0",
+      "spanId": "t0.s0",
+      "parent": {
+        "state": "root"
+      },
+      "spanKind": "http",
+      "nodeId": "http#POST /orders/o-1",
+      "lifecycle": "complete",
+      "error": {
+        "state": "not-recorded",
+        "reason": "no-error-event"
+      },
+      "framework": {
+        "state": "recorded",
+        "value": {
+          "name": "express",
+          "role": "request",
+          "transport": "http",
+          "completion": "finish",
+          "route": "/orders/:orderId",
+          "method": "POST",
+          "status": 200
+        },
+        "maskedFields": []
+      },
+      "args": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      },
+      "ret": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      }
+    },
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t0",
+      "spanId": "t0.s1",
+      "parent": {
+        "state": "known",
+        "relation": "same-session",
+        "spanId": "t0.s0"
+      },
+      "spanKind": "handler",
+      "nodeId": "express:handler:createOrder#2",
+      "lifecycle": "complete",
+      "error": {
+        "state": "not-recorded",
+        "reason": "no-error-event"
+      },
+      "framework": {
+        "state": "recorded",
+        "value": {
+          "name": "express",
+          "role": "step",
+          "completion": "finish",
+          "route": "/orders/:orderId",
+          "status": 200,
+          "handler": "createOrder"
+        },
+        "maskedFields": []
+      },
+      "args": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      },
+      "ret": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      }
+    },
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t0",
+      "spanId": "t0.s2",
+      "parent": {
+        "state": "known",
+        "relation": "same-session",
+        "spanId": "t0.s0"
+      },
+      "spanKind": "middleware",
+      "nodeId": "express:middleware:jsonParser#1",
+      "lifecycle": "complete",
+      "error": {
+        "state": "not-recorded",
+        "reason": "no-error-event"
+      },
+      "framework": {
+        "state": "recorded",
+        "value": {
+          "name": "express",
+          "role": "step",
+          "completion": "completed",
+          "handler": "jsonParser"
+        },
+        "maskedFields": []
+      },
+      "args": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      },
+      "ret": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      }
+    },
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t0",
+      "spanId": "t0.s3",
+      "parent": {
+        "state": "known",
+        "relation": "same-session",
+        "spanId": "t0.s1"
+      },
+      "spanKind": "function",
+      "nodeId": "lib/cart.cjs#checkout",
+      "lifecycle": "complete",
+      "error": {
+        "state": "not-recorded",
+        "reason": "no-error-event"
+      },
+      "framework": {
+        "state": "not-recorded",
+        "reason": "no-framework-metadata"
+      },
+      "args": {
+        "state": "truncated",
+        "value": [
+          {
+            "orderId": "o-1",
+            "card": "ok",
+            "password": "[masked]",
+            "items": {
+              "$type": "truncated-depth"
+            }
+          }
+        ],
+        "partiallyMasked": true
+      },
+      "ret": {
+        "state": "recorded",
+        "value": {
+          "orderId": "o-1",
+          "total": 54
+        }
+      }
+    },
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t0",
+      "spanId": "t0.s4",
+      "parent": {
+        "state": "known",
+        "relation": "same-session",
+        "spanId": "t0.s3"
+      },
+      "spanKind": "function",
+      "nodeId": "lib/cart.cjs#priceOf",
+      "lifecycle": "complete",
+      "error": {
+        "state": "not-recorded",
+        "reason": "no-error-event"
+      },
+      "framework": {
+        "state": "not-recorded",
+        "reason": "no-framework-metadata"
+      },
+      "args": {
+        "state": "recorded",
+        "value": [
+          "book",
+          2
+        ]
+      },
+      "ret": {
+        "state": "recorded",
+        "value": 24
+      }
+    },
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t0",
+      "spanId": "t0.s5",
+      "parent": {
+        "state": "known",
+        "relation": "same-session",
+        "spanId": "t0.s3"
+      },
+      "spanKind": "function",
+      "nodeId": "lib/cart.cjs#priceOf",
+      "lifecycle": "complete",
+      "error": {
+        "state": "not-recorded",
+        "reason": "no-error-event"
+      },
+      "framework": {
+        "state": "not-recorded",
+        "reason": "no-framework-metadata"
+      },
+      "args": {
+        "state": "recorded",
+        "value": [
+          "pen",
+          1
+        ]
+      },
+      "ret": {
+        "state": "recorded",
+        "value": 30
+      }
+    }
+  ],
+  "t1": [
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t1",
+      "spanId": "t1.s0",
+      "parent": {
+        "state": "root"
+      },
+      "spanKind": "http",
+      "nodeId": "http#POST /orders/o-2",
+      "lifecycle": "complete",
+      "error": {
+        "state": "not-recorded",
+        "reason": "no-error-event"
+      },
+      "framework": {
+        "state": "recorded",
+        "value": {
+          "name": "express",
+          "role": "request",
+          "transport": "http",
+          "completion": "finish",
+          "route": "/orders/:orderId",
+          "method": "POST",
+          "status": 402
+        },
+        "maskedFields": []
+      },
+      "args": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      },
+      "ret": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      }
+    },
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t1",
+      "spanId": "t1.s1",
+      "parent": {
+        "state": "known",
+        "relation": "same-session",
+        "spanId": "t1.s0"
+      },
+      "spanKind": "filter",
+      "nodeId": "express:filter:orderError#3",
+      "lifecycle": "complete",
+      "error": {
+        "state": "not-recorded",
+        "reason": "no-error-event"
+      },
+      "framework": {
+        "state": "recorded",
+        "value": {
+          "name": "express",
+          "role": "step",
+          "completion": "finish",
+          "status": 402,
+          "handler": "orderError"
+        },
+        "maskedFields": []
+      },
+      "args": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      },
+      "ret": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      }
+    },
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t1",
+      "spanId": "t1.s2",
+      "parent": {
+        "state": "known",
+        "relation": "same-session",
+        "spanId": "t1.s0"
+      },
+      "spanKind": "handler",
+      "nodeId": "express:handler:createOrder#2",
+      "lifecycle": "errored",
+      "error": {
+        "state": "recorded",
+        "value": {
+          "$type": "error",
+          "name": "Error",
+          "message": "card declined for order o-2",
+          "stack": {
+            "$type": "accessor"
+          }
+        }
+      },
+      "framework": {
+        "state": "recorded",
+        "value": {
+          "name": "express",
+          "role": "step",
+          "completion": "completed",
+          "route": "/orders/:orderId",
+          "handler": "createOrder"
+        },
+        "maskedFields": []
+      },
+      "args": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      },
+      "ret": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      }
+    },
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t1",
+      "spanId": "t1.s3",
+      "parent": {
+        "state": "known",
+        "relation": "same-session",
+        "spanId": "t1.s0"
+      },
+      "spanKind": "middleware",
+      "nodeId": "express:middleware:jsonParser#1",
+      "lifecycle": "complete",
+      "error": {
+        "state": "not-recorded",
+        "reason": "no-error-event"
+      },
+      "framework": {
+        "state": "recorded",
+        "value": {
+          "name": "express",
+          "role": "step",
+          "completion": "completed",
+          "handler": "jsonParser"
+        },
+        "maskedFields": []
+      },
+      "args": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      },
+      "ret": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      }
+    },
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t1",
+      "spanId": "t1.s4",
+      "parent": {
+        "state": "known",
+        "relation": "same-session",
+        "spanId": "t1.s2"
+      },
+      "spanKind": "function",
+      "nodeId": "lib/cart.cjs#checkout",
+      "lifecycle": "errored",
+      "error": {
+        "state": "recorded",
+        "value": {
+          "$type": "error",
+          "name": "Error",
+          "message": "card declined for order o-2",
+          "stack": {
+            "$type": "accessor"
+          }
+        }
+      },
+      "framework": {
+        "state": "not-recorded",
+        "reason": "no-framework-metadata"
+      },
+      "args": {
+        "state": "truncated",
+        "value": [
+          {
+            "orderId": "o-2",
+            "card": "declined",
+            "password": "[masked]",
+            "items": {
+              "$type": "truncated-depth"
+            }
+          }
+        ],
+        "partiallyMasked": true
+      },
+      "ret": {
+        "state": "not-recorded",
+        "reason": "not-captured"
+      }
+    },
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t1",
+      "spanId": "t1.s5",
+      "parent": {
+        "state": "known",
+        "relation": "same-session",
+        "spanId": "t1.s4"
+      },
+      "spanKind": "function",
+      "nodeId": "lib/cart.cjs#priceOf",
+      "lifecycle": "complete",
+      "error": {
+        "state": "not-recorded",
+        "reason": "no-error-event"
+      },
+      "framework": {
+        "state": "not-recorded",
+        "reason": "no-framework-metadata"
+      },
+      "args": {
+        "state": "recorded",
+        "value": [
+          "book",
+          2
+        ]
+      },
+      "ret": {
+        "state": "recorded",
+        "value": 24
+      }
+    },
+    {
+      "sessionId": "cross-source-session",
+      "traceId": "t1",
+      "spanId": "t1.s6",
+      "parent": {
+        "state": "known",
+        "relation": "same-session",
+        "spanId": "t1.s4"
+      },
+      "spanKind": "function",
+      "nodeId": "lib/cart.cjs#priceOf",
+      "lifecycle": "complete",
+      "error": {
+        "state": "not-recorded",
+        "reason": "no-error-event"
+      },
+      "framework": {
+        "state": "not-recorded",
+        "reason": "no-framework-metadata"
+      },
+      "args": {
+        "state": "recorded",
+        "value": [
+          "pen",
+          1
+        ]
+      },
+      "ret": {
+        "state": "recorded",
+        "value": 30
+      }
+    }
+  ]
+}
