@@ -24,6 +24,8 @@ import {
   type ResolvedTarget
 } from "./detect.js";
 import { runEvalCommand } from "./eval.js";
+import { openViewerSession } from "./open-viewer.js";
+import { runPrintCommand } from "./print.js";
 import { runSqlCommand } from "./sql.js";
 import { controllingTerminalAvailable } from "./terminal-input.js";
 
@@ -440,7 +442,7 @@ export type Invocation<A> = {
   signal: AbortSignal;
 };
 
-/** Handlers return an exit code. Later waves provide real implementations. */
+/** Handlers return an exit code; the defaults are the real adapters (open-viewer.ts, print.ts, sql.ts, eval.ts). */
 export type RunDeps = {
   fs?: DetectFs;
   homedir?: () => string;
@@ -502,13 +504,6 @@ function defaultReadVersion(): string {
   } catch {
     return "0.0.0";
   }
-}
-
-function notImplemented(what: string) {
-  return async (invocation: Invocation<unknown>): Promise<number> => {
-    invocation.proc.stderr.write(`kosmo-tui: ${what} is not available in this build yet\n`);
-    return EXIT_SOURCE;
-  };
 }
 
 function isLive(target: ResolvedTarget): boolean {
@@ -598,8 +593,8 @@ export async function run(proc: Proc, deps: RunDeps = {}): Promise<number> {
     if (args.command === "viewer") {
       const invocation: Invocation<ViewerArgs> = { args, target, project, proc, signal: controller.signal };
       code = args.print
-        ? await (deps.runPrint ?? notImplemented("--print"))(invocation)
-        : await (deps.openViewer ?? notImplemented("the interactive viewer"))(invocation);
+        ? await (deps.runPrint ?? runPrintCommand)(invocation)
+        : await (deps.openViewer ?? openViewerSession)(invocation);
     } else if (args.command === "sql") {
       code = await (deps.runSql ?? runSqlCommand)({ args, target, project, proc, signal: controller.signal });
     } else {

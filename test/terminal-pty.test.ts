@@ -11,12 +11,16 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { portableExport } from "./source-fixtures.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.join(here, "fixtures", "pty-viewer.mjs");
+const bin = path.join(here, "..", "bin", "kosmo-tui.js");
 const distReady = existsSync(path.join(here, "..", "dist", "terminal-session.js"));
 const scriptAvailable =
   (process.platform === "darwin" || process.platform === "linux") && existsSync("/usr/bin/script");
@@ -159,6 +163,66 @@ ptyDescribe("real PTY", () => {
       s.child.kill("SIGKILL");
     }
   }, 20_000);
+});
+
+ptyDescribe("real bin in a PTY (precursor of gate 8.1)", () => {
+  it("export without daemon: open, j/k, Enter detail, f writes a finding, q exits 0 and the terminal is restored", async () => {
+    const project = await mkdtemp(path.join(os.tmpdir(), "kosmo-tui-pty-"));
+    try {
+      await mkdir(path.join(project, ".kosmo-callflow"), { recursive: true });
+      await writeFile(path.join(project, ".kosmo-callflow", "project.json"), JSON.stringify({ projectId: "p" }));
+      const exported = JSON.stringify(portableExport());
+      await writeFile(path.join(project, "trace.json"), exported);
+      const command =
+        `cd ${shellQuote(project)} && ${shellQuote(process.execPath)} ${shellQuote(bin)} ./trace.json; ` +
+        `echo EXIT=$?; echo STTY_AFTER_CLOSE=$(stty -a | tr '\\n' ' ')`;
+      const s = startSession(command);
+      try {
+        await s.waitFor(/src\/cart\.ts#checkout/);
+        s.child.stdin.write("j");
+        await s.waitFor(/> \+ src\/cart\.ts#checkout/);
+        s.child.stdin.write("k");
+        s.child.stdin.write("\r");
+        await s.waitFor(/detail: src\/cart\.ts#checkout/);
+        s.child.stdin.write("f");
+        await s.waitFor(/:finding _/);
+        s.child.stdin.write("card declined upstream");
+        await s.waitFor(/:finding card declined upstream_/);
+        s.child.stdin.write("\r");
+        await s.waitFor(/finding saved: /);
+        s.child.stdin.write("q");
+        await s.waitFor(/EXIT=0/);
+        await s.waitFor(/STTY_AFTER_CLOSE=/);
+        s.child.stdin.end();
+        await s.exited;
+
+        const out = s.output();
+        expect(count(out, ENTER)).toBe(1);
+        expect(count(out, RESTORE)).toBe(1);
+        expect(out.indexOf(RESTORE)).toBeLessThan(out.indexOf("EXIT=0"));
+        const stty = sttyAfterClose(out);
+        expect(stty).toMatch(/(^|\s)icanon\b/);
+        expect(stty).toMatch(/(^|\s)echo\b/);
+        expect(stty).not.toMatch(/-icanon\b/);
+
+        const reviews = path.join(project, ".kosmo-callflow", "reviews");
+        const files = (await readdir(reviews)).filter((name) => name.endsWith(".md"));
+        expect(files).toHaveLength(1);
+        const review = await readFile(path.join(reviews, files[0]!), "utf8");
+        expect(review).toContain("card declined upstream");
+        expect(review).toContain('"spanId":"sp-1"');
+        expect(review).toContain("kosmo-trace-text");
+        expect(review).toContain(":projection-version 2");
+        // The source file was only read.
+        expect(await readFile(path.join(project, "trace.json"), "utf8")).toBe(exported);
+      } finally {
+        s.child.stdin.destroy();
+        s.child.kill("SIGKILL");
+      }
+    } finally {
+      await rm(project, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
 
 (distReady && process.platform !== "win32" ? describe : describe.skip)("no controlling terminal", () => {
