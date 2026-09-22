@@ -17,8 +17,18 @@
 
 import type { TraceTextDocumentV1 } from "@kosmo-callflow/protocol";
 import { replaySpanKey, replayTraceKey, type ReplaySpanRef, type ReplayTraceRef } from "@kosmo-callflow/replay";
-import { isBookmarked, resolveBookmarks, toggleBookmark, type Bookmark } from "./bookmarks.js";
+import { isBookmarked, toggleBookmark, type Bookmark } from "./bookmarks.js";
 import { checkCommand, type Capabilities, type Command } from "./capabilities.js";
+import {
+  backspace,
+  clearLine,
+  insertText,
+  openCommandLine,
+  pushHistory,
+  stepHistory,
+  type CommandLineInput
+} from "./command-line.js";
+import type { CommandResult, DepthLevel } from "./commands.js";
 import { stepIndex, type ReplaySchedule, type ReplayTimeline } from "./replay.js";
 
 /** Full identity of one trace: `(datasetId, projectId, sessionId, traceId)`. */
@@ -207,6 +217,14 @@ export type ViewState = {
   bookmarkList: { index: number } | null;
   stackOpen: boolean;
   scope: LoadedScope | null;
+  /** The `:` prompt while open; null when closed. */
+  commandLine: CommandLineInput | null;
+  /** Submitted `:` lines, oldest first; bounded by COMMAND_HISTORY_CAP. */
+  commandHistory: string[];
+  /** Typed result of the last query command, shown in the result pane; esc closes it. */
+  commandResult: CommandResult | null;
+  /** `:depth` level for the shared canonical depth projection; null is the default view. */
+  depth: DepthLevel | null;
 };
 
 export type Delta =
@@ -241,7 +259,13 @@ export type Action =
   | { kind: "clearSelection" }
   | { kind: "replayStep"; delta: number }
   | { kind: "returnToLive" }
-  | { kind: "setFilter"; nodeId?: string | null; spanKind?: string | null }
+  | {
+      kind: "setFilter";
+      nodeId?: string | null;
+      spanKind?: string | null;
+      errorsOnly?: boolean;
+      search?: string | null;
+    }
   | { kind: "bookmark" }
   | { kind: "openBookmarks" }
   | { kind: "bookmarkMove"; delta: number }
@@ -249,6 +273,18 @@ export type Action =
   | { kind: "bookmarkClose" }
   | { kind: "toggleStack" }
   | { kind: "command"; command: ReservedCommand }
+  // The `:` command line (commands.ts runs the submitted line).
+  | { kind: "commandInput"; text: string }
+  | { kind: "commandBackspace" }
+  | { kind: "commandClearLine" }
+  | { kind: "commandHistory"; delta: number }
+  | { kind: "commandCancel" }
+  | { kind: "commandSubmit" }
+  | { kind: "commandResult"; result: CommandResult }
+  | { kind: "closeCommandResult" }
+  | { kind: "replaySeek"; seq: number }
+  | { kind: "setDepth"; level: DepthLevel }
+  | { kind: "selectRef"; ref: SpanRef }
   | { kind: "quit" };
 
 export const defaultBacklogCap = 1_000;
@@ -284,6 +320,10 @@ export function initialViewState(overrides: Partial<ViewState> = {}): ViewState 
     bookmarkList: null,
     stackOpen: false,
     scope: null,
+    commandLine: null,
+    commandHistory: [],
+    commandResult: null,
+    depth: null,
     ...overrides
   };
 }
@@ -475,6 +515,10 @@ function commandOf(action: Action): Command | null {
       return "bookmarkList";
     case "toggleStack":
       return "stack";
+    case "replaySeek":
+      return "seek";
+    case "setDepth":
+      return "depth";
     case "command":
       return action.command;
     default:
@@ -554,7 +598,9 @@ export function applyAction(current: ViewState, action: Action): ViewState {
         filters: {
           ...draft.filters,
           ...(action.nodeId !== undefined ? { nodeId: action.nodeId || null } : {}),
-          ...(action.spanKind !== undefined ? { spanKind: action.spanKind || null } : {})
+          ...(action.spanKind !== undefined ? { spanKind: action.spanKind || null } : {}),
+          ...(action.errorsOnly !== undefined ? { errorsOnly: action.errorsOnly } : {}),
+          ...(action.search !== undefined ? { search: action.search || null } : {})
         }
       }));
     case "bookmark":
@@ -577,9 +623,45 @@ export function applyAction(current: ViewState, action: Action): ViewState {
     case "toggleStack":
       return { ...state, stackOpen: !state.stackOpen };
     case "command":
+      if (action.command === "commandLine") return { ...state, commandLine: openCommandLine() };
       // Capability passed; the action itself lands in a later wave. Say so visibly.
       return { ...state, notice: `${action.command}: not available in this build yet` };
+    case "commandInput":
+      return state.commandLine === null ? state : { ...state, commandLine: insertText(state.commandLine, action.text) };
+    case "commandBackspace":
+      return state.commandLine === null ? state : { ...state, commandLine: backspace(state.commandLine) };
+    case "commandClearLine":
+      return state.commandLine === null ? state : { ...state, commandLine: clearLine(state.commandLine) };
+    case "commandHistory":
+      return state.commandLine === null
+        ? state
+        : { ...state, commandLine: stepHistory(state.commandLine, state.commandHistory, action.delta) };
+    case "commandCancel":
+      return state.commandLine === null ? state : { ...state, commandLine: null };
+    case "commandSubmit":
+      // Closes the prompt and records the line; the caller runs it (commands.ts).
+      return state.commandLine === null
+        ? state
+        : { ...state, commandLine: null, commandHistory: pushHistory(state.commandHistory, state.commandLine.text) };
+    case "commandResult":
+      // Receipts and refusals are one-line notices; typed query results get the pane.
+      return action.result.kind === "receipt" ||
+        action.result.kind === "unavailable" ||
+        action.result.kind === "error" ||
+        action.result.kind === "deadline-exceeded"
+        ? { ...state, notice: action.result.notice }
+        : { ...state, commandResult: action.result };
+    case "closeCommandResult":
+      return { ...state, commandResult: null };
+    case "replaySeek":
+      return replaySeek(state, action.seq);
+    case "setDepth":
+      return { ...state, depth: action.level };
+    case "selectRef":
+      return selectByRef(state, action.ref);
     case "clearSelection":
+      // An open result pane is closed first, so esc never drops a selection behind it.
+      if (state.commandResult !== null) return { ...state, commandResult: null };
       return { ...state, selection: null, selectionAbsence: null, lastKnownSpan: null };
     case "replayStep":
       return replayStep(state, action.delta);
@@ -614,6 +696,33 @@ function replayStep(state: ViewState, delta: number): ViewState {
   });
 }
 
+/**
+ * Index of the last frame at or before `seq` — `seq` is a cutoff on recorded frames, not
+ * a frame index. -1 when every frame is later than `seq` (or there are none).
+ */
+export function replaySeekIndex(timeline: ReplayTimeline, seq: number): number {
+  let found = -1;
+  timeline.frames.forEach((frame, index) => {
+    if (frame.seq <= seq) found = index;
+  });
+  return found;
+}
+
+/** `:seq N`: show the recorded state at cutoff N. Never leaves replay, never goes live. */
+function replaySeek(state: ViewState, seq: number): ViewState {
+  const session = state.replay;
+  if (session === null) return { ...state, notice: "seq: no replay session (open with --replay)" };
+  const index = replaySeekIndex(session.timeline, seq);
+  if (index === -1) return { ...state, notice: `seq ${seq}: precedes the first recorded frame` };
+  const frame = session.timeline.frames[index]!;
+  return resolveSelection({
+    ...state,
+    replay: { ...session, index },
+    traces: frame.state.traces,
+    spans: frame.state.spans
+  });
+}
+
 /** `m`: mark or unmark the selection, including a pinned one that is off screen. */
 function markSelection(state: ViewState): ViewState {
   if (!state.selection) return { ...state, notice: "bookmark: nothing selected" };
@@ -636,13 +745,19 @@ function jumpToBookmark(state: ViewState): ViewState {
   const bookmark = state.bookmarks[state.bookmarkList.index];
   const closed: ViewState = { ...state, bookmarkList: null };
   if (!bookmark) return closed;
-  const [resolved] = resolveBookmarks([bookmark], state.spans, state.traces);
-  if (resolved!.state === "loaded") {
-    const expanded = withAncestorsExpanded(closed, resolved!.row);
-    return resolveSelection(select(expanded, resolved!.row));
-  }
-  const last = state.lastKnownSpan && sameSpan(state.lastKnownSpan, bookmark.ref) ? state.lastKnownSpan : null;
-  return resolveSelection({ ...closed, selection: spanRefOf(bookmark.ref), lastKnownSpan: last });
+  return selectByRef(closed, bookmark.ref);
+}
+
+/**
+ * Select by full ref: a loaded span is selected with its ancestors expanded; one that is
+ * not loaded becomes a pinned selection with its placeholder reason. Never a neighbour.
+ */
+function selectByRef(state: ViewState, ref: SpanRef): ViewState {
+  const key = spanKey(ref);
+  const row = state.spans.find((candidate) => spanKey(candidate) === key);
+  if (row) return resolveSelection(select(withAncestorsExpanded(state, row), row));
+  const last = state.lastKnownSpan && sameSpan(state.lastKnownSpan, ref) ? state.lastKnownSpan : null;
+  return resolveSelection({ ...state, selection: spanRefOf(ref), lastKnownSpan: last });
 }
 
 function withAncestorsExpanded(state: ViewState, row: SpanRow): ViewState {

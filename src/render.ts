@@ -13,6 +13,7 @@ import {
   emptyMessage,
   fit,
   renderBookmarkList,
+  renderCommandResultPane,
   renderDetailPane,
   renderFooter,
   renderHeader,
@@ -59,7 +60,11 @@ function renderBody(state: ViewState, width: number, height: number): Frame {
   // The stack pane is opt-in (`s`) and takes at most a third of what is left.
   const stackBudget = state.stackOpen ? Math.min(DETAIL_PANE_HEIGHT, Math.floor(afterDetail / 3)) : 0;
   const stackLines = stackBudget === 0 ? [] : renderStackPane(state, width, stackBudget);
-  const remaining = Math.max(1, afterDetail - stackLines.length);
+  const afterStack = Math.max(1, afterDetail - stackLines.length);
+  // The `:` result pane appears only while a query result is shown.
+  const resultBudget = state.commandResult === null ? 0 : Math.min(DETAIL_PANE_HEIGHT, Math.floor(afterStack / 2));
+  const resultLines = resultBudget === 0 ? [] : renderCommandResultPane(state.commandResult!, width, resultBudget);
+  const remaining = Math.max(1, afterStack - resultLines.length);
   const rows = visibleSpans(state);
 
   const spanLines =
@@ -72,7 +77,10 @@ function renderBody(state: ViewState, width: number, height: number): Frame {
             remaining
           );
 
-  return pad([...bannerLines, ...traceLines, ...spanLines, ...stackLines, ...detailLines].slice(0, height), height);
+  return pad(
+    [...bannerLines, ...traceLines, ...spanLines, ...resultLines, ...stackLines, ...detailLines].slice(0, height),
+    height
+  );
 }
 
 /**

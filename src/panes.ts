@@ -15,6 +15,7 @@ import { escapeTerminalControls } from "@kosmo-callflow/trace-artifacts";
 import { truncateVisible } from "./ansi.js";
 import { resolveBookmarks } from "./bookmarks.js";
 import { isAvailable } from "./capabilities.js";
+import type { CommandResult, ResultMeta } from "./commands.js";
 import { ancestorChain, stopText } from "./stack.js";
 import {
   filtersActive,
@@ -193,6 +194,10 @@ export function renderSpanRow(span: SpanRow, state: ViewState): string {
 }
 
 export function renderFooter(state: ViewState, width: number): string[] {
+  if (state.commandLine !== null) {
+    // Same single row as the hints: the prompt never changes the body height.
+    return [rule(width), fit(`:${shown(state.commandLine.text)}_  (enter run, esc cancel, up/down history)`, width)];
+  }
   if (state.searchInput !== null) {
     // The prompt replaces the hints rather than adding a row, so opening search cannot
     // change the height of the body underneath it.
@@ -352,4 +357,85 @@ function valueText(value: DetailValue): string {
     case "unavailable":
       return `unavailable (${shown(value.reason)})`;
   }
+}
+
+/**
+ * The `:` result pane. It shows only rows that exist in the loaded scope, says how much
+ * of the dataset that is, and keeps static/possible callers visibly apart from recorded
+ * ones. esc closes it.
+ */
+export function renderCommandResultPane(result: CommandResult, width: number, height: number): string[] {
+  const lines = [rule(width), ...commandResultLines(result)];
+  return lines.slice(0, height).map((line) => fit(line, width));
+}
+
+export function commandResultLines(result: CommandResult): string[] {
+  switch (result.kind) {
+    case "receipt":
+    case "unavailable":
+    case "error":
+    case "deadline-exceeded":
+      return [shown(result.notice)];
+    case "projection":
+      return [
+        `${shown(result.title)}  (esc closes)`,
+        ...(result.spans.length === 0 ? ["  no spans"] : result.spans.map(spanLine)),
+        ...(result.note === null ? [] : [`  ${shown(result.note)}`]),
+        metaLine(result.meta)
+      ];
+    case "path":
+      if (result.status === "found") {
+        return [
+          `path ${shown(result.from)} -> ${shown(result.to)}: ${result.spans.length - 1} recorded edge(s)  (esc closes)`,
+          ...result.spans.map(spanLine),
+          metaLine(result.meta)
+        ];
+      }
+      if (result.status === "no-path") {
+        const why =
+          result.reason === "different-trace"
+            ? "endpoints are in different traces; recorded edges never cross traces"
+            : "both endpoints loaded; the recorded chain reaches the root without the first endpoint";
+        return [`no-path: ${shown(result.from)} -> ${shown(result.to)} (${why})`, metaLine(result.meta)];
+      }
+      return [
+        `unknown-path(${result.reason}): ${shown(result.from)} -> ${shown(result.to)}${
+          result.endpoint === null ? "" : ` (${result.endpoint} endpoint not in the loaded scope)`
+        }`,
+        metaLine(result.meta)
+      ];
+    case "table": {
+      const lines = [`callers of ${shown(result.nodeId)} (recorded, direct parent edges)  (esc closes)`];
+      if (result.recorded.length === 0) lines.push("  none recorded in the loaded scope");
+      for (const row of result.recorded) lines.push(`  ${row.calls}x  ${shown(row.nodeId)}`);
+      if (result.static !== null) {
+        if (!result.static.available) {
+          lines.push(`static/possible callers: unavailable(${shown(result.static.reason)})`);
+        } else {
+          lines.push("static/possible callers (not observed; not counted above)");
+          if (result.static.callers.length === 0) lines.push("  none");
+          for (const row of result.static.callers) {
+            lines.push(`  possible  ${shown(row.nodeId)}  [${shown(row.provenance)}]`);
+          }
+        }
+      }
+      lines.push(metaLine(result.meta));
+      return lines;
+    }
+  }
+}
+
+function spanLine(row: SpanRow): string {
+  return `  ${row.errored ? "!" : " "} ${shown(row.nodeId)}  ${shown(row.traceId)}/${shown(row.spanId)}`;
+}
+
+function metaLine(meta: ResultMeta): string {
+  const scope = meta.scope.loaded
+    ? `${meta.scope.loaded.loaded}${meta.scope.loaded.total === null ? "" : `/${meta.scope.loaded.total}`} rows`
+    : `${meta.scope.spans} spans in ${meta.scope.traces} trace(s)`;
+  const parts = [`scope: loaded ${scope}`, `coverage ${meta.coverage}`];
+  if (meta.truncated) parts.push("truncated");
+  if (meta.scope.retentionGap) parts.push("retention gap");
+  if (meta.missing !== null) parts.push(`missing: ${shown(meta.missing)}`);
+  return `  ${parts.join("; ")}`;
 }

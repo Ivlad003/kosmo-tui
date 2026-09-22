@@ -12,7 +12,8 @@ import { parseDurationMs } from "./duration.js";
 import { renderFrame } from "./render.js";
 import type { Terminal } from "./terminal.js";
 import type { Capabilities } from "./capabilities.js";
-import { decodeBookmarkKey, decodeKey, decodeSearchKey } from "./keys.js";
+import { runCommandLine, type CommandDeps } from "./commands.js";
+import { decodeBookmarkKey, decodeCommandLineKey, decodeKey, decodeSearchKey } from "./keys.js";
 import {
   applyAction,
   applyDelta,
@@ -46,6 +47,8 @@ export type ViewerOptions = {
   capabilities?: Capabilities;
   /** Injected clock, so scheduled replay stepping is testable without real sleeps. */
   now?: () => number;
+  /** Selectors, find runner and deadline for `:` commands; defaults are the local ones. */
+  commands?: CommandDeps;
   onExit?: () => void;
 };
 
@@ -54,6 +57,8 @@ export type Viewer = {
   /** Run one refresh tick by hand; the interval calls the same path. */
   tick(): Promise<void>;
   close(): void;
+  /** Resolves once every submitted `:` command has been applied. */
+  settled(): Promise<void>;
 };
 
 export function parseRefreshMs(value: string): number | undefined {
@@ -96,6 +101,7 @@ export function startViewer(options: ViewerOptions): Viewer {
     state = applyDelta(state, delta);
   }
   let closed = false;
+  let pending: Promise<void> = Promise.resolve();
 
   paint();
 
@@ -112,27 +118,54 @@ export function startViewer(options: ViewerOptions): Viewer {
     // While the `/` prompt is open the keyboard belongs to the prompt, so a typed "q"
     // is a letter rather than quit.
     // Likewise the bookmark jump list owns the keyboard while it is open.
+    // The `:` prompt owns the keyboard the same way.
     const action =
-      state.searchInput !== null
-        ? decodeSearchKey(key)
-        : state.bookmarkList !== null
-          ? decodeBookmarkKey(key)
-          : decodeKey(key);
+      state.commandLine !== null
+        ? decodeCommandLineKey(key)
+        : state.searchInput !== null
+          ? decodeSearchKey(key)
+          : state.bookmarkList !== null
+            ? decodeBookmarkKey(key)
+            : decodeKey(key);
     if (!action) return;
     if (action.kind === "quit") {
       close();
       options.onExit?.();
       return;
     }
+    const line = action.kind === "commandSubmit" ? (state.commandLine?.text ?? null) : null;
     state = applyAction(state, action);
     paint();
+    if (line !== null) submit(line);
   });
 
   const handle = options.timers.setInterval(() => {
     void tick();
   }, refreshMs);
 
-  return { state: () => state, tick, close };
+  return { state: () => state, tick, close, settled: () => pending };
+
+  /**
+   * Run a submitted `:` line over the state as it was at submit time (the pinned
+   * snapshot), then apply its actions and result to whatever the state is by then.
+   */
+  function submit(line: string): void {
+    const snapshot = state;
+    pending = pending.then(async () => {
+      const outcome = await runCommandLine(snapshot, line, options.commands);
+      if (closed || outcome === null) return;
+      for (const action of outcome.actions) {
+        if (action.kind === "quit") {
+          close();
+          options.onExit?.();
+          return;
+        }
+        state = applyAction(state, action);
+      }
+      state = applyAction(state, { kind: "commandResult", result: outcome.result });
+      paint();
+    });
+  }
 
   async function tick(): Promise<void> {
     if (closed) return;

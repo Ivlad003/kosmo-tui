@@ -121,7 +121,11 @@ export const COMMAND_REQUIREMENTS = {
   stack: ["interactive"],
   compare: ["interactive", "projection"],
   yank: ["interactive"],
-  commandLine: ["interactive"]
+  commandLine: ["interactive"],
+  /** `:depth`: the shared canonical depth projection. */
+  depth: ["interactive", "projection"],
+  /** `:callers --static`: possible edges from the static graph, labelled as such. */
+  staticCallers: ["staticGraph"]
 } as const satisfies Record<string, readonly CapabilityName[]>;
 
 export type Command = keyof typeof COMMAND_REQUIREMENTS;

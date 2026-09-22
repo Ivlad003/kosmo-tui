@@ -93,3 +93,33 @@ export function decodeBookmarkKey(input: string): Action | undefined {
   if (input === "\u001b" || input === "'" || input === "q") return { kind: "bookmarkClose" };
   return undefined;
 }
+
+const ESC = String.fromCharCode(27);
+const CTRL_C = String.fromCharCode(3);
+const CTRL_U = String.fromCharCode(21);
+const DEL = String.fromCharCode(127);
+const BS = String.fromCharCode(8);
+
+/**
+ * Decode a key while the `:` command line is open. As with search, typing is text: "q"
+ * is a letter here. Enter submits, Escape cancels, Backspace deletes one character,
+ * ctrl-u clears the line and up/down walk the bounded history. A pasted chunk is
+ * inserted with its control characters dropped, never as raw control bytes.
+ */
+export function decodeCommandLineKey(input: string): Action | undefined {
+  if (input === CTRL_C) return { kind: "quit" };
+  if (input === "\r" || input === "\n") return { kind: "commandSubmit" };
+  if (input === ESC) return { kind: "commandCancel" };
+  if (input === DEL || input === BS) return { kind: "commandBackspace" };
+  if (input === CTRL_U) return { kind: "commandClearLine" };
+  if (input === `${ESC}[A`) return { kind: "commandHistory", delta: -1 };
+  if (input === `${ESC}[B`) return { kind: "commandHistory", delta: 1 };
+  if (input.startsWith(ESC)) return undefined;
+  const text = Array.from(input)
+    .filter((char) => {
+      const code = char.codePointAt(0)!;
+      return !(code < 32 || (code >= 127 && code <= 159));
+    })
+    .join("");
+  return text.length === 0 ? undefined : { kind: "commandInput", text };
+}
