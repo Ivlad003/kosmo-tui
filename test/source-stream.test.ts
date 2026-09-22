@@ -10,13 +10,15 @@ import { fileURLToPath } from "node:url";
 import {
   CONNECT_FRAME_MAX_BYTES,
   connectSnapshotId,
+  connectTraceRef,
   encodeCanonicalChunks,
   gapFrame,
   headerFrame,
   headerFrameV2,
   noticeFrame,
   traceFrame,
-  type ConnectSnapshotInput
+  type ConnectSnapshotInput,
+  type ConnectSnapshotManifestEntry
 } from "@kosmo-callflow/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkCommand, effectiveCapabilities } from "../src/capabilities.js";
@@ -35,10 +37,15 @@ const snap: ConnectSnapshotInput = {
   dataset: { projectId: "p", datasetId: "local", graphRevision: "g-1", watermarkSeq: 25, retentionEpoch: 1 },
   cursor: "http://127.0.0.1:41729/api/v1/live/deltas?cursor=c-0"
 };
-const summary = (traceId: string, firstSeq = 10, status: "running" | "complete" | "errored" = "complete") =>
+const summary = (
+  traceId: string,
+  firstSeq = 10,
+  status: "running" | "complete" | "errored" = "complete",
+  sessionId = "s-1"
+) =>
   traceFrame({
     traceId,
-    sessionId: "s-1",
+    sessionId,
     status,
     spansCount: 2,
     firstSeq,
@@ -47,17 +54,19 @@ const summary = (traceId: string, firstSeq = 10, status: "running" | "complete" 
     hasLossRecords: false
   });
 const endV1 = (reason = "complete") => ({ type: "end", reason, resume: { cursor: "c-9", watermarkSeq: 25 } });
-const endV2 = (snapshotIds: string[], reason = "complete") => ({
+const endV2 = (snapshots: ConnectSnapshotManifestEntry[], reason = "complete") => ({
   ...endV1(reason),
-  manifest: { snapshotIds, omittedTraces: 0, unavailableTraces: 0 }
+  manifest: { snapshots, omittedTraces: 0, unavailableTraces: 0 }
 });
 const lines = (...frames: unknown[]) => frames.map((frame) => `${JSON.stringify(frame)}\n`).join("");
 
 /** Chunks of one trace's canonical page, split small so a set has several frames. */
-function chunks(traceId: string, maxFrameBytes = 2_048) {
+function chunks(traceId: string, maxFrameBytes = 2_048, sessionId = "s-1") {
   const page = canonicalV2(traceId);
-  const snapshotId = connectSnapshotId(snap, traceId);
-  return { snapshotId, frames: encodeCanonicalChunks({ snapshotId, traceId, page, maxFrameBytes }) };
+  const ref = connectTraceRef(snap, { sessionId, traceId });
+  const snapshotId = connectSnapshotId(snap, ref);
+  const entry: ConnectSnapshotManifestEntry = { snapshotId, ref };
+  return { snapshotId, entry, frames: encodeCanonicalChunks({ snapshotId, ref, page, maxFrameBytes }) };
 }
 
 function input(...parts: Array<string | Uint8Array>): StreamInput {
@@ -157,7 +166,7 @@ describe("stream v2: atomic canonical snapshots (4.3)", () => {
       summary("t-1"),
       ...one.frames,
       noticeFrame("no-events"),
-      endV2([one.snapshotId])
+      endV2([one.entry])
     ).replace(/\n/g, "\r\n");
     // Split into 7-byte pieces, cutting through multi-byte characters and CRLF pairs.
     const bytes = new TextEncoder().encode(text.replace("checkout", "chéckout✓"));
@@ -197,7 +206,7 @@ describe("stream v2: atomic canonical snapshots (4.3)", () => {
           headerFrameV2(snap, { eventsCount: 5 }),
           summary("t-1"),
           ...one.frames.filter((_, index) => index !== 1),
-          endV2([one.snapshotId])
+          endV2([one.entry])
         )
       )
     });
@@ -239,6 +248,42 @@ describe("stream v2: atomic canonical snapshots (4.3)", () => {
     ).toMatchObject({
       code: "unavailable"
     });
+  });
+
+  it("keeps two sessions that reuse one traceId as two rows with their own snapshots (full ref)", async () => {
+    const a = chunks("t-1", 2_048, "s-a");
+    const b = chunks("t-1", 2_048, "s-b");
+    expect(a.snapshotId).not.toBe(b.snapshotId);
+    const source = createStreamSource({
+      input: input(
+        lines(
+          headerFrameV2(snap, { eventsCount: 5 }),
+          summary("t-1", 10, "complete", "s-a"),
+          summary("t-1", 20, "errored", "s-b"),
+          ...a.frames,
+          ...b.frames.filter((_, index) => index !== 1),
+          endV2([a.entry, b.entry])
+        )
+      )
+    });
+    const opened = await source.open(signal());
+    expect(opened.firstPage.items.map((row) => [row.sessionId, row.traceId])).toEqual([
+      ["s-b", "t-1"],
+      ["s-a", "t-1"]
+    ]);
+    // s-b's set lost a chunk: only s-b is missing, s-a's committed snapshot does not stand in for it.
+    expect(source.completeness()).toMatchObject({
+      state: "incomplete",
+      reasons: ["missing-snapshots"],
+      missingSnapshotIds: [b.snapshotId]
+    });
+    const [rowB, rowA] = opened.firstPage.items;
+    const pageA = await source.canonical!(opened.snapshot, { kind: "trace", ref: rowA! }, { version: 2 }, signal());
+    expect(pageA.envelope.items.length).toBe(canonicalV2("t-1").items.length);
+    expect(
+      (await failure(source.canonical!(opened.snapshot, { kind: "trace", ref: rowB! }, { version: 2 }, signal())))
+        .message
+    ).toMatch(/no-canonical-snapshot.*session s-b/);
   });
 
   it("fails an oversized, malformed or unknown-version frame with the line number", async () => {

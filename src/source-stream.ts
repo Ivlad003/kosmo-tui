@@ -5,6 +5,9 @@
  * (`createConnectStreamReader`): the line buffer is capped before parsing, split UTF-8
  * and CRLF are handled, every frame is validated against its version, v2 canonical
  * chunks are committed atomically per trace and `reset`/`gap` discard staged chunks.
+ * Summaries and snapshots are keyed by the FULL trace ref
+ * `(datasetId, projectId, sessionId, traceId)`: two sessions reusing a traceId never
+ * share or overwrite a snapshot.
  *
  * What the stream can answer is what its header declares:
  *  - v1 carries trace SUMMARIES only: no span projection, no values, no replay, no
@@ -22,6 +25,7 @@
  */
 
 import {
+  connectTraceRefKey,
   createConnectStreamReader,
   type ConnectStreamCompleteness,
   type ConnectStreamReaderOptions,
@@ -93,7 +97,7 @@ export function createStreamSource(options: StreamSourceOptions): StreamSource {
   let pumpError: unknown = null;
   let headerWaiters: Array<() => void> = [];
   let endWaiters: Array<() => void> = [];
-  /** Order in which traces were (re)announced; the delta cursor is a position in it. */
+  /** Order in which traces were (re)announced, as full-ref keys; the delta cursor is a position in it. */
   const updates: string[] = [];
   let gapsSeen = 0;
 
@@ -119,8 +123,8 @@ export function createStreamSource(options: StreamSourceOptions): StreamSource {
           const before = new Map(reader.state().traces);
           reader.push(chunk);
           const state = reader.state();
-          for (const [traceId, frame] of state.traces) {
-            if (before.get(traceId) !== frame) updates.push(traceId);
+          for (const [key, frame] of state.traces) {
+            if (before.get(key) !== frame) updates.push(key);
           }
           wake();
           if (state.completeness.state === "failed") break;
@@ -232,18 +236,34 @@ export function createStreamSource(options: StreamSourceOptions): StreamSource {
     return reader.state();
   }
 
-  function committed(state: ConnectStreamState, traceId: string) {
+  function committed(state: ConnectStreamState, ref: QualifiedTraceRef) {
     if (state.version !== 2) {
       throw new SourceError(
         "unavailable",
         "kosmo-tui: unavailable(summary-only-stream): stream v1 carries trace summaries, not spans"
       );
     }
-    const entry = state.snapshots.get(traceId);
+    // The stream holds ONE dataset (its header's): snapshots are keyed by that dataset/project
+    // plus the ref's session and trace. A ref may also be qualified by the snapshot page's own
+    // dataset identity (span refs read from the envelope); anything else is another dataset.
+    const header = state.header!;
+    const key = connectTraceRefKey({
+      datasetId: header.dataset.datasetId,
+      projectId: header.project.projectId,
+      sessionId: ref.sessionId,
+      traceId: ref.traceId
+    });
+    const found = state.snapshots.get(key);
+    const entry =
+      found !== undefined &&
+      (ref.datasetId === header.dataset.datasetId || ref.datasetId === found.page.dataset.datasetId) &&
+      (ref.projectId === header.project.projectId || ref.projectId === found.page.dataset.projectId)
+        ? found
+        : undefined;
     if (entry === undefined) {
       throw new SourceError(
         "unavailable",
-        `kosmo-tui: unavailable(no-canonical-snapshot): the stream carried no complete canonical snapshot for trace ${traceId}`
+        `kosmo-tui: unavailable(no-canonical-snapshot): the stream carried no complete canonical snapshot for trace ${ref.traceId} of session ${ref.sessionId}`
       );
     }
     return entry;
@@ -326,14 +346,14 @@ export function createStreamSource(options: StreamSourceOptions): StreamSource {
       if (refs.length !== 1) {
         throw new SourceError("unsupported-selection", "kosmo-tui: a canonical page is read for one trace at a time");
       }
-      const entry = committed(state, refs[0]!.traceId);
+      const entry = committed(state, refs[0]!);
       return { version: 2, envelope: entry.page, ...canonicalPageMeta(entry.page) };
     },
 
     async details(snapshot, ref, signal) {
       signal.throwIfAborted();
       const state = requireState(snapshot);
-      const entry = committed(state, ref.traceId);
+      const entry = committed(state, ref);
       const evidence = evidenceFromCanonicalV2(entry.page, ref, snapshot);
       if (evidence === null)
         throw new SourceError("span-not-found", "kosmo-tui: the stream snapshot has no such span", 404);
@@ -355,7 +375,7 @@ export function createStreamSource(options: StreamSourceOptions): StreamSource {
       gapsSeen = state.gaps;
       const changed = reset ? [...state.traces.keys()] : [...new Set(updates.slice(from))];
       const traces = changed
-        .map((traceId) => state.traces.get(traceId))
+        .map((key) => state.traces.get(key))
         .filter((frame): frame is ConnectTraceFrame => frame !== undefined)
         .map((frame) => rowOf(snapshot, frame));
       return {
