@@ -40,6 +40,7 @@ function caps(overrides: Partial<Capabilities> = {}): Capabilities {
     probes: { available: true },
     staticGraph: { available: true },
     sql: { available: true },
+    reload: { available: true },
     review: { available: true },
     localEval: { available: true },
     interactive: { available: true },

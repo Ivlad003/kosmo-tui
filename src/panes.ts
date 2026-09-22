@@ -14,7 +14,7 @@ import { renderTraceText } from "@kosmo-callflow/protocol";
 import { escapeTerminalControls } from "@kosmo-callflow/trace-artifacts";
 import { truncateVisible } from "./ansi.js";
 import { resolveBookmarks } from "./bookmarks.js";
-import { isAvailable } from "./capabilities.js";
+import { checkCommand, isAvailable } from "./capabilities.js";
 import { comparisonLines } from "./compare.js";
 import type { CommandResult, ResultMeta } from "./commands.js";
 import { ancestorChain, stopText } from "./stack.js";
@@ -99,6 +99,8 @@ export function connectionLine(state: ViewState): string {
   if (state.retentionGap) parts.push("retention gap");
   if (state.backlogOverflowed) parts.push("backlog overflow");
   if (state.scope?.truncated && state.scope.reason) parts.push(`truncated: ${shown(state.scope.reason)}`);
+  // A source that is not complete says so (e.g. a stdin stream that ended without `end`).
+  else if (state.scope?.reason) parts.push(`coverage: ${shown(state.scope.reason)}`);
   if (state.replay) parts.push(...replayParts(state));
   parts.push(`capture: ${state.effectivePolicy === null ? "unavailable" : shown(state.effectivePolicy)}`);
   return parts.join(" | ");
@@ -172,7 +174,10 @@ export function selectionBanner(state: ViewState): string | null {
   }
   if (state.selectionAbsence === "evicted") {
     const name = state.lastKnownSpan ? shown(state.lastKnownSpan.nodeId) : shown(state.selection?.spanId ?? "");
-    return `selected span ${name} evicted from the loaded scope — showing last known values (reload to fetch it)`;
+    // The hint follows the effective capabilities: a stdin stream cannot be re-read.
+    const reload = state.caps === null ? null : checkCommand(state.caps, "reload");
+    const hint = reload === null || reload.ok ? "reload to fetch it" : `reload unavailable(${shown(reload.reason)})`;
+    return `selected span ${name} evicted from the loaded scope — showing last known values (${hint})`;
   }
   return null;
 }
@@ -259,6 +264,8 @@ function keyHints(state: ViewState): string {
   if (isAvailable(caps, "bookmark")) hints.push("m mark", "' marks");
   if (isAvailable(caps, "stack")) hints.push("s stack");
   if (isAvailable(caps, "finding")) hints.push("f/t review");
+  if (state.morePages && isAvailable(caps, "loadMore")) hints.push("> more");
+  if (isAvailable(caps, "reload")) hints.push("r reload");
   hints.push("q quit");
   return hints.join("  ");
 }
@@ -376,6 +383,8 @@ export function renderCommandResultPane(result: CommandResult, width: number, he
   return lines.slice(0, height).map((line) => fit(line, width));
 }
 
+const VALUE_RESULT_MAX_LINES = 40;
+
 export function commandResultLines(result: CommandResult): string[] {
   switch (result.kind) {
     case "receipt":
@@ -433,6 +442,21 @@ export function commandResultLines(result: CommandResult): string[] {
       return valueMatchLines(result.result);
     case "compare":
       return comparisonLines(result.result);
+    case "value": {
+      // A computed-local value: the user's own code ran over the snapshot; it is not evidence.
+      const { envelope } = result;
+      const body = JSON.stringify(envelope.value, null, 2) ?? "undefined";
+      const lines = body.split("\n");
+      const shownLines = lines.slice(0, VALUE_RESULT_MAX_LINES);
+      return [
+        `js: ${envelope.provenance} value (not recorded evidence)${envelope.truncated ? " truncated(output-bytes)" : ""}  (esc closes)`,
+        ...shownLines.map((line) => `  ${shown(line)}`),
+        ...(lines.length > shownLines.length ? [`  … ${lines.length - shownLines.length} more line(s)`] : []),
+        `scope: ${shown(envelope.scope.source)} project ${shown(envelope.scope.projectId)}; coverage ${envelope.coverage.scope}${
+          envelope.coverage.reason === undefined ? "" : ` (${shown(envelope.coverage.reason)})`
+        }`
+      ];
+    }
     case "sql": {
       // A table of rows from the shared runner: never drawn as spans.
       const table = result.result;

@@ -23,6 +23,8 @@ export type Capabilities = {
   probes: Capability;
   staticGraph: Capability;
   sql: Capability;
+  /** An explicit re-read of the source (a new snapshot); a stdin stream cannot be re-read. */
+  reload: Capability;
   /** Session capabilities: independent of the source. */
   review: Capability;
   localEval: Capability;
@@ -74,6 +76,7 @@ export function sourceCapabilities(open: SourceOpenResult, source: SourceMethods
     probes: backed(offers.probes, source.probes !== undefined, "no-probe-api"),
     staticGraph: offers.staticGraph,
     sql: offers.sql,
+    reload: offers.reload ?? AVAILABLE,
     review: AVAILABLE,
     localEval: AVAILABLE,
     interactive: AVAILABLE
@@ -122,6 +125,10 @@ export const COMMAND_REQUIREMENTS = {
   compare: ["interactive", "projection"],
   yank: ["interactive"],
   commandLine: ["interactive"],
+  /** `>`: the next page of the pinned snapshot (the cursor itself is checked by the session). */
+  loadMore: ["interactive"],
+  /** `r`: a new snapshot; earlier cursors and pages stop being valid. */
+  reload: ["interactive", "reload"],
   /** `:depth`: the shared canonical depth projection. */
   depth: ["interactive", "projection"],
   /** `:callers --static`: possible edges from the static graph, labelled as such. */

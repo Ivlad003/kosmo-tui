@@ -23,6 +23,7 @@ import { spawn } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { TraceDatasetSnapshot } from "@kosmo-callflow/query/snapshot";
 import { importPortableExport } from "@kosmo-callflow/replay";
 import { sanitizeEvidenceText, sanitizeStructuredEvidence } from "@kosmo-callflow/trace-artifacts";
 import { EXIT_OK, EXIT_SOURCE, EXIT_USAGE, type EvalArgs, type Invocation } from "./cli.js";
@@ -46,7 +47,7 @@ export const EVAL_SNAPSHOT_VERSION = "kosmo.eval-snapshot/v1";
 export const EVAL_ENV_ALLOWLIST = ["TZ", "LANG", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "SYSTEMROOT"] as const;
 
 export type EvalScope = {
-  source: "export";
+  source: "export" | "sqlite";
   datasetId: string;
   projectId: string;
   traceId: string | null;
@@ -398,6 +399,27 @@ export function eventsFromExportRecords(records: Array<Record<string, unknown>>)
 }
 
 type LoadResult = { ok: true; snapshot: EvalSnapshot } | { ok: false; message: string };
+
+/**
+ * The `:js` snapshot of a viewer's pinned offline dataset (export or sqlite): the same
+ * records the view reads, frozen through `buildEvalSnapshot`. Retention, loss or a cut
+ * scope make the coverage partial rather than being hidden.
+ */
+export function evalSnapshotFromDataset(
+  dataset: TraceDatasetSnapshot,
+  source: EvalScope["source"],
+  traceId?: string
+): LoadResult {
+  let events = eventsFromExportRecords(dataset.records as unknown as Array<Record<string, unknown>>);
+  if (traceId !== undefined) events = events.filter((event) => event.traceId === traceId);
+  const { completeness, identity } = dataset;
+  const gaps = completeness.retention || completeness.loss || completeness.truncated ? 1 : 0;
+  return buildEvalSnapshot(
+    events,
+    { source, datasetId: identity.datasetId, projectId: identity.projectId, traceId: traceId ?? null },
+    { gaps }
+  );
+}
 
 async function loadExportSnapshot(file: string, traceId: string | undefined): Promise<LoadResult> {
   const info = await stat(file);

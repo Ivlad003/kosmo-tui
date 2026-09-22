@@ -188,6 +188,7 @@ function sqlCaps(sql: Capabilities["sql"]): Capabilities {
     probes: { available: false, reason: "no-probe-records" },
     staticGraph: { available: false, reason: "no-static-graph-reader" },
     sql,
+    reload: { available: true },
     review: { available: true },
     localEval: { available: true },
     interactive: { available: true }

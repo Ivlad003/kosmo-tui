@@ -159,7 +159,7 @@ export type LoadedScope = {
 /** Reserved command keys whose actions arrive in later waves; they still gate on caps. */
 export type ReservedCommand = Extract<
   Command,
-  "finding" | "todo" | "finalizeReview" | "yank" | "compare" | "values" | "commandLine"
+  "finding" | "todo" | "finalizeReview" | "yank" | "compare" | "values" | "commandLine" | "loadMore" | "reload"
 >;
 
 /**
@@ -229,6 +229,8 @@ export type ViewState = {
   bookmarkList: { index: number } | null;
   stackOpen: boolean;
   scope: LoadedScope | null;
+  /** The pinned snapshot has another page after the loaded ones (`>` loads it). */
+  morePages: boolean;
   /** The `:` prompt while open; null when closed. */
   commandLine: CommandLineInput | null;
   /** Submitted `:` lines, oldest first; bounded by COMMAND_HISTORY_CAP. */
@@ -353,6 +355,7 @@ export function initialViewState(overrides: Partial<ViewState> = {}): ViewState 
     bookmarkList: null,
     stackOpen: false,
     scope: null,
+    morePages: false,
     commandLine: null,
     commandHistory: [],
     commandResult: null,

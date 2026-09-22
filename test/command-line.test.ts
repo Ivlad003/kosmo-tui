@@ -208,6 +208,7 @@ describe("prompt editing", () => {
           probes: { available: true },
           staticGraph: { available: true },
           sql: { available: true },
+          reload: { available: true },
           review: { available: true },
           localEval: { available: true },
           interactive: { available: false, reason: "one-shot(--print)" }

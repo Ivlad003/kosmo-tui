@@ -36,6 +36,7 @@ import {
 } from "./command-line.js";
 import type { TraceSqlResult } from "@kosmo-callflow/query/sql";
 import type { PairComparison } from "./compare.js";
+import type { EvalEnvelope } from "./eval.js";
 import type { SqlOutcome } from "./sql.js";
 import type { ValueMatchResult } from "./values.js";
 import { DEFAULT_STACK_DEPTH, ancestorChain, stopText, type AncestorChain, type StackOptions } from "./stack.js";
@@ -219,7 +220,9 @@ export type CommandResult =
   /** `=`: explicit A/B pair comparison through the shared diffTraces (compare.ts). */
   | { kind: "compare"; command: "compare"; result: PairComparison }
   /** `:sql`: the shared runner's typed table (rows, never spans), with its own scope/coverage. */
-  | { kind: "sql"; command: "sql"; query: string; result: TraceSqlResult };
+  | { kind: "sql"; command: "sql"; query: string; result: TraceSqlResult }
+  /** `:js`: a computed-local value from the trusted local eval child (eval.ts); never evidence. */
+  | { kind: "value"; command: "js"; envelope: EvalEnvelope };
 
 export type CommandOutcome = { actions: Action[]; result: CommandResult };
 

@@ -31,6 +31,7 @@ const caps: Capabilities = {
   probes: { available: false, reason: "no-probe-records" },
   staticGraph: { available: false, reason: "no-static-graph-reader" },
   sql: { available: true },
+  reload: { available: true },
   review: { available: true },
   localEval: { available: true },
   interactive: { available: true }

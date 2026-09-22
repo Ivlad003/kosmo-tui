@@ -312,6 +312,7 @@ describe(":depth, - and + drive the rendered rows", () => {
       probes: yes,
       staticGraph: yes,
       sql: yes,
+      reload: yes,
       review: yes,
       localEval: yes,
       interactive: yes

@@ -144,6 +144,8 @@ export type SourceOffers = {
   probes: Offer;
   staticGraph: Offer;
   sql: Offer;
+  /** Whether `open` may be called again for a new snapshot; absent means it may. */
+  reload?: Offer;
 };
 
 export type SourceOpenResult = {

@@ -47,10 +47,11 @@ import {
   type SessionPolicy
 } from "./capabilities.js";
 import { StdoutFallback, buildCopyDocument, copyToClipboard, withAfterClose, type ClipboardDeps } from "./clipboard.js";
-import type { CommandResult, DepthLevel } from "./commands.js";
+import { runCommandLine, type CommandDeps, type CommandResult, type DepthLevel } from "./commands.js";
 import type { DepthMapping } from "./depth.js";
 import { compareSpanPair } from "./compare.js";
 import { spanDocumentFor } from "./detail.js";
+import { runLocalEval, type EvalOutcome, type EvalRunOptions, type EvalSnapshot } from "./eval.js";
 import { decodeBookmarkKey, decodeCommandLineKey, decodeKey, decodeSearchKey } from "./keys.js";
 import { renderFrame } from "./render.js";
 import { REPLAY_SPEED_MAX, REPLAY_SPEED_MIN, type ReplaySchedule } from "./replay.js";
@@ -64,6 +65,7 @@ import {
   type PinnedReplay
 } from "./replay-pin.js";
 import type { EvidenceDocument, SanitizeContext } from "./review-format.js";
+import type { FindingInput, ReviewResult } from "./review.js";
 import type {
   LiveDeltaBody,
   SnapshotRef,
@@ -101,8 +103,10 @@ export const RECONNECT_MAX_MS = 10_000;
 /** Per-value cap for detail text kept in state, so one pinned selection stays bounded. */
 export const DETAIL_VALUE_MAX_BYTES = 64 * 1024;
 const RECORD_PAGE_LIMIT = 1_000;
-/** Traces whose canonical v2 page is loaded for the request selector and depth rows. */
+/** Traces whose canonical v2 page is loaded (per load) for the span rows, request selector and depth rows. */
 export const CANONICAL_PAGE_TRACES = 20;
+/** Trace rows read per `>` (load more) from the pinned snapshot. */
+export const TRACE_PAGE_LIMIT = 50;
 const REPLACEMENT_CHAR = String.fromCharCode(0xfffd);
 
 export type SessionTimers = {
@@ -118,6 +122,21 @@ const defaultTimers: SessionTimers = {
 export type SessionLimits = { queueFrames: number; queueBytes: number; cacheBytes: number };
 
 export type ReplayRequest = { seq?: number; speed?: number; stepIntervalMs?: number };
+
+/**
+ * The review writes a session can make (review.ts `ReviewSession` satisfies it). A
+ * disabled capability keeps the port but every `f`/`t`/`R` answers `review disabled`.
+ */
+export type ReviewPort = {
+  readonly capability: { enabled: true } | { enabled: false; reason: string };
+  addFinding(input: FindingInput): Promise<ReviewResult>;
+  addTodo(note: string): Promise<ReviewResult>;
+  finalize(): Promise<ReviewResult>;
+  close(): Promise<void>;
+};
+
+/** What `:js` reads: the pinned offline snapshot, or why there is none (live, stream). */
+export type EvalSnapshotSource = () => EvalSnapshot | { unavailable: string };
 
 export type SessionOptions = {
   source: TraceSource;
@@ -142,6 +161,21 @@ export type SessionOptions = {
   depth?: DepthLevel;
   /** Roots and producer logical mapping for the depth projector. */
   depthMapping?: DepthMapping;
+  /**
+   * Opens the review port once the source is open (its identity decides resume). Null,
+   * a disabled capability or no factory at all make `f`/`t`/`R` answer `review disabled`.
+   */
+  review?: (opened: SourceOpenResult) => Promise<ReviewPort | null>;
+  /** Deps of the `:` command line (shared graph selectors, `:sql`); `liveSeek` defaults on. */
+  commands?: CommandDeps;
+  /** The snapshot `:js` evaluates over. */
+  evalSnapshot?: EvalSnapshotSource;
+  /** The local eval runner (eval.ts `runLocalEval`) and the env its allowlist filters. */
+  runEval?: (options: EvalRunOptions) => Promise<EvalOutcome>;
+  evalEnv?: Record<string, string | undefined>;
+  /** `--detail` / `--values` for the documents `y` copies and `f` records (default 2 / as the source allows). */
+  detail?: 0 | 1 | 2;
+  values?: boolean;
 };
 
 export type PollingState = { state: "off" | "active" | "reconnecting" | "stopped"; reason: string | null };
@@ -271,6 +305,11 @@ export function createSession(options: SessionOptions): Session {
   let snapshot: SnapshotRef | null = null;
   let deltaCursor: string | null = null;
   let caps: Capabilities | null = null;
+  /** Continuation of the trace list inside the pinned snapshot; null when all is loaded. */
+  let pageCursor: string | null = null;
+  /** Traces whose canonical page (and so span rows) was already read for this snapshot. */
+  const canonicalLoaded = new Set<string>();
+  let review: ReviewPort | null = null;
   let closed = false;
   let closing: Promise<void> | null = null;
   let dirty = false;
@@ -369,12 +408,21 @@ export function createSession(options: SessionOptions): Session {
   function adoptOpen(opened: SourceOpenResult, gap: boolean): void {
     snapshot = opened.snapshot;
     deltaCursor = opened.deltaCursor ?? opened.snapshot.snapshotId;
+    pageCursor = opened.firstPage.cursor;
+    canonicalLoaded.clear();
+    state = { ...state, canonical: [], morePages: pageCursor !== null, scope: null };
     applyBaselineRows(opened.firstPage.items, [], gap);
     const { coverage, truncated } = opened.firstPage;
     if (state.scope?.reason === undefined) {
       state = reduceDelta(state, {
         kind: "scope",
-        scope: { loaded: coverage.loaded, total: coverage.total, truncated }
+        scope: {
+          loaded: coverage.loaded,
+          total: coverage.total,
+          truncated,
+          // The source's own completeness (e.g. `incomplete(incomplete-stream)`) is shown.
+          ...(coverage.reason === undefined ? {} : { reason: coverage.reason })
+        }
       });
     }
   }
@@ -389,6 +437,7 @@ export function createSession(options: SessionOptions): Session {
     adoptOpen(opened, gap);
     if (message !== null) state = { ...state, notice: message };
     afterChange();
+    void loadCanonicalPages();
   }
 
   function applyFrame(frame: LiveDeltaBody): void {
@@ -884,13 +933,17 @@ export function createSession(options: SessionOptions): Session {
   }
 
   /**
-   * Canonical v2 pages of the loaded traces (bounded), for the request selector and the
-   * depth rows. Without v2 the view keeps its trace-summary rows; nothing is invented.
+   * Canonical v2 pages of loaded traces not read yet (bounded per call), for the span
+   * rows, the request selector and the depth rows. Rows come from the source's own v2
+   * projection whatever `--projection-version` chose for documents; without v2 the view
+   * keeps its trace-summary rows and nothing is invented.
    */
   async function loadCanonicalPages(): Promise<void> {
-    if (closed || pinned !== null || snapshot === null || !source.canonical || projectionVersion() !== 2) return;
+    if (closed || pinned !== null || snapshot === null || !source.canonical) return;
+    if (!(caps?.projectionVersions ?? []).includes(2)) return;
     const pin = snapshot;
-    const traces = state.traces.slice(0, CANONICAL_PAGE_TRACES);
+    const traces = state.traces.filter((row) => !canonicalLoaded.has(traceKey(row))).slice(0, CANONICAL_PAGE_TRACES);
+    for (const trace of traces) canonicalLoaded.add(traceKey(trace));
     const pages: CanonicalPageEnvelopeV2[] = [];
     for (const trace of traces) {
       try {
@@ -915,7 +968,11 @@ export function createSession(options: SessionOptions): Session {
       if (closed || snapshot === null || epochKey(snapshot) !== epochKey(pin)) return;
     }
     if (pages.length === 0) return;
+    const rows = pages.flatMap(spanRowsFromCanonicalV2);
     state = reduceDelta(state, { kind: "canonical", pages });
+    state = reduceDelta(state, { kind: "spans", rows });
+    trackRows([], rows);
+    afterChange();
     invalidate();
   }
 
@@ -924,6 +981,11 @@ export function createSession(options: SessionOptions): Session {
     if (options.projectionVersion !== undefined)
       return versions.includes(options.projectionVersion) ? options.projectionVersion : null;
     return versions.includes(2) ? 2 : versions.includes(1) ? 1 : null;
+  }
+
+  const documentDetail = options.detail ?? 2;
+  function documentValues(): boolean {
+    return (options.values ?? true) && caps?.values.level === "full";
   }
 
   async function documentFor(ref: SpanRef): Promise<EvidenceDocument | string> {
@@ -937,14 +999,217 @@ export function createSession(options: SessionOptions): Session {
       const page = await source.canonical(
         snapshot,
         { kind: "span", ref },
-        { version, detail: 2, values: caps?.values.level === "full" },
+        { version, detail: documentDetail, values: documentValues() },
         lifetime.signal
       );
       if (page.version === 1) return spanDocumentFor(page.envelope, ref) ?? "selected span is not in the projection";
-      return spanDocumentV2(page.envelope, ref) ?? "selected span is not in the projection";
+      return (
+        spanDocumentV2(page.envelope, ref, { detail: documentDetail, values: documentValues() }) ??
+        "selected span is not in the projection"
+      );
     } catch (error) {
       return (error as Error).message ?? String(error);
     }
+  }
+
+  // -- pagination: load more / reload ---------------------------------------------------
+
+  /** `>`: the next page of the SAME pinned snapshot; a foreign/stale cursor is refused by the source. */
+  async function loadMore(): Promise<void> {
+    if (!gate("loadMore")) return;
+    if (pinned !== null) return notice("loadMore: unavailable(replay frame is pinned; L returns to live)");
+    if (snapshot === null || pageCursor === null) return notice("loadMore: unavailable(no-more-pages)");
+    const pin = snapshot;
+    const cursor = pageCursor;
+    let page;
+    try {
+      page = await source.traces(pin, { limit: TRACE_PAGE_LIMIT, cursor }, lifetime.signal);
+    } catch (error) {
+      if (!closed) notice(`loadMore: unavailable(${(error as Error).message ?? String(error)})`);
+      return;
+    }
+    // A reload or reset while reading: this page belongs to the old snapshot.
+    if (closed || snapshot === null || snapshot.snapshotId !== pin.snapshotId || pageCursor !== cursor) return;
+    pageCursor = page.cursor;
+    const evictedBefore = stats.evictedRows;
+    state = reduceDelta(state, { kind: "traces", rows: page.items });
+    trackRows(page.items, []);
+    state = { ...state, morePages: page.cursor !== null };
+    if (stats.evictedRows === evictedBefore) {
+      state = reduceDelta(state, {
+        kind: "scope",
+        scope: {
+          loaded: page.coverage.loaded,
+          total: page.coverage.total,
+          truncated: page.truncated,
+          ...(page.coverage.reason === undefined ? {} : { reason: page.coverage.reason })
+        }
+      });
+    }
+    const total = page.coverage.total === null ? "" : `/${page.coverage.total}`;
+    notice(
+      `loaded ${page.items.length} more trace(s): ${page.coverage.loaded}${total}${page.cursor === null ? " (all loaded)" : "; > loads more"}`
+    );
+    afterChange();
+    void loadCanonicalPages();
+  }
+
+  /** `r`: an explicit NEW snapshot. Earlier pages and cursors stop being valid. */
+  async function reload(): Promise<void> {
+    if (!gate("reload")) return;
+    if (pinned !== null) return notice("reload: unavailable(replay frame is pinned; L returns to live)");
+    const before = snapshot;
+    const reread = (source as { reload?: (signal: AbortSignal) => Promise<SourceOpenResult> }).reload;
+    let opened: SourceOpenResult;
+    try {
+      opened = reread ? await reread.call(source, lifetime.signal) : await source.open(lifetime.signal);
+    } catch (error) {
+      if (!closed) notice(`reload failed: ${(error as Error).message ?? String(error)}`);
+      return;
+    }
+    if (closed) return;
+    const gap = before !== null && epochKey(before) !== epochKey(opened.snapshot);
+    queue.reset();
+    needsBaseline = false;
+    bumpGeneration();
+    adoptOpen(opened, gap);
+    const same = before !== null && before.snapshotId === opened.snapshot.snapshotId;
+    state = {
+      ...state,
+      notice: same
+        ? `reloaded: snapshot ${opened.snapshot.snapshotId} unchanged`
+        : `reloaded: snapshot ${before?.snapshotId ?? "none"} -> ${opened.snapshot.snapshotId}${gap ? " (retention gap)" : ""}`
+    };
+    afterChange();
+    invalidate();
+    void loadCanonicalPages();
+  }
+
+  // -- review: f / t / R -------------------------------------------------------------
+
+  /** Review commands name the review capability's reason: `review disabled: <reason>`. */
+  function reviewGate(command: "finding" | "todo" | "finalizeReview"): boolean {
+    if (caps === null) return review !== null;
+    const check = checkCommand(caps, command);
+    if (check.ok && review !== null) return true;
+    notice(
+      check.ok
+        ? "review disabled: no review session"
+        : check.capability === "review"
+          ? `review disabled: ${check.reason}`
+          : check.notice
+    );
+    return false;
+  }
+
+  /** `f`/`t` open the `:` prompt prefilled, so the note is typed like any command line. */
+  function promptFor(prefix: "finding" | "todo"): void {
+    state = applyAction(state, { kind: "command", command: "commandLine" });
+    state = applyAction(state, { kind: "commandInput", text: `${prefix} ` });
+  }
+
+  function reviewNotice(what: string, result: ReviewResult): void {
+    if (!result.ok) return notice(`${what} not saved: ${result.message}`);
+    const extra = result.notice === undefined ? "" : `; ${result.notice}`;
+    notice(`${what} saved: ${result.path} (revision ${result.revision}, ${result.status})${extra}`);
+  }
+
+  /**
+   * A finding captures the selection's snapshot evidence through the same document path
+   * `y` uses (documentFor → buildEvidence in the review), bound to the pinned snapshot.
+   */
+  async function addFinding(note: string): Promise<void> {
+    if (!reviewGate("finding")) return;
+    const selection = state.selection;
+    if (selection === null) return notice("finding: nothing selected; select a span, or add a todo with t");
+    if (pinned !== null) {
+      return notice(
+        "finding: unavailable(replay frame: the snapshot projection would include later records); L returns to live"
+      );
+    }
+    const pin = snapshot;
+    if (pin === null) return notice("finding: no snapshot loaded");
+    const document = await documentFor(selection);
+    if (closed) return;
+    const key = spanKey(selection);
+    const detail = state.detail !== null && spanKey(state.detail) === key ? state.detail : null;
+    const row = state.spans.find((candidate) => spanKey(candidate) === key) ?? state.lastKnownSpan;
+    const input: FindingInput = {
+      note,
+      ref: spanRefOf(selection),
+      node: detail?.nodeId ?? row?.nodeId ?? null,
+      snapshot: {
+        snapshotId: pin.snapshotId,
+        watermark: pin.watermark ?? 0,
+        retentionEpoch: pin.retentionEpoch,
+        seq: null
+      },
+      source: detail?.anchor ? { file: detail.anchor.file, line: detail.anchor.line, column: null } : null,
+      evidence: typeof document === "string" ? null : document
+    };
+    reviewNotice("finding", await review!.addFinding(input));
+  }
+
+  async function addTodo(note: string): Promise<void> {
+    if (!reviewGate("todo")) return;
+    reviewNotice("todo", await review!.addTodo(note));
+  }
+
+  async function finalizeReview(): Promise<void> {
+    if (!reviewGate("finalizeReview")) return;
+    const result = await review!.finalize();
+    if (!result.ok) return notice(`review not finalized: ${result.message}`);
+    notice(`review ${result.status}: ${result.path} (revision ${result.revision})`);
+  }
+
+  // -- the : command line ------------------------------------------------------------
+
+  /**
+   * Run a submitted line against the state AS IT WAS at submit time. `finding`, `todo`
+   * and `js` are session commands; everything else goes to commands.ts.
+   */
+  async function submitLine(line: string, at: ViewState): Promise<void> {
+    const own = /^\s*:?\s*(finding|todo|js)(?:[ \t]+([\s\S]*))?$/.exec(line);
+    if (own) {
+      const rest = (own[2] ?? "").trim();
+      if (own[1] === "finding") return addFinding(rest);
+      if (own[1] === "todo") return addTodo(rest);
+      return runJs(rest);
+    }
+    let outcome;
+    try {
+      outcome = await runCommandLine(at, line, { liveSeek: true, ...options.commands });
+    } catch (error) {
+      if (!closed) notice(`command failed: ${(error as Error).message ?? String(error)}`);
+      return;
+    }
+    if (closed || outcome === null) return;
+    for (const action of outcome.actions) {
+      if (action.kind === "quit") {
+        void close();
+        options.onExit?.();
+        return;
+      }
+      dispatch(action);
+    }
+    showResult(outcome.result);
+  }
+
+  /** `:js <expression>`: trusted local code in the eval child over the pinned snapshot. */
+  async function runJs(code: string): Promise<void> {
+    if (!gate("eval")) return;
+    if (code === "") return notice("usage: :js <expression>");
+    const snap = options.evalSnapshot?.() ?? { unavailable: "no-eval-snapshot" };
+    if ("unavailable" in snap) return notice(`eval: unavailable(${snap.unavailable})`);
+    const outcome = await (options.runEval ?? runLocalEval)({
+      code,
+      snapshot: snap,
+      env: options.evalEnv ?? {},
+      signal: lifetime.signal
+    });
+    if (closed) return;
+    if (!outcome.ok) return notice(`js failed: ${outcome.code}: ${outcome.message}`);
+    showResult({ kind: "value", command: "js", envelope: outcome.envelope });
   }
 
   // -- keys and actions ----------------------------------------------------------------
@@ -1006,7 +1271,29 @@ export function createSession(options: SessionOptions): Session {
         }
         afterChange();
         return;
+      case "commandSubmit": {
+        const line = state.commandLine?.text ?? null;
+        state = applyAction(state, action);
+        if (line !== null) void submitLine(line, state);
+        return;
+      }
       case "command":
+        if (action.command === "loadMore") {
+          void loadMore();
+          return;
+        }
+        if (action.command === "reload") {
+          void reload();
+          return;
+        }
+        if (action.command === "finding" || action.command === "todo") {
+          if (reviewGate(action.command)) promptFor(action.command);
+          return;
+        }
+        if (action.command === "finalizeReview") {
+          void finalizeReview();
+          return;
+        }
         if (action.command === "yank") {
           void yank();
           return;
@@ -1061,6 +1348,23 @@ export function createSession(options: SessionOptions): Session {
     const opened = await source.open(lifetime.signal);
     if (closed) return;
     caps = effectiveCapabilities(opened, source, policy);
+    if (caps.review.available) {
+      // Review is a session capability: the port decides (project root, -r, writable dir).
+      try {
+        review = options.review ? await options.review(opened) : null;
+      } catch (error) {
+        review = null;
+        caps = {
+          ...caps,
+          review: { available: false, reason: `review unavailable: ${(error as Error).message ?? String(error)}` }
+        };
+      }
+      if (closed) return;
+      if (review === null && caps.review.available)
+        caps = { ...caps, review: { available: false, reason: "no-review-session" } };
+      else if (review !== null && !review.capability.enabled)
+        caps = { ...caps, review: { available: false, reason: review.capability.reason } };
+    }
     const size = terminal?.size() ?? { cols: 80, rows: 24 };
     state = initialViewState({
       caps,
@@ -1104,6 +1408,11 @@ export function createSession(options: SessionOptions): Session {
       if (terminal) terminal.close();
       else fallback?.flush();
       try {
+        await review?.close();
+      } catch {
+        // The review lock is advisory; a stale one is reclaimed by the next session.
+      }
+      try {
         await source.close();
       } catch {
         // Closing is best effort; the terminal is already restored.
@@ -1139,9 +1448,13 @@ export function createSession(options: SessionOptions): Session {
 }
 
 /** The v2 trace-text document narrowed to one span by full ref. */
-function spanDocumentV2(envelope: CanonicalPageEnvelopeV2, ref: SpanRef): TraceTextDocumentV2 | null {
+function spanDocumentV2(
+  envelope: CanonicalPageEnvelopeV2,
+  ref: SpanRef,
+  options: { detail: 0 | 1 | 2; values: boolean }
+): TraceTextDocumentV2 | null {
   try {
-    const document = projectTraceTextDocumentV2(envelope, { detail: 2, values: true });
+    const document = projectTraceTextDocumentV2(envelope, options);
     const items = document.items.filter(
       (item) =>
         item.kind === "span" &&
@@ -1155,4 +1468,37 @@ function spanDocumentV2(envelope: CanonicalPageEnvelopeV2, ref: SpanRef): TraceT
   } catch {
     return null;
   }
+}
+
+/**
+ * Span rows of one canonical v2 page: full refs, the recorded parent when it is in the
+ * same trace ref AND in the page (otherwise the row is a re-rooted orphan, never attached
+ * to a guess), depth by the parent chain with a cycle guard.
+ */
+export function spanRowsFromCanonicalV2(envelope: CanonicalPageEnvelopeV2): SpanRow[] {
+  const items = envelope.items.filter((item): item is CanonicalSpanProjectionItemV2 => item.kind === "span");
+  const byKey = new Map(items.map((item) => [spanKey(item.span), item]));
+  const parentOf = (item: CanonicalSpanProjectionItemV2): CanonicalSpanProjectionItemV2 | null => {
+    if (item.parent.state !== "known") return null;
+    const parent = item.parent.span;
+    if (traceKey(parent) !== traceKey(item.span)) return null;
+    return byKey.get(spanKey(parent)) ?? null;
+  };
+  return items.map((item) => {
+    const parent = parentOf(item);
+    let depth = 0;
+    const seen = new Set<string>([spanKey(item.span)]);
+    for (let at = parent; at !== null && !seen.has(spanKey(at.span)); at = parentOf(at)) {
+      seen.add(spanKey(at.span));
+      depth += 1;
+    }
+    return {
+      ...spanRefOf(item.span),
+      parentSpanId: parent === null ? null : parent.span.spanId,
+      nodeId: item.node.nodeId,
+      depth,
+      errored: item.error.state === "recorded",
+      ...(item.spanKind ? { spanKind: item.spanKind } : {})
+    };
+  });
 }

@@ -59,6 +59,9 @@ const plainKeys = new Map<string, Action>([
   ["R", { kind: "command", command: "finalizeReview" }],
   ["y", { kind: "command", command: "yank" }],
   [":", { kind: "command", command: "commandLine" }],
+  // Pagination of the pinned snapshot: `>` loads the next page, `r` reads a new snapshot.
+  [">", { kind: "command", command: "loadMore" }],
+  ["r", { kind: "command", command: "reload" }],
   ["q", { kind: "quit" }],
   ["\u0003", { kind: "quit" }],
   ["\u001b", { kind: "clearSelection" }]

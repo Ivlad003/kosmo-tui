@@ -316,7 +316,8 @@ export function createStreamSource(options: StreamSourceOptions): StreamSource {
         values: v2 ? { level: "full" } : { level: "none", reason: "summary-only-stream" },
         probes: { available: false, reason: v2 ? "no-probe-records" : "summary-only-stream" },
         staticGraph: { available: false, reason: "no-static-graph-reader" },
-        sql: { available: false, reason: "stream-not-queryable" }
+        sql: { available: false, reason: "stream-not-queryable" },
+        reload: { available: false, reason: "stdin-stream-not-rereadable" }
       };
       return {
         snapshot,
