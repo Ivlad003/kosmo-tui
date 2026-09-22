@@ -168,6 +168,12 @@ export type ReservedCommand = Extract<
  */
 export type ConnectionState =
   | { kind: "disconnected"; reason: string }
+  /**
+   * A source that is not a live daemon connection (export, SQLite, stdin stream). The
+   * label says what it is, e.g. "export snapshot" or "stream v2 (incomplete)", so a
+   * static read never claims "connected; live".
+   */
+  | { kind: "offline"; label: string }
   | { kind: "connected"; sdk: "absent" }
   | { kind: "connected"; sdk: "present"; events: "none" }
   | { kind: "connected"; sdk: "present"; events: "flowing" };

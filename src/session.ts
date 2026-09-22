@@ -75,6 +75,7 @@ import type {
   TraceSource,
   VersionedCanonicalPage
 } from "./source.js";
+import type { StreamSource } from "./source-stream.js";
 import { isTooSmall, tooSmallFrame, type Terminal } from "./terminal.js";
 import { findValueCandidates } from "./values.js";
 import {
@@ -86,6 +87,7 @@ import {
   spanRefOf,
   traceKey,
   type Action,
+  type ConnectionState,
   type DetailValue,
   type SpanDetail,
   type SpanRef,
@@ -440,6 +442,30 @@ export function createSession(options: SessionOptions): Session {
     void loadCanonicalPages();
   }
 
+  /**
+   * What the header says about the source. Only a live daemon is "connected; live"; an
+   * export, a SQLite file or a stdin stream names itself and, for a stream, how it ended.
+   */
+  function sourceConnection(flowing: boolean): ConnectionState {
+    switch (source.kind) {
+      case "export":
+        return { kind: "offline", label: "export snapshot" };
+      case "sqlite":
+        return { kind: "offline", label: "sqlite snapshot (static)" };
+      case "stream": {
+        const stream = source as Partial<StreamSource>;
+        const version = stream.version?.() ?? null;
+        const completeness = stream.completeness?.().state;
+        const phase = completeness === "complete" ? "ended" : completeness === "pending" ? "following" : "incomplete";
+        return { kind: "offline", label: `stream${version === null ? "" : ` v${version}`} (${phase})` };
+      }
+      default:
+        return flowing
+          ? { kind: "connected", sdk: "present", events: "flowing" }
+          : { kind: "connected", sdk: "present", events: "none" };
+    }
+  }
+
   function applyFrame(frame: LiveDeltaBody): void {
     state = reduceDelta(state, { kind: "traces", rows: frame.traces });
     state = reduceDelta(state, { kind: "spans", rows: frame.spans });
@@ -523,10 +549,7 @@ export function createSession(options: SessionOptions): Session {
       return;
     }
     applyFrame(body);
-    state = reduceDelta(state, {
-      kind: "connection",
-      connection: { kind: "connected", sdk: "present", events: "flowing" }
-    });
+    state = reduceDelta(state, { kind: "connection", connection: sourceConnection(true) });
     afterChange();
   }
 
@@ -1371,11 +1394,7 @@ export function createSession(options: SessionOptions): Session {
       ...(options.depth !== undefined ? { depth: options.depth } : {}),
       ...(options.depthMapping !== undefined ? { depthMapping: options.depthMapping } : {}),
       viewportHeight: Math.max(1, size.rows - 4),
-      connection: {
-        kind: "connected",
-        sdk: "present",
-        events: opened.firstPage.items.length > 0 ? "flowing" : "none"
-      }
+      connection: sourceConnection(opened.firstPage.items.length > 0)
     });
     adoptOpen(opened, false);
     void loadCanonicalPages();

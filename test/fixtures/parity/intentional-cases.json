@@ -254,6 +254,450 @@
           }
         }
       ]
+    },
+    {
+      "name": "export-snapshot-header",
+      "change": "source-accurate-header",
+      "description": "a portable export read offline: the header names the export, not a live connection",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "offline",
+              "label": "export snapshot"
+            }
+          }
+        },
+        {
+          "delta": {
+            "kind": "policy",
+            "effectivePolicy": "full"
+          }
+        },
+        {
+          "delta": {
+            "kind": "traces",
+            "rows": [
+              {
+                "traceId": "t-1",
+                "status": "running",
+                "startedAt": 101,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-2",
+                "status": "errored",
+                "startedAt": 102,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-3",
+                "status": "complete",
+                "startedAt": 103,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-4",
+                "status": "running",
+                "startedAt": 104,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-5",
+                "status": "errored",
+                "startedAt": 105,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-6",
+                "status": "complete",
+                "startedAt": 106,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-7",
+                "status": "running",
+                "startedAt": 107,
+                "spanCount": 3
+              }
+            ]
+          }
+        },
+        {
+          "delta": {
+            "kind": "spans",
+            "rows": [
+              {
+                "traceId": "t-7",
+                "spanId": "a-root",
+                "parentSpanId": null,
+                "nodeId": "src/api/checkout.ts#handleCheckout",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-7",
+                "spanId": "b-child",
+                "parentSpanId": "a-root",
+                "nodeId": "src/api/pricing.ts#applyDiscount",
+                "depth": 1,
+                "errored": true
+              },
+              {
+                "traceId": "t-7",
+                "spanId": "c-child",
+                "parentSpanId": "a-root",
+                "nodeId": "src/db/orders.ts#insertOrder",
+                "depth": 1,
+                "errored": false
+              },
+              {
+                "traceId": "t-7",
+                "spanId": "d-grand",
+                "parentSpanId": "c-child",
+                "nodeId": "src/db/pool.ts#acquire",
+                "depth": 2,
+                "errored": false
+              },
+              {
+                "traceId": "t-6",
+                "spanId": "e-root",
+                "parentSpanId": null,
+                "nodeId": "src/auth/session.ts#signIn",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-5",
+                "spanId": "f-root",
+                "parentSpanId": null,
+                "nodeId": "src/jobs/mailer.ts#sendReceipt",
+                "depth": 0,
+                "errored": true
+              }
+            ]
+          }
+        },
+        {
+          "select": {
+            "traceId": "t-7",
+            "spanId": "a-root"
+          }
+        },
+        {
+          "action": {
+            "kind": "toggleExpand"
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 2
+          }
+        },
+        {
+          "action": {
+            "kind": "toggleExpand"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sqlite-snapshot-header",
+      "change": "source-accurate-header",
+      "description": "a SQLite store materialized once: the header says it is a static snapshot",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "offline",
+              "label": "sqlite snapshot (static)"
+            }
+          }
+        },
+        {
+          "delta": {
+            "kind": "policy",
+            "effectivePolicy": "full"
+          }
+        },
+        {
+          "delta": {
+            "kind": "traces",
+            "rows": [
+              {
+                "traceId": "t-1",
+                "status": "running",
+                "startedAt": 101,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-2",
+                "status": "errored",
+                "startedAt": 102,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-3",
+                "status": "complete",
+                "startedAt": 103,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-4",
+                "status": "running",
+                "startedAt": 104,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-5",
+                "status": "errored",
+                "startedAt": 105,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-6",
+                "status": "complete",
+                "startedAt": 106,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-7",
+                "status": "running",
+                "startedAt": 107,
+                "spanCount": 3
+              }
+            ]
+          }
+        },
+        {
+          "delta": {
+            "kind": "spans",
+            "rows": [
+              {
+                "traceId": "t-7",
+                "spanId": "a-root",
+                "parentSpanId": null,
+                "nodeId": "src/api/checkout.ts#handleCheckout",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-7",
+                "spanId": "b-child",
+                "parentSpanId": "a-root",
+                "nodeId": "src/api/pricing.ts#applyDiscount",
+                "depth": 1,
+                "errored": true
+              },
+              {
+                "traceId": "t-7",
+                "spanId": "c-child",
+                "parentSpanId": "a-root",
+                "nodeId": "src/db/orders.ts#insertOrder",
+                "depth": 1,
+                "errored": false
+              },
+              {
+                "traceId": "t-7",
+                "spanId": "d-grand",
+                "parentSpanId": "c-child",
+                "nodeId": "src/db/pool.ts#acquire",
+                "depth": 2,
+                "errored": false
+              },
+              {
+                "traceId": "t-6",
+                "spanId": "e-root",
+                "parentSpanId": null,
+                "nodeId": "src/auth/session.ts#signIn",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-5",
+                "spanId": "f-root",
+                "parentSpanId": null,
+                "nodeId": "src/jobs/mailer.ts#sendReceipt",
+                "depth": 0,
+                "errored": true
+              }
+            ]
+          }
+        },
+        {
+          "select": {
+            "traceId": "t-7",
+            "spanId": "a-root"
+          }
+        },
+        {
+          "action": {
+            "kind": "toggleExpand"
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 2
+          }
+        },
+        {
+          "action": {
+            "kind": "toggleExpand"
+          }
+        }
+      ]
+    },
+    {
+      "name": "stream-incomplete-header",
+      "change": "source-accurate-header",
+      "description": "a stdin v2 stream that hit EOF without end: the header says the stream is incomplete",
+      "steps": [
+        {
+          "delta": {
+            "kind": "connection",
+            "connection": {
+              "kind": "offline",
+              "label": "stream v2 (incomplete)"
+            }
+          }
+        },
+        {
+          "delta": {
+            "kind": "policy",
+            "effectivePolicy": "full"
+          }
+        },
+        {
+          "delta": {
+            "kind": "traces",
+            "rows": [
+              {
+                "traceId": "t-1",
+                "status": "running",
+                "startedAt": 101,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-2",
+                "status": "errored",
+                "startedAt": 102,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-3",
+                "status": "complete",
+                "startedAt": 103,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-4",
+                "status": "running",
+                "startedAt": 104,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-5",
+                "status": "errored",
+                "startedAt": 105,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-6",
+                "status": "complete",
+                "startedAt": 106,
+                "spanCount": 3
+              },
+              {
+                "traceId": "t-7",
+                "status": "running",
+                "startedAt": 107,
+                "spanCount": 3
+              }
+            ]
+          }
+        },
+        {
+          "delta": {
+            "kind": "spans",
+            "rows": [
+              {
+                "traceId": "t-7",
+                "spanId": "a-root",
+                "parentSpanId": null,
+                "nodeId": "src/api/checkout.ts#handleCheckout",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-7",
+                "spanId": "b-child",
+                "parentSpanId": "a-root",
+                "nodeId": "src/api/pricing.ts#applyDiscount",
+                "depth": 1,
+                "errored": true
+              },
+              {
+                "traceId": "t-7",
+                "spanId": "c-child",
+                "parentSpanId": "a-root",
+                "nodeId": "src/db/orders.ts#insertOrder",
+                "depth": 1,
+                "errored": false
+              },
+              {
+                "traceId": "t-7",
+                "spanId": "d-grand",
+                "parentSpanId": "c-child",
+                "nodeId": "src/db/pool.ts#acquire",
+                "depth": 2,
+                "errored": false
+              },
+              {
+                "traceId": "t-6",
+                "spanId": "e-root",
+                "parentSpanId": null,
+                "nodeId": "src/auth/session.ts#signIn",
+                "depth": 0,
+                "errored": false
+              },
+              {
+                "traceId": "t-5",
+                "spanId": "f-root",
+                "parentSpanId": null,
+                "nodeId": "src/jobs/mailer.ts#sendReceipt",
+                "depth": 0,
+                "errored": true
+              }
+            ]
+          }
+        },
+        {
+          "select": {
+            "traceId": "t-7",
+            "spanId": "a-root"
+          }
+        },
+        {
+          "action": {
+            "kind": "toggleExpand"
+          }
+        },
+        {
+          "action": {
+            "kind": "move",
+            "delta": 2
+          }
+        },
+        {
+          "action": {
+            "kind": "toggleExpand"
+          }
+        }
+      ]
     }
   ]
 }

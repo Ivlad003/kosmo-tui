@@ -101,6 +101,14 @@ const properties: Record<string, (kt: string[], kc: string[], cols: number) => v
     expect(kt.some((line) => line.startsWith("  tab: kosmo.trace-text/v1 "))).toBe(true);
     expect(kc.join("\n")).toContain("\t");
   },
+  "source-accurate-header": (kt, kc) => {
+    // kosmo-callflow said "connected; live" for any source that was not disconnected; an
+    // export, a SQLite snapshot or a stdin stream now names itself. Only the header differs.
+    expect(kc[0]).toContain("connected; live");
+    expect(kt[0]).not.toContain("connected; live");
+    expect(kt[0]).toMatch(/^(export snapshot|sqlite snapshot \(static\)|stream v2 \(incomplete\)) \| /);
+    expect(kt.slice(1)).toEqual(kc.slice(1));
+  },
   "terminal-escaping": (kt, kc) => {
     expect(ESC_OR_BEL.test(kt.join("\n"))).toBe(false);
     expect(kt.join("\n")).toContain("\\u001b");

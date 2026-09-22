@@ -84,6 +84,8 @@ export function connectionLine(state: ViewState): string {
   const { connection } = state;
   if (connection.kind === "disconnected") {
     parts.push(`disconnected: ${shown(connection.reason)}`);
+  } else if (connection.kind === "offline") {
+    parts.push(shown(connection.label));
   } else if (connection.sdk === "absent") {
     parts.push("connected; SDK not attached");
   } else if (connection.events === "none") {
@@ -185,9 +187,13 @@ export function selectionBanner(state: ViewState): string | null {
 export function emptyMessage(state: ViewState): string {
   const { connection } = state;
   if (connection.kind === "disconnected") return "  no data: daemon unreachable";
-  if (connection.sdk === "absent") return "  no data: SDK not attached to the application";
-  if (connection.events === "none") return "  no data: SDK attached, nothing recorded yet";
+  if (connection.kind === "connected" && connection.sdk === "absent")
+    return "  no data: SDK not attached to the application";
+  if (connection.kind === "connected" && connection.events === "none")
+    return "  no data: SDK attached, nothing recorded yet";
   if (filtersActive(state.filters)) return "  no rows match the current filter";
+  if (connection.kind === "offline" && state.traces.length === 0)
+    return `  no data: the ${shown(connection.label)} holds no traces`;
   return "  no rows";
 }
 

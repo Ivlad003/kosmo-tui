@@ -68,3 +68,14 @@ before measuring (what the terminal would have shown), then truncates. The case 
 sizes 80x24 and 120x40: at 60x16 the details pane has no room for projection rows, so
 there is nothing to differ. The baseline keeps `detail-tab-table` (tab dialect, no
 projection document) at all three sizes.
+
+### `source-accurate-header` — `export-snapshot-header`, `sqlite-snapshot-header`, `stream-incomplete-header`
+
+kosmo-callflow's viewer only ever read a live daemon, so its header printed `connected; live`
+for every connection that was not disconnected / SDK-absent / empty. kosmo-tui also opens a
+portable export, a SQLite store and a stdin stream; calling those "live" is false. The session
+now sets an `offline` connection whose label names the source: `export snapshot`,
+`sqlite snapshot (static)` or `stream v<N> (ended|incomplete|following)`. The cases are the
+baseline `tree-selection` case with only the connection step changed; every row except the
+header is asserted identical to kosmo-callflow's frame. Live sources keep `connected; live`,
+so the baseline stays byte-identical.
