@@ -14,6 +14,8 @@
  */
 
 import { spawn } from "node:child_process";
+import { accessSync, constants as fsConstants, statSync } from "node:fs";
+import path from "node:path";
 import type { TraceTextDialect } from "@kosmo-callflow/protocol";
 import { buildEvidence, type EvidenceDocument, type SanitizeContext, type TraceTextVersion } from "./review-format.js";
 import type { Terminal } from "./terminal.js";
@@ -57,7 +59,72 @@ export function buildCopyDocument(
 export type ClipboardCommand = { command: string; args: string[] };
 
 /** Spawn one adapter with the document on stdin; resolves on exit code 0, rejects otherwise. */
-export type ClipboardSpawn = (command: ClipboardCommand, input: string) => Promise<void>;
+export type ClipboardSpawn = (
+  command: ClipboardCommand,
+  input: string,
+  env?: Record<string, string | undefined>
+) => Promise<void>;
+
+/**
+ * Variables a clipboard adapter may see (S-L3): the display/session it talks to, the
+ * locale and text encoding, the home and temp directories. Nothing else of the TUI's
+ * environment reaches it: no token (`KOSMO_TUI_TOKEN`), no credential variable.
+ */
+export const CLIPBOARD_ENV_ALLOWLIST: readonly string[] = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TMPDIR",
+  "DISPLAY",
+  "WAYLAND_DISPLAY",
+  "XAUTHORITY",
+  "XDG_RUNTIME_DIR",
+  "DBUS_SESSION_BUS_ADDRESS",
+  "__CF_USER_TEXT_ENCODING",
+  "SystemRoot",
+  "SYSTEMROOT"
+];
+
+/** The adapter environment: allowlisted variables, PATH reduced to absolute entries. */
+export function clipboardEnv(env: Record<string, string | undefined>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of CLIPBOARD_ENV_ALLOWLIST) {
+    const value = env[name];
+    if (typeof value === "string") out[name] = value;
+  }
+  if (out.PATH !== undefined) out.PATH = absolutePathEntries(out.PATH).join(path.delimiter);
+  return out;
+}
+
+function absolutePathEntries(value: string): string[] {
+  // Relative entries ("", ".", "bin") resolve against the cwd: a checked-out repository
+  // could plant a `pbcopy` there. Only absolute directories are searched.
+  return value.split(path.delimiter).filter((entry) => entry.length > 0 && path.isAbsolute(entry));
+}
+
+/** The adapter's absolute executable path on the absolute PATH entries, or undefined. */
+export function resolveClipboardCommand(command: string, env: Record<string, string | undefined>): string | undefined {
+  if (path.isAbsolute(command)) return command;
+  if (command.includes("/") || command.includes("\\")) return undefined;
+  const extensions = process.platform === "win32" ? ["", ".exe", ".com"] : [""];
+  for (const directory of absolutePathEntries(env.PATH ?? "")) {
+    for (const extension of extensions) {
+      const candidate = path.join(directory, `${command}${extension}`);
+      try {
+        if (!statSync(candidate).isFile()) continue;
+        if (process.platform !== "win32") accessSync(candidate, fsConstants.X_OK);
+        return candidate;
+      } catch {
+        // Not here; next entry.
+      }
+    }
+  }
+  return undefined;
+}
 
 /** Adapters to try, in order, for this platform and display environment. */
 export function clipboardCommands(
@@ -74,10 +141,19 @@ export function clipboardCommands(
 
 const SPAWN_TIMEOUT_MS = 2_000;
 
-/** Default adapter runner: no shell, argv only, stdout/stderr ignored, bounded wait. */
-export const spawnClipboard: ClipboardSpawn = (command, input) =>
+/**
+ * Default adapter runner: no shell, argv only, an absolute executable found on absolute
+ * PATH entries, the allowlisted environment only, stdout/stderr ignored, bounded wait.
+ */
+export const spawnClipboard: ClipboardSpawn = (command, input, parentEnv = process.env) =>
   new Promise<void>((resolve, reject) => {
-    const child = spawn(command.command, command.args, { shell: false, stdio: ["pipe", "ignore", "ignore"] });
+    const env = clipboardEnv(parentEnv);
+    const executable = resolveClipboardCommand(command.command, env);
+    if (executable === undefined) {
+      reject(Object.assign(new Error(`${command.command} not found on an absolute PATH entry`), { code: "ENOENT" }));
+      return;
+    }
+    const child = spawn(executable, command.args, { shell: false, env, stdio: ["pipe", "ignore", "ignore"] });
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error(`${command.command} timed out`));
@@ -110,7 +186,7 @@ export async function copyToClipboard(text: string, deps: ClipboardDeps): Promis
   const failures: string[] = [];
   for (const command of commands) {
     try {
-      await run(command, text);
+      await run(command, text, deps.env);
       return { copied: true, via: command.command };
     } catch (error) {
       const code = (error as { code?: unknown }).code;
