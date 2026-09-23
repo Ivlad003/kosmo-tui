@@ -137,8 +137,15 @@ describe("Nest subscription nesting", () => {
   it("a subscription without terminal evidence is not a return", () => {
     const page = project(t, invocation);
     expect(labelOf(page, "sub")).toBe("interceptor(stream, pending)");
-    const retained = project(t, invocation, { retentionEpoch: 1 });
+    // Retention evicted this session's partition of the trace: the missing exit may be gone.
+    const retained = project(t, invocation, { retentionEpoch: 1, retention: { evictedSessionIds: ["s-api"] } });
     expect(labelOf(retained, "sub")).toBe("interceptor(stream, unknown(retention))");
+    // An epoch bump alone never implies this trace lost evidence.
+    expect(labelOf(project(t, invocation, { retentionEpoch: 1 }), "sub")).toBe("interceptor(stream, pending)");
+    // Nothing recording any more: the open subscription is unknown(incomplete), not pending.
+    expect(labelOf(project(t, invocation, { source: "imported" }), "sub")).toBe(
+      "interceptor(stream, unknown(incomplete))"
+    );
   });
 
   it("a nested interceptor's invocation inside an outer subscription is an invocation", () => {

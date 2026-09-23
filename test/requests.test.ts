@@ -70,11 +70,18 @@ describe("request states", () => {
   });
 
   it("a retention gap is unknown(retention) with no invented status or duration", () => {
-    const row = only(requestRowsFromPage(openRequest("t-ret", { retentionEpoch: 1 })));
+    // Retention evicted this trace's s-api partition: the missing exit may be gone.
+    const evicted = { retentionEpoch: 1, retention: { evictedSessionIds: ["s-api"] } };
+    const row = only(requestRowsFromPage(openRequest("t-ret", evicted)));
     expect(stateText(row.state)).toBe("unknown(retention)");
     expect(fieldText(row.status)).toBe("unavailable(retention)");
     expect(row.duration).toEqual({ state: "unavailable", reason: "retention" });
     expect(formatSelectorRow(row)).not.toMatch(/no-response|200|0ms/);
+    // An epoch bump alone (another trace evicted) is not retention of this request.
+    expect(stateText(only(requestRowsFromPage(openRequest("t-ret", { retentionEpoch: 1 }))).state)).toBe("pending");
+    // Eviction of another session's partition does not touch this one either.
+    const elsewhere = { retentionEpoch: 1, retention: { evictedSessionIds: ["s-web"] } };
+    expect(stateText(only(requestRowsFromPage(openRequest("t-ret", elsewhere))).state)).toBe("pending");
   });
 
   it("an imported record without exit is unknown(incomplete); a loss range is unknown(loss)", () => {
@@ -123,7 +130,10 @@ describe("request states", () => {
   it("pending, retained-incomplete and aborted are three different labels", () => {
     const labels = new Set([
       stateText(only(requestRowsFromPage(openRequest("a"))).state),
-      stateText(only(requestRowsFromPage(openRequest("b", { retentionEpoch: 1 }))).state),
+      stateText(
+        only(requestRowsFromPage(openRequest("b", { retentionEpoch: 1, retention: { evictedSessionIds: ["s-api"] } })))
+          .state
+      ),
       "aborted(completion-aborted)"
     ]);
     expect(labels.size).toBe(3);

@@ -58,6 +58,8 @@ export function project(
     source?: "live" | "imported";
     lossRanges?: CanonicalTraceV2Input["lossRanges"];
     supplements?: CanonicalTraceV2Input["supplements"];
+    /** Where retention evicted evidence of this trace; an epoch alone never implies it. */
+    retention?: CanonicalTraceV2Input["retention"];
   } = {}
 ): CanonicalPageEnvelopeV2 {
   const watermark = Math.max(0, ...events.map((entry) => entry.seq), ...(options.supplements ?? []).map((s) => s.seq));
@@ -66,7 +68,8 @@ export function project(
     traceId,
     events,
     ...(options.lossRanges ? { lossRanges: options.lossRanges } : {}),
-    ...(options.supplements ? { supplements: options.supplements } : {})
+    ...(options.supplements ? { supplements: options.supplements } : {}),
+    ...(options.retention ? { retention: options.retention } : {})
   });
 }
 
