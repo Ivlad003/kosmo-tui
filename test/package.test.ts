@@ -16,6 +16,7 @@ const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as
   overrides: Record<string, string>;
   peerDependencies: Record<string, string>;
   peerDependenciesMeta: Record<string, { optional?: boolean }>;
+  publishConfig?: { access?: string };
 };
 
 const ALLOWED = [
@@ -28,8 +29,9 @@ const ALLOWED = [
 
 describe("package boundary (spec: Окремий проєкт і опублікована межа)", () => {
   it("declares the bin, ESM, Node >=18.19.0 and published files", () => {
-    expect(pkg.name).toBe("kosmo-tui");
+    expect(pkg.name).toBe("@ivlad003/kosmo-tui");
     expect(pkg.type).toBe("module");
+    expect(pkg.publishConfig?.access).toBe("public");
     expect(pkg.bin).toEqual({ "kosmo-tui": "bin/kosmo-tui.js" });
     expect(pkg.engines.node).toBe(">=18.19.0");
     expect(pkg.files).toEqual(["dist", "bin"]);

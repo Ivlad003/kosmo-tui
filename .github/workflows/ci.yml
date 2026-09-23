@@ -29,7 +29,7 @@ permissions:
 env:
   KC_REPOSITORY: Ivlad003/kosmo-callflow
   # Bump together with a kosmo-tui release after `npm run deps:tarballs` + `npm test` pass locally.
-  KC_PINNED_REF: e7bd8f31915bd9ecdf1b5d4ceb32e77ae91ea532
+  KC_PINNED_REF: 187e57ce12592e6030dd08e3f8935fcd5f45cdbe
   KC_SUPPORTED_RANGE: "0.0.x"
   KC_PACKAGES: "@kosmo-callflow/protocol @kosmo-callflow/query @kosmo-callflow/replay @kosmo-callflow/trace-artifacts @kosmo-callflow/trace-diff"
 

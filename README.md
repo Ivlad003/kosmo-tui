@@ -1,10 +1,15 @@
-# kosmo-tui
+# @ivlad003/kosmo-tui
 
 Terminal viewer and read-only debugger for recorded [kosmo-callflow](../kosmo-callflow) traces.
 It works without a browser and without a mandatory daemon: it can read a live daemon, a
 SQLite store, a portable export or an NDJSON stream on stdin.
 
 ```sh
+# Run directly or install globally:
+npx @ivlad003/kosmo-tui
+npm install -g @ivlad003/kosmo-tui
+
+# CLI commands:
 kosmo-tui                      # live project resolved from cwd
 kosmo-tui t_9f                 # live trace by id
 kosmo-tui ./trace-export.json  # portable export

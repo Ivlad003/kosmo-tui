@@ -1,9 +1,12 @@
 {
-  "name": "kosmo-tui",
+  "name": "@ivlad003/kosmo-tui",
   "version": "0.0.0",
   "description": "Terminal viewer and read-only debugger for recorded kosmo-callflow traces.",
   "type": "module",
   "license": "ISC",
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "kosmo-tui": "bin/kosmo-tui.js"
   },
