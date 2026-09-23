@@ -13,7 +13,11 @@
  *    construction and never shown as empty frames.
  *  - A seq outside the pinned range is refused with the range, never clamped.
  *  - The reducer only sees records `<= N`, so a payload supplement or error recorded
- *    after N cannot appear in the frame at N.
+ *    after N cannot appear in the frame at N. A live read merges supplements into the
+ *    runtime record's `payload.supplement` without a seq of their own; before the
+ *    watermark that merged value is stripped, because its time is unknown.
+ *  - Records past the pinned watermark (ingested after the pin) are not part of the
+ *    snapshot: they are dropped, and the range never extends beyond the watermark.
  *  - Nothing here reads live data: live deltas cannot reach a pinned replay.
  *  - Probe records are a separate sequence domain and are never part of the timeline.
  */
@@ -80,13 +84,16 @@ export function pinReplay(
   snapshot: SnapshotRef,
   options: { truncatedReason?: string | null } = {}
 ): PinnedReplay {
-  const sorted = [...records].sort((left, right) => left.seq - right.seq);
+  const watermark = typeof snapshot.watermark === "number" ? snapshot.watermark : null;
+  const sorted = records
+    .filter((record) => watermark === null || record.seq <= watermark)
+    .sort((left, right) => left.seq - right.seq);
   const seqs = [...new Set(sorted.map((record) => record.seq))];
   const maxSeq = seqs.at(-1);
   const range =
     maxSeq === undefined
       ? null
-      : { first: seqs[0]!, last: options.truncatedReason ? maxSeq : Math.max(maxSeq, snapshot.watermark ?? maxSeq) };
+      : { first: seqs[0]!, last: options.truncatedReason || watermark === null ? maxSeq : Math.max(maxSeq, watermark) };
   // One timeline frame per recorded seq. The row state is derived on demand by `seek`,
   // so the frames only carry what the header and the clock rules need.
   const bySeq = new Map<number, ReplayFrameInput>();
@@ -171,7 +178,9 @@ export function seekPinned(pin: PinnedReplay, requested: number): SeekOutcome {
   }
   const index = lastIndexAtOrBelow(pin.seqs, requested);
   const applied = pin.seqs[index]!;
-  const { state } = seekReplay(pin.records, requested, [], {
+  const watermark = typeof pin.snapshot.watermark === "number" ? pin.snapshot.watermark : null;
+  const input = watermark !== null && requested < watermark ? pin.records.map(withoutMergedSupplement) : pin.records;
+  const { state } = seekReplay(input, requested, [], {
     retentionEpoch: pin.snapshot.retentionEpoch,
     datasetId: pin.snapshot.datasetId
   });
@@ -185,6 +194,15 @@ export function seekPinned(pin: PinnedReplay, requested: number): SeekOutcome {
     state,
     rows: rowsFromReplayState(state, pin.snapshot)
   };
+}
+
+/** A runtime record without the live read's merged `payload.supplement` (it carries no seq). */
+function withoutMergedSupplement(record: ReplayRecord): ReplayRecord {
+  if (!isRuntime(record)) return record;
+  const payload = (record as { payload?: unknown }).payload;
+  if (payload === null || typeof payload !== "object" || !("supplement" in payload)) return record;
+  const { supplement: _merged, ...rest } = payload as Record<string, unknown>;
+  return { ...record, payload: rest } as ReplayRecord;
 }
 
 /** The seq one record step away from `index`, or null at either end. */

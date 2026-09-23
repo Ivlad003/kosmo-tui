@@ -20,7 +20,7 @@
  * message, a cursor, a URL or a page.
  */
 
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import {
   canonicalPageEnvelopeSchema,
@@ -136,6 +136,25 @@ async function readDiscovery(
   return { ...(url === undefined ? {} : { url }), ...(tokenFile === undefined ? {} : { tokenFile }) };
 }
 
+/**
+ * SEC-L7: a repository-controlled project.json may name `auth.projectTokenFile`; it is only
+ * honoured inside the data directory (lexically and after symlinks), so it cannot point the
+ * token read at an arbitrary credential file such as `~/.git-credentials`.
+ */
+async function tokenFileInsideDataDir(tokenFile: string, dataDir: string): Promise<boolean> {
+  const inside = (file: string, directory: string): boolean => {
+    const relative = path.relative(directory, file);
+    return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+  };
+  if (!inside(path.resolve(tokenFile), path.resolve(dataDir))) return false;
+  try {
+    return inside(await realpath(tokenFile), await realpath(dataDir));
+  } catch {
+    // Not on disk (yet): the lexical check stands; the read reports the missing file.
+    return true;
+  }
+}
+
 async function readToken(
   tokenFile: string,
   read: (filePath: string) => Promise<string>
@@ -146,6 +165,14 @@ async function readToken(
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code ?? "read error";
     return { ok: false, message: `kosmo-tui: cannot read the project token file ${tokenFile} (${code})` };
+  }
+}
+
+function safeOrigin(url: string): string | undefined {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
   }
 }
 
@@ -250,6 +277,21 @@ export async function resolveLiveConfig(input: ResolveLiveInput): Promise<LiveRe
       if (failed) return failed;
     }
     if (discovery?.tokenFile !== undefined) {
+      if (!(await tokenFileInsideDataDir(discovery.tokenFile, dataDir))) {
+        return fail(
+          "auth-token-file-outside-data",
+          `kosmo-tui: auth.projectTokenFile in ${path.join(dataDir, "project.json")} points outside ${dataDir}; only a token file inside the data directory is read`
+        );
+      }
+      // S-L2: the discovered token belongs to the configured collector. An explicitly typed
+      // endpoint gets it only on loopback or when it IS the configured endpoints.cli origin.
+      const configuredOrigin = discovery.url === undefined ? undefined : safeOrigin(discovery.url);
+      if (!isLoopbackOrigin(origin) && origin !== configuredOrigin) {
+        return fail(
+          "auth-origin",
+          `kosmo-tui: refusing to send the project token discovered in ${dataDir} to ${origin}, which is neither loopback nor the configured endpoint${configuredOrigin ? ` (${configuredOrigin})` : ""}; set KOSMO_CALLFLOW_PROJECT_TOKEN_FILE to choose a credential for it`
+        );
+      }
       tokenFile = discovery.tokenFile;
       authSource = "token-file";
     }
@@ -258,6 +300,14 @@ export async function resolveLiveConfig(input: ResolveLiveInput): Promise<LiveRe
     const loaded = await readToken(tokenFile, read);
     if (!loaded.ok) return fail("auth-token-unreadable", loaded.message);
     token = loaded.token;
+  }
+
+  // A token never travels in cleartext off the machine: plain http only on loopback.
+  if (token !== undefined && new URL(baseUrl).protocol === "http:" && !isLoopbackOrigin(origin)) {
+    return fail(
+      "auth-insecure-endpoint",
+      `kosmo-tui: refusing to send a project token over plain http to ${origin}; use https for a non-loopback collector`
+    );
   }
 
   const projectId = context?.projectId ?? input.project?.projectId ?? input.projectId ?? null;
@@ -286,7 +336,40 @@ export type LiveResponse = {
   type?: string;
   headers: { get(name: string): string | null };
   text(): Promise<string>;
+  /** The body stream (a real fetch Response); read incrementally so the cap holds. */
+  body?: ReadableStream<Uint8Array> | null;
 };
+
+/**
+ * Read a response body with a hard byte cap. A streamed body is read chunk by chunk and
+ * cancelled as soon as it exceeds the cap (a chunked answer without content-length never
+ * buffers past it); a test double without a stream falls back to `text()`.
+ */
+async function readCappedText(response: LiveResponse, cap: number, what: string): Promise<string> {
+  const tooLarge = () => new SourceError("response-too-large", `kosmo-tui: ${what} exceeds ${cap} bytes`);
+  const stream = response.body;
+  if (stream && typeof stream.getReader === "function") {
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > cap) {
+        await reader.cancel().catch(() => undefined);
+        throw tooLarge();
+      }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength))).toString(
+      "utf8"
+    );
+  }
+  const text = await response.text();
+  if (Buffer.byteLength(text, "utf8") > cap) throw tooLarge();
+  return text;
+}
 
 export type LiveFetch = (
   url: string,
@@ -482,10 +565,7 @@ export function createLiveSource(options: LiveSourceOptions): LiveSource {
     if (length > LIVE_RESPONSE_MAX_BYTES) {
       throw new SourceError("response-too-large", `kosmo-tui: ${what} exceeds ${LIVE_RESPONSE_MAX_BYTES} bytes`);
     }
-    const text = await response.text();
-    if (Buffer.byteLength(text, "utf8") > LIVE_RESPONSE_MAX_BYTES) {
-      throw new SourceError("response-too-large", `kosmo-tui: ${what} exceeds ${LIVE_RESPONSE_MAX_BYTES} bytes`);
-    }
+    const text = await readCappedText(response, LIVE_RESPONSE_MAX_BYTES, what);
     let body: unknown;
     try {
       body = text.length === 0 ? undefined : JSON.parse(text);
@@ -814,11 +894,20 @@ export function createLiveSource(options: LiveSourceOptions): LiveSource {
         { maxSpans: String(EVENTS_PER_READ), maxEvents: String(limit), cursor: daemonCursor ?? undefined },
         signal
       );
+      // R-M5: the pinned snapshot ends at its watermark. The live store keeps ingesting, so
+      // a later read can return records past it; those are not part of this snapshot.
+      const watermark = typeof snapshot.watermark === "number" ? snapshot.watermark : null;
+      let afterWatermark = 0;
       const items = page.items
         .filter(
           (event) =>
             event.sessionId === ref.sessionId && (selection.kind !== "span" || event.spanId === selection.ref.spanId)
         )
+        .filter((event) => {
+          if (watermark === null || typeof event.seq !== "number" || event.seq <= watermark) return true;
+          afterWatermark += 1;
+          return false;
+        })
         .map((event) => ({ ...event, projectId: snapshot.projectId }) as unknown as ReplayRecord);
       const loaded = loadedBefore + items.length;
       const next =
@@ -829,7 +918,12 @@ export function createLiveSource(options: LiveSourceOptions): LiveSource {
             : null;
       return {
         items,
-        coverage: { scope: next === null ? "complete" : "partial", loaded, total: next === null ? loaded : null },
+        coverage: {
+          scope: next === null ? "complete" : "partial",
+          loaded,
+          total: next === null ? loaded : null,
+          ...(afterWatermark > 0 ? { reason: `excluded-after-watermark(${afterWatermark})` } : {})
+        },
         truncated: next !== null,
         cursor: next === null ? null : encodeCursor(binding, JSON.stringify(next))
       };
