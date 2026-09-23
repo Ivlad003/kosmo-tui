@@ -260,7 +260,8 @@ describe(":ancestors", () => {
   });
 
   it("a parent lost to retention makes coverage partial and says why", async () => {
-    const spans = rows().filter((row) => !(row.traceId === "t-1" && row.sessionId === "s-1" && row.spanId === "mid"));
+    // R-L4: a unique cross-session "mid" would be a valid parent; drop it from every session.
+    const spans = rows().filter((row) => !(row.traceId === "t-1" && row.spanId === "mid"));
     const answer = await result(seeded({}, spans), "ancestors");
     const state = applyDelta(seeded({}, spans), { kind: "retention", dropped: [] });
     const withGap = await result(state, "ancestors");
@@ -319,7 +320,8 @@ describe(":path — no-path vs unknown-path", () => {
   });
 
   it("a missing link in the chain is unknown-path(retention|not-loaded)", async () => {
-    const spans = rows().filter((row) => !(row.traceId === "t-1" && row.sessionId === "s-1" && row.spanId === "mid"));
+    // R-L4: a unique cross-session "mid" would be a valid parent; drop it from every session.
+    const spans = rows().filter((row) => !(row.traceId === "t-1" && row.spanId === "mid"));
     expect(await result(seeded({}, spans), "path root leaf")).toMatchObject({
       status: "unknown-path",
       reason: "not-loaded",

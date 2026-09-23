@@ -79,16 +79,16 @@ async function sqliteFixture() {
 }
 
 describe("commands over the shared graph selectors (task 5b.1)", () => {
-  it("ancestors follow the shared resolution across sessions, unlike the local walk", async () => {
+  it("ancestors follow the shared resolution across sessions, and the local walk agrees", async () => {
     const { source, state, deps } = await sqliteFixture();
     const shared = await run(state, ":ancestors s-api:t-checkout:query", deps);
     expect(spanIds(shared)).toEqual(["s-api/query", "s-api/handle", "s-web/req"]);
     expect(shared).toMatchObject({ kind: "projection", meta: { coverage: "complete" } });
 
-    // The same line through the local same-session walk stops at the cross-session parent.
+    // R-L4: the local walk (stack pane) resolves the unique cross-session parent the same way.
     const local = await run(state, ":ancestors s-api:t-checkout:query", { selectors: localGraphSelectors });
-    expect(spanIds(local)).toEqual(["s-api/query", "s-api/handle"]);
-    expect(local).toMatchObject({ meta: { coverage: "partial" } });
+    expect(spanIds(local)).toEqual(["s-api/query", "s-api/handle", "s-web/req"]);
+    expect(local).toMatchObject({ meta: { coverage: "complete" } });
     await source.close();
   });
 

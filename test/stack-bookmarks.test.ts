@@ -25,12 +25,25 @@ describe("ancestor chain", () => {
     expect(chain.coverage).toBe("complete");
   });
 
-  it("never links the same parent spanId from another session", () => {
+  it("resolves a parent like the shared selectors: own session first, else a unique cross-session match", () => {
+    // R-L4: the stack pane and :ancestors resolve parents the same way.
     const otherSessionParent = span("t", "b", { sessionId: "s-2" });
     const chain = ancestorChain([leaf, otherSessionParent], ref("t", "c"))!;
-    expect(chain.frames.map((frame) => frame.spanId)).toEqual(["c"]);
-    expect(chain.stop).toEqual({ kind: "unknown", parent: ref("t", "b"), reason: "not-loaded" });
-    expect(chain.coverage).toBe("partial");
+    expect(chain.frames).toEqual([leaf, otherSessionParent]);
+    expect(chain.stop).toEqual({ kind: "root" });
+    expect(chain.coverage).toBe("complete");
+    // The own session wins over another session holding the same spanId.
+    const sameSession = ancestorChain([leaf, mid, root, otherSessionParent], ref("t", "c"))!;
+    expect(sameSession.frames.map((frame) => [frame.spanId, frame.sessionId])).toEqual([
+      ["c", "s-1"],
+      ["b", "s-1"],
+      ["a", "s-1"]
+    ]);
+    // Two other sessions holding it: ambiguous, never guessed; another trace is never linked.
+    const ambiguous = ancestorChain([leaf, otherSessionParent, span("t", "b", { sessionId: "s-3" })], ref("t", "c"))!;
+    expect(ambiguous.stop).toEqual({ kind: "ambiguous", parent: ref("t", "b"), candidates: 2 });
+    const otherTrace = ancestorChain([leaf, span("u", "b", { sessionId: "s-2" })], ref("t", "c"))!;
+    expect(otherTrace.stop).toEqual({ kind: "unknown", parent: ref("t", "b"), reason: "not-loaded" });
     // And the other session's own chain is its own.
     expect(ancestorChain([leaf, otherSessionParent], ref("t", "b", "s-2"))!.frames).toEqual([otherSessionParent]);
   });
