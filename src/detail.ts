@@ -65,7 +65,8 @@ export function spanRowsFromEvents(events: TraceEventView[], scope: DatasetScope
   for (const event of events) {
     const key = localKey(event.sessionId, event.traceId, event.spanId);
     const existing = byKey.get(key);
-    const errored = existing?.errored === true || event.type === "error";
+    // A late error arrived after the span's one logical completion: evidence, not its status.
+    const errored = existing?.errored === true || (event.type === "error" && !isLateError(event));
     const parent = parents.get(key) ?? null;
     byKey.set(key, {
       datasetId: scope.datasetId,
@@ -97,9 +98,17 @@ function depthOf(key: string, parents: Map<string, string | null>): number {
   return depth;
 }
 
-/** Lifecycle of one span, in the projection's own vocabulary. */
+/** An `error` record written after the span's completion (`lifecycle: late-error`). */
+function isLateError(event: TraceEventView): boolean {
+  return event.type === "error" && (event as { lifecycle?: unknown }).lifecycle === "late-error";
+}
+
+/**
+ * Lifecycle of one span, in the projection's own vocabulary. A late error never turns a
+ * completed span into an errored one: it is shown separately as late-error evidence.
+ */
 function statusOf(events: TraceEventView[]): TraceRow["status"] {
-  if (events.some((event) => event.type === "error")) return "errored";
+  if (events.some((event) => event.type === "error" && !isLateError(event))) return "errored";
   if (events.some((event) => event.type === "exit")) return "complete";
   return "running";
 }
@@ -125,7 +134,8 @@ export function spanDetailFromEvents(
 
   const enter = spanEvents.find((event) => event.type === "enter");
   const exit = spanEvents.find((event) => event.type === "exit");
-  const error = spanEvents.find((event) => event.type === "error");
+  const error = spanEvents.find((event) => event.type === "error" && !isLateError(event));
+  const lateError = spanEvents.find(isLateError);
 
   return {
     datasetId: selection.datasetId,
@@ -138,6 +148,7 @@ export function spanDetailFromEvents(
     args: enter === undefined ? { state: "unavailable", reason: "no enter record" } : valueOf(enter.payload?.args),
     ret: exit === undefined ? { state: "unavailable", reason: "no exit record" } : valueOf(exit.payload?.ret),
     error: error === undefined ? { state: "not-recorded" } : valueOf(error.payload?.message ?? error.payload),
+    ...(lateError === undefined ? {} : { lateError: valueOf(lateError.payload?.message ?? lateError.payload) }),
     duration: durationOf(enter, exit),
     anchor: anchorOf(spanEvents),
     document
@@ -206,16 +217,36 @@ function anchorOf(spanEvents: TraceEventView[]): DetailAnchor {
 /**
  * Project the canonical page down to the selected span, as a trace-text document.
  *
- * Trace-text v1 refs carry traceId and spanId only, so the page must be the one read
- * for the selected session; items are matched on both ids. Returns null when the page
- * cannot be projected, so the pane says the projection is unavailable.
+ * Trace-text v1 refs carry traceId and spanId only, so the span is chosen on the
+ * canonical page by its FULL ref (project, session, trace, span) before projecting: the
+ * same ids in another session are a different span. Two page items with the selected full
+ * ref cannot be told apart: `"ambiguous"`, never a guess. Returns null when the span is
+ * not on the page or the page cannot be projected.
  */
 export function spanDocumentFor(
   envelope: unknown,
-  ref: Pick<SpanRef, "traceId" | "spanId">
-): TraceTextDocumentV1 | null {
+  ref: Pick<SpanRef, "projectId" | "sessionId" | "traceId" | "spanId">
+): TraceTextDocumentV1 | "ambiguous" | null {
   try {
-    const document = projectTraceTextDocument(envelope as CanonicalPageEnvelope, { detail: 2, values: true });
+    const page = envelope as CanonicalPageEnvelope;
+    const own = page.items.filter(
+      (item) =>
+        item.kind === "span" &&
+        item.span.projectId === ref.projectId &&
+        item.span.sessionId === ref.sessionId &&
+        item.span.traceId === ref.traceId &&
+        item.span.spanId === ref.spanId
+    );
+    if (own.length === 0) return null;
+    if (own.length > 1) return "ambiguous";
+    const selected = own[0]!;
+    const document = projectTraceTextDocument(
+      {
+        ...page,
+        items: page.items.filter((item) => item.kind !== "span" || item === selected)
+      } as CanonicalPageEnvelope,
+      { detail: 2, values: true }
+    );
     const items = document.items.filter(
       (item) => item.kind === "span" && item.ref.traceId === ref.traceId && item.ref.spanId === ref.spanId
     );

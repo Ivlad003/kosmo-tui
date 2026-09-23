@@ -1125,7 +1125,11 @@ export function createSession(options: SessionOptions): Session {
         { version, detail: documentDetail, values: documentValues() },
         lifetime.signal
       );
-      if (page.version === 1) return spanDocumentFor(page.envelope, ref) ?? "selected span is not in the projection";
+      if (page.version === 1) {
+        const document = spanDocumentFor(page.envelope, ref);
+        if (document === "ambiguous") return "selected span is unknown(ambiguous) in the projection";
+        return document ?? "selected span is not in the projection";
+      }
       return (
         spanDocumentV2(page.envelope, ref, { detail: documentDetail, values: documentValues() }) ??
         "selected span is not in the projection"

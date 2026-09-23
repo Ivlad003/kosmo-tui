@@ -342,6 +342,9 @@ export function renderDetailPane(detail: SpanDetail, state: ViewState, width: nu
   if (detail.error.state !== "not-recorded") {
     lines.push(`  error: ${valueText(detail.error)}`);
   }
+  if (detail.lateError !== undefined) {
+    lines.push(`  late-error (after completion): ${valueText(detail.lateError)}`);
+  }
   lines.push(...dslLines(detail, state));
   return lines.slice(0, height).map((line) => fit(line, width));
 }

@@ -122,6 +122,8 @@ export type SpanDetail = SpanRef & {
   args: DetailValue;
   ret: DetailValue;
   error: DetailValue;
+  /** An error recorded after the span's completion (`late-error`): shown, never its status. */
+  lateError?: DetailValue;
   duration: DetailDuration;
   anchor: DetailAnchor;
   /**
