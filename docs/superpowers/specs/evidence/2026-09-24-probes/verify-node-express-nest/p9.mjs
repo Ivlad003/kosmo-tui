@@ -1,0 +1,10 @@
+import { launch, connect, sleep, decodeMap } from "./c.mjs";
+const [node, ...flags] = process.argv.slice(2);
+const t = launch(node, [...flags, "--inspect=127.0.0.1:0", "app.ts"], { cwd: new URL("./n/", import.meta.url).pathname });
+const c = await connect(await t.ws); const sc = []; c.on("Debugger.scriptParsed", (p) => sc.push(p));
+await c.send("Debugger.enable"); await sleep(400);
+const s = sc.find((x) => x.url.endsWith("/app.ts"));
+const src = (await c.send("Debugger.getScriptSource", { scriptId: s.scriptId })).scriptSource;
+const m = decodeMap(s);
+console.log(node.split("/").at(-3), flags.join(" "), "hasSourceURL", s.hasSourceURL, "sourceMapURL", s.sourceMapURL ? s.sourceMapURL.slice(0, 40) : "''", "lines", src.split("\n").length, "map.sources", JSON.stringify(m?.sources), "sourcesContent", !!m?.sourcesContent, "line5", JSON.stringify(src.split("\n")[4]));
+c.close(); t.ch.kill("SIGKILL"); await sleep(200); process.exit(0);

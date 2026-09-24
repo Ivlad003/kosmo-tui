@@ -1,0 +1,21 @@
+import { launch, connect, sleep, killTree } from "../cdp.mjs";
+import { execSync } from "node:child_process";
+import { createRequire } from "node:module";
+const TM = createRequire("/Users/kosmodev/Documents/pet_project/kosmo-callflow/package.json")("@jridgewell/trace-mapping");
+const [node, file, ...args] = process.argv.slice(2);
+const t = launch({ node, args, cwd: process.cwd() });
+const ws = await t.ws; await sleep(400);
+const c = await connect(ws); const scripts = [];
+c.on("Debugger.scriptParsed", (p) => scripts.push(p));
+await c.send("Debugger.enable"); await sleep(300);
+const s = scripts.find((x) => x.url.endsWith("/" + file));
+const src = (await c.send("Debugger.getScriptSource", { scriptId: s.scriptId })).scriptSource;
+const lines = src.split("\n");
+console.log("---- generated (first 30 lines, map comment trimmed) ----");
+lines.slice(0, 30).forEach((l, i) => console.log(String(i + 1).padStart(3), l.slice(0, 160)));
+const raw = Buffer.from(s.sourceMapURL.slice(s.sourceMapURL.indexOf(",") + 1), "base64").toString();
+const j = JSON.parse(raw); delete j.sourcesContent; console.log("---- map ----", JSON.stringify(j).slice(0, 600));
+const m = new TM.TraceMap(raw, s.url);
+for (let L = 1; L <= 14; L++) { const g = TM.generatedPositionFor(m, { source: m.resolvedSources[0], line: L, column: 0, bias: TM.LEAST_UPPER_BOUND }); const all = TM.allGeneratedPositionsFor(m, { source: m.resolvedSources[0], line: L, column: 0 }); console.log(`orig ${L} -> LUB ${g.line}:${g.column}  allGeneratedPositionsFor(col0)=${JSON.stringify(all)}`); }
+console.log("resolvedSources", m.resolvedSources);
+c.close(); try { execSync(`pkill -KILL -P ${t.child.pid}`); } catch {} killTree(t.child); process.exit(0);

@@ -1,0 +1,16 @@
+import { startTarget, connect, sleep, waitFor } from "./lib.mjs";
+import { readFileSync } from "node:fs"; import { pathToFileURL } from "node:url";
+const file = new URL("./t8.mjs", import.meta.url).pathname; const url = pathToFileURL(file).href;
+const line = readFileSync(file, "utf8").split("\n").findIndex((l) => l.includes("LINE_CALC"));
+const t = await startTarget(["--inspect=127.0.0.1:0"], file); await waitFor(() => t.stdout.includes("READY"));
+const c = connect(t.wsUrl); await c.opened; await c.send("Runtime.enable"); await c.send("Debugger.enable");
+const out = { node: process.version };
+const runOnce = async () => { t.stdout = ""; t.send("run"); await waitFor(() => /DONE/.test(t.stdout), 20000); return +t.stdout.match(/DONE (\S+)/)[1]; };
+out.none = await runOnce();
+let bp = await c.send("Debugger.setBreakpointByUrl", { url, lineNumber: line, condition: "item.id === -1" });
+out.v8cond = await runOnce(); await c.send("Debugger.removeBreakpoint", { breakpointId: bp.breakpointId });
+let pauses = 0;
+c.on(async (m) => { if (m.method === "Debugger.paused") { pauses++; const r = await c.send("Debugger.evaluateOnCallFrame", { callFrameId: m.params.callFrames[0].callFrameId, expression: "item.id === -1", throwOnSideEffect: true, timeout: 200 }); if (!r.result.value) c.send("Debugger.resume"); } });
+bp = await c.send("Debugger.setBreakpointByUrl", { url, lineNumber: line });
+out.clientPredicate = await runOnce(); out.pauses = pauses;
+console.log(JSON.stringify(out)); t.send("exit"); c.close(); setTimeout(() => process.exit(0), 200);

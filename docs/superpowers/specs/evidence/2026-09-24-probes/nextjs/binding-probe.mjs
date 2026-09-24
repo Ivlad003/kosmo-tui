@@ -1,0 +1,22 @@
+import { spawn } from "node:child_process";
+import { connect, sleep, waitFor } from "./cdp.mjs";
+const t = spawn(process.execPath, ["--inspect=127.0.0.1:0", new URL("./binding-target.cjs", import.meta.url).pathname], { stdio: ["pipe", "pipe", "pipe"] });
+let out = "", err = "";
+t.stdout.on("data", (d) => (out += d)); t.stderr.on("data", (d) => (err += d));
+await waitFor(() => /ws:\/\//.test(err) && out.includes("READY"));
+const ws = err.match(/ws:\/\/\S+/)[0];
+const c = connect(ws); await c.opened;
+const ev = []; c.on((m) => ev.push(m));
+await c.send("Runtime.enable");
+await c.send("Runtime.addBinding", { name: "__kosmoEdgeHit", executionContextName: "Edge Runtime" });
+await c.send("Runtime.addBinding", { name: "__kosmoMainOnly", executionContextId: 1 }).catch((e) => ev.push({ err: String(e) }));
+t.stdin.write("x\n"); await sleep(400);
+const edgeCtx = ev.filter((m) => m.method === "Runtime.executionContextCreated").map((m) => m.params.context);
+const r1 = await c.send("Runtime.evaluate", { expression: "typeof globalThis.__kosmoEdgeHit + ':' + typeof globalThis.__kosmoMainOnly", returnByValue: true });
+// optional-chaining condition in the edge ctx with no helper -> silent no-op?
+const ctxId = edgeCtx.at(-1).id;
+const r2 = await c.send("Runtime.evaluate", { expression: `(globalThis[Symbol.for("kosmo-tui:x")]?.hit(1, []), false)`, contextId: ctxId, returnByValue: true });
+const r3 = await c.send("Runtime.evaluate", { expression: `__kosmoEdgeHit(JSON.stringify({ok:1, stack: new Error().stack.split("\\n").length})), "called"`, contextId: ctxId, returnByValue: true });
+await sleep(200);
+console.log(JSON.stringify({ node: process.version, out: out.trim().split("\n"), contexts: edgeCtx.map((x) => x.name), mainSees: r1.result.value, optionalChainInEdge: r2.result.value, exceptionFromOptionalChain: !!r2.exceptionDetails, bindingCall: r3.result.value, bindingCalled: ev.filter((m) => m.method === "Runtime.bindingCalled").map((m) => ({ name: m.params.name, ctx: m.params.executionContextId, payload: m.params.payload })) }, null, 1));
+c.close(); t.kill();

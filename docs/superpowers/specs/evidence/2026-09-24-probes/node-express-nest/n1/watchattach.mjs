@@ -1,0 +1,28 @@
+import { connect, sleep } from "../cdp.mjs";
+import { spawn, execSync } from "node:child_process";
+import { copyFileSync, appendFileSync } from "node:fs";
+const N22 = "/Users/kosmodev/.nvm/versions/node/v22.22.0/bin/node";
+copyFileSync("cjs.js", "w.js");
+const p = spawn(N22, ["--watch", "--inspect=127.0.0.1:9252", "w.js"], { stdio: ["ignore", "pipe", "pipe"] });
+let log = ""; const t0 = Date.now(); const stamp = () => ((Date.now() - t0) / 1000).toFixed(2) + "s";
+p.stderr.on("data", (d) => { for (const l of String(d).split("\n").filter(Boolean)) log += `[${stamp()}] ${l}\n`; });
+p.stdout.on("data", (d) => { for (const l of String(d).split("\n").filter(Boolean)) log += `[${stamp()}] OUT ${l}\n`; });
+await sleep(1200);
+const list = await (await fetch("http://127.0.0.1:9252/json/list")).json();
+const c = await connect(list[0].webSocketDebuggerUrl);
+let closedAt = null; 
+const ws = c; // track close via a raw event
+await c.send("Runtime.enable"); await c.send("Debugger.enable");
+let destroyed = null; c.on("Runtime.executionContextDestroyed", () => (destroyed = stamp()));
+const pid1 = (await c.send("Runtime.evaluate", { expression: "process.pid" })).result.value;
+log += `[${stamp()}] attached to pid ${pid1}\n`;
+appendFileSync("w.js", "// edit\n"); log += `[${stamp()}] touched w.js\n`;
+await sleep(2500);
+log += `[${stamp()}] executionContextDestroyed at ${destroyed}\n`;
+const list2 = await (await fetch("http://127.0.0.1:9252/json/list")).json();
+const c2 = await connect(list2[0].webSocketDebuggerUrl);
+const pid2 = (await c2.send("Runtime.evaluate", { expression: "process.pid" })).result.value;
+log += `[${stamp()}] new target pid ${pid2}, same uuid? ${list2[0].id === list[0].id}\n`;
+console.log(log);
+c2.close();
+try { execSync(`pkill -KILL -P ${p.pid}`); } catch {} p.kill("SIGKILL"); process.exit(0);

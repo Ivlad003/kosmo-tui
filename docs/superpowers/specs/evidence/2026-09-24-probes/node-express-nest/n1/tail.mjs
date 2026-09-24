@@ -1,0 +1,10 @@
+import { launch, connect, sleep, killTree } from "../cdp.mjs";
+const [node, file] = process.argv.slice(2);
+const t = launch({ node, args: ["--inspect=127.0.0.1:0", file], cwd: process.cwd() });
+const c = await connect(await t.ws); const sc = []; c.on("Debugger.scriptParsed", (p) => sc.push(p));
+await c.send("Debugger.enable"); await sleep(300);
+const s = sc.find((x) => x.url.endsWith("/" + file));
+const src = (await c.send("Debugger.getScriptSource", { scriptId: s.scriptId })).scriptSource;
+console.log(node.split("/").at(-3), file, "lines:", src.split("\n").length, "last 3 lines:", JSON.stringify(src.split("\n").slice(-3).map((l) => l.slice(0, 40))));
+console.log("line 5 generated:", JSON.stringify(src.split("\n")[4]));
+c.close(); killTree(t.child); process.exit(0);

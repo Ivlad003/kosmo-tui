@@ -1,0 +1,32 @@
+import { startTarget, connect, sleep, waitFor } from "./lib.mjs";
+const file = new URL("./t4.mjs", import.meta.url).pathname;
+const out = { node: process.version };
+const t = await startTarget(["--inspect=127.0.0.1:0"], file);
+await waitFor(() => t.stdout.includes("READY"));
+const c = connect(t.wsUrl); await c.opened;
+const scripts = []; let hits = { a: 0, b: 0 }; const resolved = [];
+c.on((m) => {
+  if (m.method === "Debugger.scriptParsed" && m.params.url === "/virtual/mod.ts") scripts.push({ id: m.params.scriptId, hash: m.params.hash, hasSourceURL: m.params.hasSourceURL, resolvedBreakpoints: m.params.resolvedBreakpoints });
+  if (m.method === "Debugger.breakpointResolved") resolved.push({ bp: m.params.breakpointId, script: m.params.location.scriptId });
+  if (m.method === "Runtime.consoleAPICalled" && m.params.args[0]?.value === "KOSMO_TP") hits[m.params.args[1].value]++;
+});
+await c.send("Runtime.enable"); await c.send("Debugger.enable");
+await c.send("Runtime.evaluate", { expression: `globalThis.__kt = (w) => console.context("kosmo-tui").trace("KOSMO_TP", w)` });
+t.send("load 1"); await waitFor(() => t.stdout.includes("LOADED")); await sleep(100);
+const s1 = scripts[0];
+const byId = await c.send("Debugger.setBreakpoint", { location: { scriptId: s1.id, lineNumber: 2, columnNumber: 12 }, condition: `(__kt("a"), false)` });
+const byHash = await c.send("Debugger.setBreakpointByUrl", { scriptHash: s1.hash, lineNumber: 2, columnNumber: 12, condition: `(__kt("b"), false)` });
+out.locs = { byId: byId.actualLocation, byHash: byHash.locations };
+t.send("run"); await sleep(200);
+out.oneCall_bothBps = { ...hits }; hits = { a: 0, b: 0 };
+await c.send("Debugger.removeBreakpoint", { breakpointId: byId.breakpointId });
+// re-execute identical copy (HMR full reload w/o change) and changed copy
+t.stdout = ""; t.send("load 1"); await waitFor(() => t.stdout.includes("LOADED")); await sleep(100);
+t.send("run"); await sleep(200);
+out.identicalCopy_hashOnly = { ...hits, sameHash: scripts[1]?.hash === s1.hash, resolvedBreakpointsInScriptParsed: scripts[1]?.resolvedBreakpoints }; hits = { a: 0, b: 0 };
+t.stdout = ""; t.send("load 2"); await waitFor(() => t.stdout.includes("LOADED")); await sleep(100);
+t.send("run"); await sleep(200);
+out.changedCopy_hashOnly = { ...hits, sameHash: scripts[2]?.hash === s1.hash }; 
+out.breakpointResolvedEvents = resolved;
+console.log(JSON.stringify(out));
+t.send("exit"); c.close(); setTimeout(() => process.exit(0), 300);

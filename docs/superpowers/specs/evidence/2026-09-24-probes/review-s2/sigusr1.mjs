@@ -1,0 +1,25 @@
+import { spawn, execFileSync } from "node:child_process";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const child = spawn(process.execPath, ["--inspect-port=127.0.0.1:0", "idle.js"], { stdio: ["ignore", "ignore", "pipe"] });
+let stderr = ""; child.stderr.on("data", (d) => (stderr += d));
+await sleep(500);
+const listening = () => { try { return execFileSync("lsof", ["-a", "-p", String(child.pid), "-iTCP", "-sTCP:LISTEN", "-P", "-n", "-Fn"]).toString().split("\n").filter((l) => l.startsWith("n")); } catch { return []; } };
+const R = { node: process.version, beforeSignal: listening() };
+process.kill(child.pid, "SIGUSR1"); await sleep(500);
+R.afterSignal = listening();
+const ws = new WebSocket(stderr.match(/ws:\/\/\S+/)[0]); await new Promise((r) => (ws.onopen = r));
+let id = 0; const pend = new Map(); ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id) pend.get(m.id)?.(m); };
+const send = (method, params) => new Promise((r) => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable", {});
+ws.close(); await sleep(500);
+R.afterDetach = listening();
+// try closing the inspector from a new session, deferred so it runs after we disconnect
+const ws2 = new WebSocket(stderr.match(/ws:\/\/\S+/g).at(-1)); await new Promise((r) => (ws2.onopen = r));
+ws2.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id) pend.get(m.id)?.(m); };
+const send2 = (method, params) => new Promise((r) => { const i = ++id; pend.set(i, r); ws2.send(JSON.stringify({ id: i, method, params })); });
+R.closeEval = (await send2("Runtime.evaluate", { expression: `setTimeout(() => process.getBuiltinModule("node:inspector").close(), 200), "scheduled"`, returnByValue: true })).result?.result?.value;
+ws2.close(); await sleep(1000);
+R.afterInspectorClose = listening();
+R.childAlive = child.exitCode === null;
+console.log(JSON.stringify(R));
+child.kill(); process.exit(0);

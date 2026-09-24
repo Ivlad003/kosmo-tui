@@ -1,0 +1,23 @@
+import { launch, connect, sleep } from "./c.mjs";
+const NODE = process.argv[2];
+const D = new URL("./t/", import.meta.url).pathname;
+const t = launch(NODE, ["--inspect=127.0.0.1:0", "app.js"], { cwd: D });
+const c = await connect(await t.ws);
+const byUrl = {}; let hits = 0;
+c.on("Debugger.scriptParsed", (p) => { byUrl[p.url || "(empty)"] = (byUrl[p.url || "(empty)"] || 0) + 1; });
+c.on("Runtime.consoleAPICalled", (p) => { if (p.context?.startsWith("kosmo-tui")) hits++; });
+await c.send("Runtime.enable"); await c.send("Debugger.enable");
+await c.send("Runtime.evaluate", { expression: `globalThis.__n=0; globalThis.__h=()=>{globalThis.__n++; process.getBuiltinModule("node:inspector").console.context("kosmo-tui").trace("x")}; 1\n//# sourceURL=kosmo-tui://helper` });
+await sleep(200);
+const sid = Object.keys(byUrl);
+const scripts = []; c.on("Debugger.scriptParsed", (p) => scripts.push(p));
+const all = await c.send("Runtime.evaluate", { expression: "1" });
+for (const k of Object.keys(byUrl)) delete byUrl[k];
+const app = (await (async () => { const r = []; return r; })());
+// find app.js scriptId via getPossibleBreakpoints on known script: use setBreakpointByUrl with urlRegex instead
+const bp = await c.send("Debugger.setBreakpointByUrl", { urlRegex: "/t/app\\.js$", lineNumber: 2, columnNumber: 2, condition: `(globalThis.__h(), false)\n//# sourceURL=kosmo-tui://tp/tp1` });
+await sleep(1000);
+await c.send("Debugger.removeBreakpoint", { breakpointId: bp.breakpointId });
+const n = (await c.send("Runtime.evaluate", { expression: "globalThis.__n", returnByValue: true })).result.value;
+console.log(NODE.split("/").at(-3), "helper calls", n, "consoleAPICalled", hits, "scriptParsed by url", JSON.stringify(byUrl));
+c.close(); t.ch.kill("SIGKILL"); await sleep(200); process.exit(0);

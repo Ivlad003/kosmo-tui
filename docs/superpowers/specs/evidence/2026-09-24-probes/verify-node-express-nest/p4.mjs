@@ -1,0 +1,36 @@
+import { launch, connect, sleep } from "./c.mjs";
+const NODE = process.argv[2]; const tag = process.argv[3] === "tag"; const bb = process.argv[4] === "bb";
+const D = new URL("./t/", import.meta.url).pathname;
+const t = launch(NODE, ["--inspect=127.0.0.1:0", "app.js"], { cwd: D });
+const c = await connect(await t.ws);
+const scripts = new Map(); let parsedAfter = 0, armed = false;
+c.on("Debugger.scriptParsed", (p) => { scripts.set(p.scriptId, p); if (armed) parsedAfter++; });
+const hits = [], exc = [];
+c.on("Runtime.consoleAPICalled", (p) => { if (p.context?.startsWith("kosmo-tui")) hits.push(p); });
+c.on("Runtime.exceptionThrown", (p) => exc.push(p.exceptionDetails));
+await c.send("Runtime.enable"); await c.send("Debugger.enable"); await c.send("Debugger.setAsyncCallStackDepth", { maxDepth: 32 });
+if (bb) await c.send("Debugger.setBlackboxPatterns", { patterns: ["/node_modules/"] });
+const helper = `Object.defineProperty(globalThis, Symbol.for("kt"), { configurable: true, value: { hit(id, th) { const o = {}; for (const [n, f] of th) { try { o[n] = f(); } catch (e) { o[n] = "unavailable:" + e.name; } } require("node:inspector").console.context("kosmo-tui").trace("KOSMO_TP", id, JSON.stringify(o)); } } }); 1` + (tag ? "\n//# sourceURL=kosmo-tui://helper" : "");
+const r = await c.send("Runtime.evaluate", { expression: helper.replace('require("node:inspector")', 'process.getBuiltinModule("node:inspector")') });
+if (r.exceptionDetails) console.log("helper err", JSON.stringify(r.exceptionDetails).slice(0, 300));
+await sleep(200);
+const app = [...scripts.values()].find((s) => s.url.endsWith("/t/app.js"));
+const cond = (body) => body + (tag ? "\n//# sourceURL=kosmo-tui://tp/tp1" : "");
+const bp = await c.send("Debugger.setBreakpoint", { location: { scriptId: app.scriptId, lineNumber: 2, columnNumber: 2 }, condition: cond(`(globalThis[Symbol.for("kt")].hit("tp1", [["item", () => item], ["qty", () => qty], ["total", () => total]]), false)`) });
+armed = true; await sleep(600);
+await c.send("Debugger.removeBreakpoint", { breakpointId: bp.breakpointId }); armed = false;
+const h = hits[0];
+const fr = h?.stackTrace.callFrames.map((f) => `${f.functionName || "(anon)"}@${f.url || "(no url)"}:${f.lineNumber + 1}`);
+console.log(`${NODE.split("/").at(-3)} tag=${tag} bb=${bb}: hits=${hits.length} scriptParsedDuringArm=${parsedAfter} parsedUrls=${JSON.stringify([...new Set([...scripts.values()].filter(s=>!s.url.startsWith("node:")&&!/\/t\//.test(s.url)).map(s=>s.url))])}`);
+console.log("  value:", h?.args[2]?.value, "\n  sync frames:", fr?.length, JSON.stringify(fr?.slice(0, 6)), "\n  async:", h?.stackTrace.parent ? h.stackTrace.parent.description + " " + h.stackTrace.parent.callFrames.length : "-");
+// broken condition -> exceptionThrown
+const bp2 = await c.send("Debugger.setBreakpoint", { location: { scriptId: app.scriptId, lineNumber: 2, columnNumber: 2 }, condition: cond(`(globalThis[Symbol.for("nope")].hit(), false)`) });
+await sleep(300); await c.send("Debugger.removeBreakpoint", { breakpointId: bp2.breakpointId });
+console.log("  exceptionThrown:", exc.length, exc[0] ? JSON.stringify({ text: exc[0].text, url: exc[0].url, scriptId: exc[0].scriptId, line: exc[0].lineNumber, desc: exc[0].exception?.description?.split("\n")[0], stackTop: exc[0].stackTrace?.callFrames?.slice(0,2).map(f=>f.url+":"+f.functionName) }) : "");
+// pausing breakpoint: callFrame.url
+let paused = null; c.on("Debugger.paused", (p) => { paused = p; c.send("Debugger.resume"); });
+const bp3 = await c.send("Debugger.setBreakpoint", { location: { scriptId: app.scriptId, lineNumber: 2, columnNumber: 2 } });
+await sleep(300); await c.send("Debugger.removeBreakpoint", { breakpointId: bp3.breakpointId });
+console.log("  paused frames:", paused?.callFrames.length, JSON.stringify(paused?.callFrames.map((f) => [f.functionName, f.url, scripts.get(f.location.scriptId)?.url?.replace(/.*\//, "")]).slice(0, 4)));
+console.log("  target stdout/stderr contain KOSMO_TP?", /KOSMO_TP/.test(t.out.stdout + t.out.stderr));
+c.close(); t.ch.kill("SIGKILL"); await sleep(200); process.exit(0);
