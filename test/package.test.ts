@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,8 +95,10 @@ describe("package boundary (spec: Окремий проєкт і опублік�
   it("source never imports UI/CLI/daemon packages or terminal UI frameworks", () => {
     const forbidden =
       /from\s+["'](react|ink|blessed|kosmo-callflow|@kosmo-callflow\/(cli|ui|daemon|mcp|sdk-[\w-]+))(["'/])/;
-    for (const file of readdirSync(path.join(root, "src"))) {
-      const text = readFileSync(path.join(root, "src", file), "utf8");
+    for (const file of readdirSync(path.join(root, "src"), { recursive: true, encoding: "utf8" })) {
+      const full = path.join(root, "src", file);
+      if (!statSync(full).isFile()) continue;
+      const text = readFileSync(full, "utf8");
       expect(text, file).not.toMatch(forbidden);
     }
   });
