@@ -1,0 +1,19 @@
+kosmo-text/v1 trace="t_express" name="orders API" spans=9 status=errored
+✗ "GET /api/orders/:id" http.server  (no location)  [(unknown)]  9.5ms  GET "/api/orders/:id" → 500
+    args=not-recorded  return=not-recorded  error=not-recorded  attrs={"http.request.method":"GET","http.response.completion":"finish","http.response.status_code":500,"http.route":"/api/orders/:id"}
+  ✓ "router" express.router  src/app.ts:12  [~src]  -
+      args=not-recorded  return=not-recorded  error=not-recorded  attrs={"express.mount_path":"/api"}
+    ✓ "corsMiddleware" express.middleware  node_modules/.pnpm/cors@2.8.5/node_modules/cors/lib/index.js:188  [~cors]  0.2ms
+        args=not-recorded  return=not-recorded  error=not-recorded  attrs={"express.handoff":"next"}
+    ✓ "jsonParser" express.middleware  node_modules/body-parser/lib/types/json.js:101  [~body-parser]  0.6ms
+        args=not-recorded  return=not-recorded  error=not-recorded  attrs={"express.handoff":"next"}
+    ✗ "getOrder" express.handler  src/routes/orders.ts:14  [src/routes · orders]  4.1ms
+        args=[{"params":{"id":"42"}}]  return=not-recorded  error={"$type":"class","name":"Error","value":{"message":"order 42 not found in cache","name":"Error"}}  attrs={"express.handoff":"next-error"}
+    ✓ "errorHandler" express.error-handler  src/middleware/errors.ts:5  [src/middleware · orders]  0.3ms
+        args=not-recorded  return=not-recorded  error=not-recorded  attrs={"error.type":"Error","express.handoff":"response"}
+… "POST /api/orders" http.server  (no location)  [(unknown)]  -  POST /api/orders → -
+    args=not-recorded  return=not-recorded  error=not-recorded  attrs={"http.request.method":"POST","http.route":"/api/orders"}
+  … "router" express.router  src/app.ts:12  [~src]  -
+      args=not-recorded  return=not-recorded  error=not-recorded  attrs={"express.mount_path":"/api"}
+    … "authenticate" express.middleware  src/middleware/auth.ts:3  [src/middleware · auth]  -
+        args=not-recorded  return=not-recorded  error=not-recorded

@@ -1,0 +1,9 @@
+kosmo-text/v1 trace="t_next_deployed" name="GET /products (deployed edge)" spans=4 status=complete
+✓ "middleware" next.middleware  middleware.ts:4  [~.]  -
+    args=not-recorded  return=not-recorded  error=not-recorded
+  ✓ "GET /products" http.server  (no location)  [(unknown)]  -  GET /products → 200
+      args=not-recorded  return=not-recorded  error=not-recorded  attrs={"http.request.method":"GET","http.response.status_code":200,"http.route":"/products","next.request.type":"document"}
+    ✓ "render /products" next.render  app/products/page.tsx:1  [~app/products]  -
+        args=not-recorded  return=not-recorded  error=not-recorded
+    ✓ "GET /api/products" next.route-handler  app/api/products/route.ts:5  [~app/api/products]  -
+        args=not-recorded  return=not-recorded  error=not-recorded

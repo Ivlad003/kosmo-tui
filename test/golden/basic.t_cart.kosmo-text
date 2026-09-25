@@ -1,0 +1,9 @@
+kosmo-text/v1 trace="t_cart" name="GET /cart" spans=4 status=errored
+✗ "GET /cart" http.server  src/server.ts:10  [src/server · cart]  14.2ms  GET /cart → 500
+    args=not-recorded  return=not-recorded  error=not-recorded  attrs={"http.request.method":"GET","http.response.status_code":500,"http.route":"/cart"}
+  ✓ "loadCart"  src/cart.ts:3  [src/cart · cart]  3.1ms
+      args=["u_42"]  return={"items":[{"id":7,"qty":2}]}  error=not-recorded
+  ✗ "calculateLineTotal"  src/cart.ts:12  [src/cart · cart]  1.8ms
+      args=[{"id":7},2]  return=not-recorded(threw)  error={"message":"discount > 100%","name":"RangeError"}  attrs={"code.function":"calculateLineTotal"}
+    ✓ "price"  src/pricing.ts:5  [~src]  0.4ms
+        args=[7]  return=12.5  error=not-recorded

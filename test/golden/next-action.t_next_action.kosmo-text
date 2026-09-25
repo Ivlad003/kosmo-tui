@@ -1,0 +1,13 @@
+kosmo-text/v1 trace="t_next_action" name="add to cart (next dev)" spans=6 status=complete
+✓ "onSubmit"  app/cart/AddToCart.tsx:14  [~app/cart]  -
+    args=not-recorded  return=not-recorded  error=not-recorded
+  ✓ "addToCart" next.server-action  app/cart/actions.ts:3  [~app/cart]  -
+      args=not-recorded  return=not-recorded  error=not-recorded  attrs={"next.action.id":"7f3a9c"}
+    ✓ "POST /cart" http.server  (no location)  [(unknown)]  -  POST /cart → 200
+        args=not-recorded  return=not-recorded  error=not-recorded  attrs={"http.request.method":"POST","http.response.status_code":200,"http.route":"/cart","next.request.type":"action"}
+      ✓ "middleware" next.middleware  middleware.ts:4  [~.]  -
+          args=not-recorded  return=not-recorded  error=not-recorded
+      ✓ "addToCart" next.server-action  app/cart/actions.ts:3  [~app/cart]  -
+          args=[{"productId":"p1","qty":1}]  return={"ok":true}  error=not-recorded  attrs={"next.action.id":"7f3a9c"}
+      ✓ "render /cart" next.render  app/cart/page.tsx:1  [~app/cart]  -
+          args=not-recorded  return=not-recorded  error=not-recorded

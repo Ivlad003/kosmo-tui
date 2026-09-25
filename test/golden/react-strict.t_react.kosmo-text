@@ -1,0 +1,17 @@
+kosmo-text/v1 trace="t_react" name="cart page render" spans=8 status=complete
+✓ "App" react.render  src/App.tsx:5  [~src]  -
+    args=not-recorded  return=not-recorded  error=not-recorded
+  ✓ "CartView" react.render  src/cart/CartView.tsx:12  [src/cart · cart]  -
+      args=[{"items":2}]  return=not-recorded  error=not-recorded
+    ✓ "useCartSync" react.effect  src/cart/useCartSync.ts:7  [~src/cart]  -
+        args=not-recorded  return=not-recorded  error=not-recorded  attrs={"react.effect.phase":"setup","react.effect.type":"passive"}
+    ✓ "useCartSync" react.effect  src/cart/useCartSync.ts:7  [~src/cart]  -  strict-duplicate
+        args=not-recorded  return=not-recorded  error=not-recorded  attrs={"react.effect.phase":"cleanup","react.effect.type":"passive","react.strict_mode.duplicate":true}
+    ✓ "useCartSync" react.effect  src/cart/useCartSync.ts:7  [~src/cart]  -  strict-duplicate
+        args=not-recorded  return=not-recorded  error=not-recorded  attrs={"react.effect.phase":"setup","react.effect.type":"passive","react.strict_mode.duplicate":true}
+  ✓ "CartView" react.render  src/cart/CartView.tsx:12  [src/cart · cart]  -  strict-duplicate
+      args=[{"items":2}]  return=not-recorded  error=not-recorded  attrs={"react.strict_mode.duplicate":true}
+  ⏸ "ProductList" react.render  src/products/ProductList.tsx:20  [~src/products]  -
+      args=not-recorded  return=not-recorded  error=not-recorded
+  ✓ "useMeasure" react.effect  src/hooks/useMeasure.ts:3  [~src/hooks]  -
+      args=not-recorded  return=not-recorded  error=not-recorded  attrs={"react.effect.phase":"setup","react.effect.type":"layout"}

@@ -1,0 +1,11 @@
+kosmo-text/v1 trace="t_attrs" name="hostile attrs" spans=5 status=complete
+✓ "mixedAttrs"  (no location)  [(unknown)]  -  invalid-attrs(5)
+    args=not-recorded  return=not-recorded  error=not-recorded  attrs={"bidi.value":"\u202eevil.txt","c1.value":"\u009b31mred","esc.value":"\u001b]8;;file:///etc/passwd\u0007x","http.request.header.authorization":"masked","ok.first":"kept"}
+✓ "thirtyThreeKeys"  (no location)  [(unknown)]  -  invalid-attrs(1)
+    args=not-recorded  return=not-recorded  error=not-recorded  attrs={"attr.k01":1,"attr.k02":2,"attr.k03":3,"attr.k04":4,"attr.k05":5,"attr.k06":6,"attr.k07":7,"attr.k08":8,"attr.k09":9,"attr.k10":10,"attr.k11":11,"attr.k12":12,"attr.k13":13,"attr.k14":14,"attr.k15":15,"attr.k16":16,"attr.k17":17,"attr.k18":18,"attr.k19":19,"attr.k20":20,"attr.k21":21,"attr.k22":22,"attr.k23":23,"attr.k24":24,"attr.k25":25,"attr.k26":26,"attr.k27":27,"attr.k28":28,"attr.k29":29,"attr.k30":30,"attr.k31":31,"attr.k32":32}
+✓ "attrsNotObject"  (no location)  [(unknown)]  -  invalid-attrs
+    args=not-recorded  return=not-recorded  error=not-recorded
+✓ "overEightKiB"  (no location)  [(unknown)]  -  invalid-attrs(2)
+    args=not-recorded  return=not-recorded  error=not-recorded  attrs={"blob.k01":"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy…
+✓ "longKey"  (no location)  [(unknown)]  -  invalid-attrs(1)
+    args=not-recorded  return=not-recorded  error=not-recorded  attrs={"ok.second":true}

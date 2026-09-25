@@ -1,0 +1,27 @@
+kosmo-text/v1 trace="t_nest" name="nest pipeline" spans=13 status=errored
+✓ "GET /orders/:id" http.server  (no location)  [(unknown)]  6.2ms  GET "/orders/:id" → 200
+    args=not-recorded  return=not-recorded  error=not-recorded  attrs={"http.request.method":"GET","http.response.status_code":200,"http.route":"/orders/:id"}
+  ✓ "helmet" express.middleware  node_modules/helmet/index.cjs:530  [~helmet]  -
+      args=not-recorded  return=not-recorded  error=not-recorded  attrs={"express.handoff":"next"}
+  ✓ "LoggerMiddleware.use" nest.middleware  src/common/logger.middleware.ts:6  [~src/common]  -
+      args=not-recorded  return=not-recorded  error=not-recorded  attrs={"express.handoff":"next"}
+  ✓ "AuthGuard.canActivate" nest.guard  src/auth/auth.guard.ts:9  [~src/auth]  -
+      args=not-recorded  return=true  error=not-recorded  attrs={"nest.binding":"global"}
+  ✓ "LoggingInterceptor.intercept" nest.interceptor  src/common/logging.interceptor.ts:11  [~src/common]  -
+      args=not-recorded  return=not-recorded  error=not-recorded  attrs={"nest.binding":"controller"}
+    ✓ "ParseIntPipe.transform" nest.pipe  node_modules/@nestjs/common/pipes/parse-int.pipe.js:58  [~@nestjs/common]  -
+        args=["42"]  return=42  error=not-recorded  attrs={"nest.binding":"param","nest.pipe.arg_data":"id","nest.pipe.arg_type":"param"}
+    ✓ "OrdersController.findOne" nest.handler  src/orders/orders.controller.ts:18  [src/orders · orders]  -
+        args=[42]  return={"id":42,"total":99.5}  error=not-recorded  attrs={"nest.handler":"OrdersController.findOne"}
+✓ "GET /admin/stats" http.server  (no location)  [(unknown)]  -  GET /admin/stats → 403
+    args=not-recorded  return=not-recorded  error=not-recorded  attrs={"http.request.method":"GET","http.response.status_code":403,"http.route":"/admin/stats"}
+  ✓ "RolesGuard.canActivate" nest.guard  src/auth/roles.guard.ts:14  [~src/auth]  -
+      args=not-recorded  return=false  error=not-recorded  attrs={"nest.binding":"method"}
+  ✓ "HttpExceptionFilter.catch" nest.filter  src/common/http-exception.filter.ts:8  [~src/common]  -
+      args=[{"$type":"class","name":"ForbiddenException","value":{"message":"Forbidden resource","name":"ForbiddenException"}}]  return=not-recorded  error=not-recorded
+✓ "POST /orders" http.server  (no location)  [(unknown)]  -  POST /orders → 400
+    args=not-recorded  return=not-recorded  error=not-recorded  attrs={"http.request.method":"POST","http.response.status_code":400,"http.route":"/orders"}
+  ✗ "ValidationPipe.transform" nest.pipe  node_modules/@nestjs/common/pipes/validation.pipe.js:74  [~@nestjs/common]  -
+      args=[{"qty":-1}]  return=not-recorded  error={"$type":"class","name":"BadRequestException","value":{"message":"qty must be a positive number","name":"BadRequestException"}}  attrs={"nest.binding":"global","nest.pipe.arg_type":"body"}
+  ✓ "HttpExceptionFilter.catch" nest.filter  src/common/http-exception.filter.ts:8  [~src/common]  -
+      args=not-recorded  return=not-recorded  error=not-recorded

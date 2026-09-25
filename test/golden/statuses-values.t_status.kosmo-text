@@ -1,0 +1,21 @@
+kosmo-text/v1 trace="t_status" name="all statuses and values" spans=10 status=errored
+✓ "completeCall"  (no location)  [(unknown)]  -
+    args=null  return={"$type":"undefined"}  error=not-recorded
+  ✗ "erroredCall"  (no location)  [(unknown)]  -
+      args=not-recorded  return=not-recorded  error={"$type":"class","name":"RangeError","value":{"message":"boom","name":"RangeError","stack":"RangeError: boom\n    at erroredCall (src/a.ts:3:9)"}}
+  … "runningCall"  (no location)  [(unknown)]  -
+      args=not-recorded  return=not-recorded  error=not-recorded
+  ⏸ "suspendedRender" react.render  (no location)  [(unknown)]  -
+      args=not-recorded  return=not-recorded  error=not-recorded
+  ✓ "allTags"  (no location)  [(unknown)]  -
+      args=[{"$type":"undefined"},{"$type":"number","value":"NaN"},{"$type":"number","value":"Infinity"},{"$type":"number","value":"-Infinity"},{"$type":"number","value":"-0"},{"$type":"bigint","value":"123456789012345678901234567890"},{"$type":"function","name":"handler"},{"$type":"symbol","description":"token"},{"$type":"date","value":"2026-09-24T10:00:00.000Z"},{"$type":"map","entries":[["k",1],[{"$type":"symbol","description":"s"},{"$type":"undefined"}]]},{"$type":"set","values":[1,"two"]},{"$type":"class","nam…  return=not-recorded  error=not-recorded
+  ✓ "truncatedValues"  (no location)  [(unknown)]  -
+      args=truncated:[1,2,{"$type":"more","count":120}]  return=truncated:{"$type":"object","entries":{"a":{"$type":"deeper"}},"more":7}  error=truncated:{"$type":"string-cut","length":40000,"value":"very long mess"}
+  ✓ "maskedValues"  (no location)  [(unknown)]  -
+      args=masked  return=masked  error=not-recorded
+  ✓ "notRecordedValues"  (no location)  [(unknown)]  -
+      args=not-recorded(level)  return=not-recorded(threw)  error=not-recorded
+? "GET /slow" http.server  (no location)  [(unknown)]  -  GET /slow → -  unknown(aborted)
+    args=not-recorded  return=not-recorded  error=not-recorded  attrs={"http.request.method":"GET","http.response.completion":"aborted","http.route":"/slow"}
+? "unknownCall"  (no location)  [(unknown)]  -  unknown(unspecified)
+    args=not-recorded  return=not-recorded  error=not-recorded
