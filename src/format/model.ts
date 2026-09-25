@@ -99,14 +99,17 @@ export function requestSummaryOf(spans: readonly SpanRow[]): RequestSummary | nu
 /**
  * Derived module of a file (spec 4.7): inside `node_modules` the package after the LAST `node_modules/`
  * segment (with its `@scope/`), otherwise the directory (leading `./` ignored), `.` for a file in the root.
+ * The package (and a scope's package) must be a directory: a file directly under `node_modules/` or
+ * `node_modules/@scope/` names no package, so it takes the plain directory fallback.
  */
 export function derivedModule(file: string): string {
   const segments = file.split("/");
   const last = segments.lastIndexOf("node_modules");
-  if (last !== -1 && last + 1 < segments.length) {
+  const directoryCount = segments.length - 1;
+  if (last !== -1 && last + 1 < directoryCount) {
     const name = segments[last + 1] as string;
-    const scoped = name.startsWith("@") && last + 2 < segments.length;
-    return scoped ? `${name}/${segments[last + 2] as string}` : name;
+    if (!name.startsWith("@")) return name;
+    if (last + 2 < directoryCount) return `${name}/${segments[last + 2] as string}`;
   }
   let start = 0;
   while (segments[start] === ".") start += 1;

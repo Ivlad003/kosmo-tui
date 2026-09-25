@@ -229,6 +229,18 @@ describe("areas (spec 4.7)", () => {
     expect(derivedModule("my_node_modules/x/y.js")).toBe("my_node_modules/x");
   });
 
+  it("derivedModule: a scope needs a package directory, else the dirname fallback", () => {
+    expect(derivedModule("node_modules/@scope/pkg/x.js")).toBe("@scope/pkg");
+    expect(derivedModule("node_modules/@scope/pkg/lib/deep/x.js")).toBe("@scope/pkg");
+    expect(derivedModule("node_modules/@scope/index.js")).toBe("node_modules/@scope");
+    expect(derivedModule("node_modules/index.js")).toBe("node_modules");
+    expect(derivedModule("node_modules/cors")).toBe("node_modules");
+    expect(derivedModule("node_modules/a/node_modules/@s/p/index.js")).toBe("@s/p");
+    expect(derivedModule("node_modules/@a/b/node_modules/c/index.js")).toBe("c");
+    expect(derivedModule("node_modules/a/node_modules/@s/index.js")).toBe("node_modules/a/node_modules/@s");
+    expect(derivedModule("node_modules/.pnpm/@s+p@1.0.0/node_modules/@s/p/dist/i.js")).toBe("@s/p");
+  });
+
   it("areaKeyOf: explicit area, derived module from location, or (unknown)", () => {
     const explicit = row("s", "a", null, 0, { area: { module: "src/cart", feature: "cart" } });
     expect(areaKeyOf(explicit)).toEqual({ module: "src/cart", feature: "cart", derived: false });
