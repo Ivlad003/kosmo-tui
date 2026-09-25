@@ -390,6 +390,27 @@ describe("terminal safety", () => {
     }
   });
 
+  it("escapes runtime and an unknown parent reason before they are fitted", () => {
+    const evil = `${String.fromCharCode(0x1b)}[2J`;
+    const escaped = `${String.fromCharCode(92)}u001b[2J`;
+    const target = span({ id: "r", runtime: `node${evil}` as "node" });
+    const trace = model([target]);
+    const lines = detailLines(
+      {
+        model: { ...trace, parentOf: () => ({ kind: "unknown", reason: `missing${evil}` as "missing" }) },
+        ref: target.ref,
+        root: "/work",
+        values: undefined,
+        snippet: undefined
+      },
+      { width: 80, height: 6, focused: false, scroll: 0, color: COLOR_NONE, links: false }
+    );
+    const text = lines.join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+    expect(text).not.toContain(evil);
+    expect(text).toContain(`node${escaped}`);
+    expect(text).toContain(`parent  unknown(missing${escaped})`);
+  });
+
   it("OSC 8 on file:line only with links on and a URI inside the root", () => {
     const target = span({ id: "x", location: { file: "src/cart.ts", line: 12 } });
     const off = render(target, { width: 80, height: 6 }, { snippet: "loading" });

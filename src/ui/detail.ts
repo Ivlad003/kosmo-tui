@@ -155,7 +155,7 @@ function locationLink(text: string, root: string, location: Location, links: boo
 /** `name · kind · status · runtime · session`; the name is never shortened (spec 6.4). */
 function headerText(span: SpanRow): string {
   const parts = [escapeTerminalControls(span.name), escapeTerminalControls(span.kind), statusText(span)];
-  if (span.runtime !== undefined) parts.push(span.runtime);
+  if (span.runtime !== undefined) parts.push(escapeTerminalControls(span.runtime));
   parts.push(escapeTerminalControls(span.ref.session));
   return parts.join(" · ");
 }
@@ -173,7 +173,7 @@ function locationLine(input: DetailInput, span: SpanRow, links: boolean): string
 
 function parentLine(model: TraceModel, ref: SpanRef): string | null {
   const parent = model.parentOf(ref);
-  if (parent.kind === "unknown") return `parent  unknown(${parent.reason})`;
+  if (parent.kind === "unknown") return `parent  unknown(${escapeTerminalControls(parent.reason)})`;
   if (parent.kind === "cycle") return "parent  cycle (edge dropped)";
   return null;
 }
