@@ -145,6 +145,16 @@ describe("tree rows", () => {
         treeRowText(trace, row(orphan), false, { selected: true, width: 80, color: COLOR_NONE, values: undefined })
       )
     ).toBe(" ▸   ✓ o  (no location)  parent=unknown(missing)");
+
+    // a ⇄ b: the member with the smallest (session, order) becomes a root whose parent edge is dropped.
+    const a = span({ id: "a", parent: "b", order: 1 });
+    const b = span({ id: "b", parent: "a", order: 2 });
+    const cyclic = model([a, b]);
+    expect(cyclic.parentOf(a.ref)).toEqual({ kind: "cycle" });
+    const ctx: RowContext = { selected: false, width: 80, color: COLOR_NONE, values: undefined };
+    expect(stripAnsi(treeRowText(cyclic, row(a), false, ctx))).toBe("   - ✓ a  (no location)  cycle");
+    // Its child keeps its resolved parent: no mark.
+    expect(stripAnsi(treeRowText(cyclic, row(b, 1), false, ctx))).toBe("       ✓ b  (no location)");
   });
 
   it("expander shows children and collapse state; context rows are dimmed", () => {
