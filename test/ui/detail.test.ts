@@ -454,6 +454,27 @@ describe("values, attrs, links", () => {
     expect(lines.slice(5, 7)).toEqual(["links   → useEffect (caused-by)", "        ← missing (follows-from)"]);
   });
 
+  it("links: an end in another trace names that trace and span, not `missing`", () => {
+    const a = span({ id: "a", name: "GET /cart", order: 0 });
+    const trace = model(
+      [a],
+      [
+        { from: a.ref, to: ref("add", "browser", "t_pdp"), kind: "follows-from" },
+        { from: ref("x\u001b[2J", "s1", "t\u202eo"), to: a.ref, kind: "caused-by" }
+      ]
+    );
+    const lines = plain(
+      detailLines(
+        { model: trace, ref: a.ref, root: "/work", values: undefined, snippet: undefined },
+        { width: 80, height: 8, focused: false, scroll: 0, color: COLOR_NONE, links: false }
+      )
+    );
+    expect(lines.slice(5, 7)).toEqual([
+      "links   → t_pdp · browser:add (follows-from)",
+      "        ← t\\u202eo · s1:x\\u001b[2J (caused-by)"
+    ]);
+  });
+
   it("the focused pane shows everything and scrolls; scrolling past the end is clamped", () => {
     const long = { ...EXAMPLE, attrs: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`k${i}`, i])) };
     const top = plain(render(long, { width: 60, height: 8 }, {}, { focused: true, scroll: 0 }));

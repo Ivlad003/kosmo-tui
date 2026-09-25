@@ -19,7 +19,7 @@ import { ELLIPSIS, clipPrefix, measureLimit, truncateVisible, visibleWidth } fro
 import { THEME, paint, sourceLink, type ColorEnv, type ColorLevel } from "../color.js";
 import { expandCodeTabs, windowLines, type Snippet } from "../code/snippet.js";
 import { maskAttrs } from "../format/kinds.js";
-import type { TraceModel } from "../format/model.js";
+import type { LinkView, TraceModel } from "../format/model.js";
 import type { Json, Location, SpanRef, SpanRow, SpanValues, Value } from "../format/types.js";
 import { utf8Bytes, utf8Prefix } from "../format/bytes.js";
 import { compactJson, maskValue, tagOf } from "../format/value.js";
@@ -27,6 +27,7 @@ import { escapeTerminalControls, isSafeOsc8Uri, toFileUri } from "../sanitize.js
 import { wrapVisible } from "../wrap.js";
 import type { WideRootRejection } from "../code/root.js";
 import { areaText, rootUnsetText, statusText } from "./labels.js";
+import { formatSpanRef } from "./refs.js";
 
 /** One value's text in the pane; longer JSON is cut at a UTF-8 boundary and ends with `…`. */
 export const DETAIL_VALUE_MAX_BYTES = 4096;
@@ -308,16 +309,21 @@ function attrLines(span: SpanRow, width: number, wrap: boolean): string[] {
   return texts.flatMap((text, index) => labelled(index === 0 ? "attrs" : "", text, width, wrap));
 }
 
-/** Spec 4.12: `→ name (kind)` outgoing, `← name (kind)` incoming; an end without a span is `missing`. */
+/**
+ * Spec 4.12: `→ name (kind)` outgoing, `← name (kind)` incoming; an end without a span is `missing`.
+ * An end in another trace is not resolved by this model (it holds one trace), so it is named by its
+ * ref, `<trace> · <session>:<id>`, rather than claimed `missing`.
+ */
 function linkLines(model: TraceModel, ref: SpanRef, width: number): string[] {
   const { out, in: incoming } = model.links(ref);
+  const end = (link: LinkView): string =>
+    escapeTerminalControls(
+      link.otherName ??
+        (link.other.trace === model.trace.id ? "missing" : `${link.other.trace} · ${formatSpanRef(link.other)}`)
+    );
   const texts = [
-    ...out.map(
-      (link) => `→ ${escapeTerminalControls(link.otherName ?? "missing")} (${escapeTerminalControls(link.kind)})`
-    ),
-    ...incoming.map(
-      (link) => `← ${escapeTerminalControls(link.otherName ?? "missing")} (${escapeTerminalControls(link.kind)})`
-    )
+    ...out.map((link) => `→ ${end(link)} (${escapeTerminalControls(link.kind)})`),
+    ...incoming.map((link) => `← ${end(link)} (${escapeTerminalControls(link.kind)})`)
   ];
   return texts.flatMap((text, index) => labelled(index === 0 ? "links" : "", text, width, false));
 }
