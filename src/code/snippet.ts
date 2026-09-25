@@ -12,9 +12,10 @@
  *   then `moved` (nearest match, a tie goes to the lower line).
  * - Every failure degrades to a named state; this module never throws for file content.
  *
- * Pure: every file access goes through SnippetFs. `realpath` of the file must stay under
- * `realpath` of the root, and a file outside the root, or one larger than 2 MiB, is
- * never read.
+ * Pure: every file access goes through SnippetFs. `root` must be a realpath (the session stores
+ * roots that way, spec 4.8). When its realpath is no longer the root itself (the directory was
+ * swapped for a symlink), nothing is read: `root-changed`. `realpath` of the file must stay under
+ * the stored root, and a file outside the root, or one larger than 2 MiB, is never read.
  */
 import path from "node:path";
 import { clusterWidth, graphemes } from "../ansi.js";
@@ -23,7 +24,15 @@ import type { Location } from "../format/types.js";
 export { resolveRoot, type RootFs } from "./root.js";
 
 export type SnippetState =
-  "ok" | "file-missing" | "outside-root" | "too-large" | "unreadable" | "not-text" | "changed-since-trace" | "moved";
+  | "ok"
+  | "file-missing"
+  | "outside-root"
+  | "root-changed"
+  | "too-large"
+  | "unreadable"
+  | "not-text"
+  | "changed-since-trace"
+  | "moved";
 
 /** `text`: tabs expanded to spaces (step 4), no CR, NOT escaped. */
 export type SnippetLine = { readonly n: number; readonly text: string };
@@ -82,19 +91,24 @@ export async function loadSnippet(root: string, location: Location, fs: SnippetF
   const file = location.file;
   const empty = (state: SnippetState): Snippet => ({ state, file, lines: [], target: location.line });
 
-  let realRoot: string;
+  // The caller stores the root as a realpath (spec 4.8). It is checked, never re-resolved: a
+  // project directory swapped for a symlink to `~` after it was chosen must not widen the root.
+  const stored = path.resolve(root);
+  let currentRoot: string;
   let realFile: string;
   try {
-    realRoot = await fs.realpath(root);
+    currentRoot = await fs.realpath(stored);
   } catch (error) {
     return empty(isMissing(error) ? "file-missing" : "unreadable");
   }
+  if (path.resolve(currentRoot) !== stored) return empty("root-changed");
   try {
-    realFile = await fs.realpath(path.join(root, file));
+    realFile = await fs.realpath(path.join(stored, file));
   } catch (error) {
     return empty(isMissing(error) ? "file-missing" : "unreadable");
   }
-  if (!isInside(realRoot, realFile)) return empty("outside-root");
+  // Compared with the stored string itself, so a swap between the two realpath calls is caught too.
+  if (!isInside(stored, realFile)) return empty("outside-root");
 
   let info: { size: number; isFile: boolean } | undefined;
   try {

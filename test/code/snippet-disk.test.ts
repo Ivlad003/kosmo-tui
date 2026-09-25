@@ -33,7 +33,8 @@ let root = "";
 const symlinksWork = process.platform !== "win32";
 
 beforeAll(async () => {
-  tmp = await mkdtemp(path.join(os.tmpdir(), "kosmo-snippet-"));
+  // The session stores the realpath of a root (macOS: /var → /private/var), so the tests do too.
+  tmp = await realpath(await mkdtemp(path.join(os.tmpdir(), "kosmo-snippet-")));
   root = path.join(tmp, "project");
   await mkdir(path.join(root, "src"), { recursive: true });
   await mkdir(path.join(tmp, "outside"), { recursive: true });
@@ -87,11 +88,45 @@ describe("loadSnippet on disk", () => {
     expect((await loadSnippet(root, { file: "vendor/secret.ts", line: 1 }, diskFs)).state).toBe("outside-root");
   });
 
-  it.runIf(symlinksWork)("a symlink inside the root and a root reached through a symlink are fine", async () => {
-    expect((await loadSnippet(root, { file: "src/alias.ts", line: 12, snippet: HEADER }, diskFs)).state).toBe("ok");
-    const viaLink = path.join(tmp, "root-link");
-    expect((await loadSnippet(viaLink, { file: "src/cart.ts", line: 12, snippet: HEADER }, diskFs)).state).toBe("ok");
-  });
+  it.runIf(symlinksWork)(
+    "a symlink inside the root is fine; a root that is itself a symlink is root-changed",
+    async () => {
+      expect((await loadSnippet(root, { file: "src/alias.ts", line: 12, snippet: HEADER }, diskFs)).state).toBe("ok");
+      // Callers store the realpath of a root; a stored path that resolves elsewhere is refused.
+      const viaLink = path.join(tmp, "root-link");
+      expect((await loadSnippet(viaLink, { file: "src/cart.ts", line: 12, snippet: HEADER }, diskFs)).state).toBe(
+        "root-changed"
+      );
+    }
+  );
+
+  it.runIf(symlinksWork)(
+    "the project directory swapped for a symlink after it was chosen: nothing is read",
+    async () => {
+      const swapTmp = await realpath(await mkdtemp(path.join(os.tmpdir(), "kosmo-swap-")));
+      try {
+        const project = path.join(swapTmp, "project");
+        const wide = path.join(swapTmp, "home");
+        await mkdir(path.join(project, "src"), { recursive: true });
+        await mkdir(path.join(wide, "src"), { recursive: true });
+        await writeFile(path.join(project, "src/cart.ts"), "export const ok = 1;\n");
+        await writeFile(path.join(wide, "src/cart.ts"), "SECRET\n");
+        const location = { file: "src/cart.ts", line: 1 };
+        expect((await loadSnippet(project, location, diskFs)).state).toBe("ok");
+        // Swap: the stored root now points at a wider directory.
+        await rm(project, { recursive: true, force: true });
+        await symlink(wide, project);
+        const reads: string[] = [];
+        const spy: SnippetFs = { ...diskFs, readFile: (p) => (reads.push(p), diskFs.readFile(p)) };
+        const snippet = await loadSnippet(project, location, spy);
+        expect(snippet.state).toBe("root-changed");
+        expect(snippet.lines).toEqual([]);
+        expect(reads).toEqual([]);
+      } finally {
+        await rm(swapTmp, { recursive: true, force: true });
+      }
+    }
+  );
 
   it.runIf(symlinksWork)("a dangling symlink is file-missing", async () => {
     expect((await loadSnippet(root, { file: "src/dangling.ts", line: 1 }, diskFs)).state).toBe("file-missing");

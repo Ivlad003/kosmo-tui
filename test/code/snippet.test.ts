@@ -282,14 +282,45 @@ describe("loadSnippet: degraded states never throw (Фокус рецензії 
     expect(fs.reads).toEqual([]);
   });
 
-  it("a root reached through a symlink is compared by its realpath", async () => {
-    const fs = fakeFs({
-      "/link-root": { link: "/real/proj" },
-      "/real/proj": { dir: true },
-      "/link-root/src/cart.ts": { link: "/real/proj/src/cart.ts" },
-      "/real/proj/src/cart.ts": CART
+  it("root-changed: the stored root must still be its own realpath; nothing is read otherwise", async () => {
+    // The caller stores a realpath. A root that resolves elsewhere now (the project directory was
+    // swapped for a symlink to home after it was chosen) is refused, not re-resolved and widened.
+    const swapped = fakeFs({
+      [ROOT]: { link: "/home/me" },
+      "/home/me": { dir: true },
+      "/proj/src/cart.ts": { link: "/home/me/src/cart.ts" },
+      "/home/me/src/cart.ts": CART
     });
-    expect((await loadSnippet("/link-root", at({ line: 12, snippet: HEADER }), fs)).state).toBe("ok");
+    expect(await loadSnippet(ROOT, at({ line: 12, snippet: HEADER }), swapped)).toEqual({
+      state: "root-changed",
+      file: "src/cart.ts",
+      lines: [],
+      target: 12
+    });
+    expect(swapped.reads).toEqual([]);
+    // A file below the stored root string is read; the realpath of the root is not substituted for it.
+    const real = fakeFs({ "/real/proj": { dir: true }, "/real/proj/src/cart.ts": CART });
+    expect((await loadSnippet("/real/proj", at({ line: 12, snippet: HEADER }), real)).state).toBe("ok");
+    expect((await loadSnippet("/real/proj/", at({ line: 12, snippet: HEADER }), real)).state).toBe("ok");
+  });
+
+  it("outside-root when the file's realpath leaves the stored root, even if the root's realpath would contain it", async () => {
+    // The root check passes (a race: the swap happens between the two realpath calls); the file
+    // realpath is still compared with the stored root string.
+    let calls = 0;
+    const base = fakeFs({ [ROOT]: { dir: true }, "/home/me/src/cart.ts": CART });
+    const racing: SnippetFs & { reads: string[] } = {
+      ...base,
+      async realpath(p) {
+        calls += 1;
+        if (p === ROOT) return ROOT;
+        if (p === "/proj/src/cart.ts") return "/home/me/src/cart.ts";
+        return base.realpath(p);
+      }
+    };
+    expect((await loadSnippet(ROOT, at({ line: 1 }), racing)).state).toBe("outside-root");
+    expect(calls).toBe(2);
+    expect(base.reads).toEqual([]);
   });
 
   it("too-large: over 2 MiB is never read; exactly 2 MiB is", async () => {

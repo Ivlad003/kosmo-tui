@@ -13,7 +13,9 @@ from a trace.
   never writes it. Without a home directory and without `$XDG_CONFIG_HOME` it is off as well.
 - **Code is read only inside the project root.** `location.file` must be a relative path without `..`, a scheme or
   control characters; a file whose real path leaves the root through a symlink is not read (`outside-root`), and
-  files over 2 MiB are not read (`too-large`).
+  files over 2 MiB are not read (`too-large`). Every root is stored as its real path when it is chosen (also
+  `--root`/`:root`) and never resolved again: if the root directory later resolves elsewhere (for example it was
+  swapped for a symlink to your home directory), nothing is read (`root-changed`).
 - **A trace cannot choose the project root.** The root is `--root`/`:root` if you give one (taken as given, even
   `/` or your home directory). Otherwise it is chosen automatically: `dataset.root` from the trace only when it is
   an absolute path whose real path is, or contains, the current directory or the trace file's directory (for

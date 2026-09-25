@@ -191,6 +191,7 @@ const STATE_TITLE: Readonly<Record<Snippet["state"], string>> = {
   ok: "",
   "file-missing": "file-missing",
   "outside-root": "outside-root",
+  "root-changed": "root-changed",
   "too-large": "too-large",
   unreadable: "unreadable",
   "not-text": "not-text",
