@@ -55,12 +55,17 @@ export type PtySession = {
   kill(): void;
 };
 
-/** Replay CUP/EL row paints into a row model; other control sequences are ignored. */
+/**
+ * Replay CUP/EL row paints into a row model; other control sequences are ignored.
+ * An OSC (OSC 8 links) ends at BEL or at `ESC \` and has no width; an ESC of any other
+ * sequence also ends it, as in xterm.
+ */
 export function replayScreen(log: string, rows = 60): string[] {
   const screen: string[] = Array.from({ length: rows }, () => "");
   let row = 0;
-  // eslint-disable-next-line no-control-regex
-  const token = /\u001b\[([0-9;?]*)([A-Za-z])|\u001b[()][0-9A-Za-z]|\u001b\][^\u0007]*\u0007|([^\u001b]+)/g;
+  const token =
+    // eslint-disable-next-line no-control-regex
+    /\u001b\[([0-9;?]*)([A-Za-z])|\u001b[()][0-9A-Za-z]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|([^\u001b]+)/g;
   for (const match of log.matchAll(token)) {
     if (match[3] !== undefined) {
       screen[row] = (screen[row] ?? "") + match[3].replace(/\r?\n/g, "");

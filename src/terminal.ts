@@ -9,9 +9,16 @@
  * The keyboard input passed here is never the data stdin of `kosmo-tui -`: that case
  * gets a controlling-terminal port from terminal-input.ts, so a data pipe is never put
  * into raw mode.
+ *
+ * Every row goes through a paint guard before it is written (spec 8.2, second safety
+ * layer): only SGR and a validated OSC 8 pass, everything else is escaped, colors are
+ * lowered to the detected level. A row the guard changed is fitted to the width again,
+ * so an escaped sequence can never wrap and break the frame.
  */
 
 import { CURSOR, truncateVisible } from "./ansi.js";
+import { COLOR_TRUECOLOR } from "./color.js";
+import { createPaintGuard, type PaintGuard } from "./ui/paint-guard.js";
 
 /** One string per screen row, already fitted to the viewport width. */
 export type Frame = readonly string[];
@@ -35,6 +42,14 @@ export type TerminalOutput = {
 };
 
 export type TerminalSize = { cols: number; rows: number };
+
+export type TerminalOptions = {
+  /** Second safety layer for every painted row (spec 8.2); `paintGuardFromEnv` in the TUI entry (src/ui/open.ts). */
+  readonly guard?: PaintGuard;
+};
+
+/** Used without options: SGR as is, every OSC 8 and every other control sequence escaped. */
+export const DEFAULT_PAINT_GUARD: PaintGuard = createPaintGuard({ root: null, links: false, color: COLOR_TRUECOLOR });
 
 export type Terminal = {
   size(): TerminalSize;
@@ -73,7 +88,8 @@ export function tooSmallFrame(size: TerminalSize): Frame {
   return lines.slice(0, Math.max(0, size.rows)).map((line) => truncateVisible(line, size.cols));
 }
 
-export function createTerminal(input: TerminalInput, output: TerminalOutput): Terminal {
+export function createTerminal(input: TerminalInput, output: TerminalOutput, options: TerminalOptions = {}): Terminal {
+  const guard = options.guard ?? DEFAULT_PAINT_GUARD;
   let previous: Frame = [];
   let closed = false;
   const keyListeners: Array<(key: string) => void> = [];
@@ -111,15 +127,20 @@ export function createTerminal(input: TerminalInput, output: TerminalOutput): Te
     size,
     paint(frame) {
       if (closed) return;
+      const cols = size().cols;
+      const rows = frame.map((row) => {
+        const safe = guard(row);
+        return safe === row ? row : truncateVisible(safe, cols);
+      });
       let out = "";
-      const height = Math.max(frame.length, previous.length);
+      const height = Math.max(rows.length, previous.length);
       for (let row = 0; row < height; row += 1) {
-        const next = frame[row] ?? "";
+        const next = rows[row] ?? "";
         if (previous[row] === next) continue;
         // CUP rows are 1-based; clear the row so a shorter line leaves no tail behind.
         out += CURSOR.moveTo(row + 1, 1) + CURSOR.clearLine + next;
       }
-      previous = [...frame];
+      previous = rows;
       if (out.length > 0) output.write(out);
     },
     onKey(listener) {
