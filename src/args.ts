@@ -7,8 +7,11 @@
  *   kosmo-tui --help | --version
  *
  * Every flag combination is checked here, before any side effect; a violation is a usage
- * error (exit 1). `--print` also takes the format as its next argument (`--print json`),
- * `--flag=value` works for every flag with a value, `-` is stdin and `--` ends the options.
+ * error (exit 1). `--print` also takes the format as its next argument (`--print json`,
+ * `--print=json`); when no other positional is given, a spaced `--print json` reads `json`
+ * as the trace file instead (a file may carry that name) and the format falls back to
+ * `--format` or `text`. `--flag=value` works for every flag with a value, `-` is stdin and
+ * `--` ends the options.
  */
 
 export const FORMATS = ["text", "json", "tab"] as const;
@@ -74,6 +77,8 @@ function isFormat(value: string | undefined): value is OutputFormat {
 /** Parse argv without `node` and the script. */
 export function parseArgv(argv: readonly string[]): ParseResult {
   const tokens: string[] = [];
+  /** Indexes in `tokens` of values written as `--flag=value` (always a value, never a positional). */
+  const attached = new Set<number>();
   let endOfOptions = false;
   for (const raw of argv) {
     if (endOfOptions || raw === "--") {
@@ -82,8 +87,10 @@ export function parseArgv(argv: readonly string[]): ParseResult {
       continue;
     }
     const eq = raw.indexOf("=");
-    if (raw.startsWith("--") && eq > 2) tokens.push(raw.slice(0, eq), raw.slice(eq + 1));
-    else tokens.push(raw);
+    if (raw.startsWith("--") && eq > 2) {
+      tokens.push(raw.slice(0, eq), raw.slice(eq + 1));
+      attached.add(tokens.length - 1);
+    } else tokens.push(raw);
   }
 
   // --help and --version answer even next to a wrong flag.
@@ -93,6 +100,7 @@ export function parseArgv(argv: readonly string[]): ParseResult {
 
   const positionals: string[] = [];
   const seen = new Map<string, string | true>();
+  let spacedFormat: OutputFormat | undefined;
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index]!;
     if (token === "--") {
@@ -107,8 +115,14 @@ export function parseArgv(argv: readonly string[]): ParseResult {
     if (seen.has(name)) return fail(`${token} was given more than once`);
     if (name === "--print") {
       const next = tokens[index + 1];
-      if (isFormat(next)) {
+      if (attached.has(index + 1)) {
+        if (!isFormat(next)) return fail(`--print must be text, json or tab, received ${next ?? ""}`);
         seen.set(name, next);
+        index += 1;
+      } else if (isFormat(next)) {
+        // `--print json`: the format for now; the target if no other positional follows.
+        seen.set(name, next);
+        spacedFormat = next;
         index += 1;
       } else {
         seen.set(name, true);
@@ -129,6 +143,12 @@ export function parseArgv(argv: readonly string[]): ParseResult {
     return fail(`unknown option ${token}`);
   }
 
+  // `kosmo-tui --print json` with no file: the word is the file (a file may be named json).
+  const formatAsTarget = spacedFormat !== undefined && positionals.length === 0;
+  if (formatAsTarget) {
+    positionals.push(spacedFormat as string);
+    seen.set("--print", true);
+  }
   if (positionals.length > 1) {
     return fail(`kosmo-tui accepts one trace file or -, received ${positionals.length}: ${positionals.join(" ")}`);
   }
@@ -176,6 +196,12 @@ export function parseArgv(argv: readonly string[]): ParseResult {
     return fail(`--detail applies to --format text only, not ${format}`);
   // Spec 7.1: text without --trace is a usage error, decided before anything is read.
   if (format === "text" && trace === undefined) {
+    if (formatAsTarget) {
+      return fail(
+        `--print ${target}: ${target} was read as the trace file, and --print text shows one trace: pass --trace <id>, ` +
+          `or name the file first to print ${target} (<file> --print ${target})`
+      );
+    }
     return fail("--print text shows one trace: pass --trace <id> (or --format json|tab for the whole dataset)");
   }
   return {

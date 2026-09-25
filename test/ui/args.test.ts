@@ -73,13 +73,40 @@ describe("parseArgv: --print (spec 7.1)", () => {
     expect(error(["x", "--print", "--format", "lisp"])).toBe("--format must be text, json or tab, received lisp");
   });
 
+  it("--print <word> with no other positional reads the word as the trace file, not the format", () => {
+    // A file may be named json/tab/text: `--print json` alone must not report a missing file.
+    expect(ok(["--print", "json", "--format", "json"])).toEqual({
+      command: "print",
+      target: "json",
+      format: "json",
+      detail: 1
+    });
+    expect(ok(["--print", "tab", "--trace", "t"])).toEqual({
+      command: "print",
+      target: "tab",
+      format: "text",
+      trace: "t",
+      detail: 1
+    });
+    expect(ok(["--print", "text", "--format", "tab"])).toMatchObject({ target: "text", format: "tab" });
+    expect(error(["--print", "json"])).toBe(
+      "--print json: json was read as the trace file, and --print text shows one trace: pass --trace <id>, " +
+        "or name the file first to print json (<file> --print json)"
+    );
+    // With a positional the word stays the format, on either side.
+    expect(ok(["--print", "json", "x"])).toMatchObject({ target: "x", format: "json" });
+    expect(ok(["json", "--print", "tab"])).toMatchObject({ target: "json", format: "tab" });
+    expect(ok(["--print=json", "x"])).toMatchObject({ target: "x", format: "json" });
+  });
+
   it("--detail only with text, and only 0 or 1", () => {
     expect(error(["x", "--print", "json", "--detail", "1"])).toBe("--detail applies to --format text only, not json");
     expect(error(["x", "--print", "--trace", "t", "--detail", "2"])).toBe("--detail must be 0 or 1, received 2");
   });
 
   it("needs a target, has no code root, and tolerates -r", () => {
-    expect(error(["--print", "json"])).toBe("--print needs a trace file or - (stdin)");
+    expect(error(["--print"])).toBe("--print needs a trace file or - (stdin)");
+    expect(error(["--print", "--format", "json"])).toBe("--print needs a trace file or - (stdin)");
     expect(error(["x", "--print", "json", "--root", "."])).toBe(
       "--root sets the viewer's code root; --print does not read code"
     );

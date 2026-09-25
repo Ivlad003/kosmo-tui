@@ -119,7 +119,10 @@ candidates instead of guessing. `/re/flags` is a regular expression only in `:fi
 
 ## `--print`
 
-`--print` never opens the terminal UI and never writes a file. Stdin is read to EOF without a deadline.
+`--print` never opens the terminal UI and never writes a file. Stdin is read to EOF without a deadline. The format
+is `--format <format>`, `--print=<format>` or the word after `--print` (`<file> --print json`); when no file is named,
+that word is the file (`kosmo-tui --print json --format tab` prints the file `json`). Ctrl+C, SIGINT or SIGTERM stop
+it silently with `130` or `143`.
 
 | `--format`       | without `--trace`                                | with `--trace <id>`                                                                  |
 | ---------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------ |
