@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const BIN = path.join(here, "..", "bin", "kosmo-tui.js");
-export const distReady = existsSync(path.join(here, "..", "dist", "terminal-session.js"));
+export const distReady = existsSync(path.join(here, "..", "dist", "cli.js"));
 export const scriptAvailable =
   (process.platform === "darwin" || process.platform === "linux") && existsSync("/usr/bin/script");
 

@@ -132,63 +132,10 @@ describe("bin launcher", () => {
     });
     expect(bad.status).toBe(1);
     expect(bad.stdout).toBe("");
-    expect(bad.stderr).toMatch(/does not exist/);
+    expect(bad.stderr).toBe("kosmo-tui: file-not-found: ./definitely-missing.json\n");
     const version = spawnSync(process.execPath, [path.join(root, "bin", "kosmo-tui.js"), "--version"], {
       encoding: "utf8"
     });
     expect(version.stdout.trim()).toBe((pkg as unknown as { version: string }).version);
-  });
-});
-
-// Cross-repo CI (8.3): each matrix cell declares its SQLite driver situation and the built bin must
-// follow it on the real runtime — no injected probe. Unset outside the CI/local matrix.
-const SQLITE_CELL = process.env.KOSMO_TUI_SQLITE_CELL as "none" | "builtin" | "native" | undefined;
-const bin = (args: string[], input?: string) =>
-  spawnSync(process.execPath, [path.join(root, "bin", "kosmo-tui.js"), ...args], {
-    cwd: root,
-    encoding: "utf8",
-    ...(input === undefined ? {} : { input })
-  });
-
-describe("installed runtime boundary (8.3)", () => {
-  it("an unsupported connect stream major is an explicit version error with empty stdout", () => {
-    const result = bin(["-", "--print"], '{"type":"connect","v":3}\n');
-    expect(result.status).toBe(2);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toMatch(/unsupported connect stream version 3; supported: 1, 2/);
-  });
-
-  it.skipIf(!SQLITE_CELL)(`SQLite driver cell "${SQLITE_CELL}": peer, sql and --print follow the cell`, () => {
-    const require = createRequire(path.join(root, "package.json"));
-    const peer = (() => {
-      try {
-        return require.resolve("better-sqlite3");
-      } catch {
-        return undefined;
-      }
-    })();
-    expect(peer !== undefined, "better-sqlite3 installed").toBe(SQLITE_CELL === "native");
-    const [major = 0, minor = 0] = process.versions.node.split(".").map(Number);
-    const builtIn = major >= 24 || (major === 23 && minor >= 4) || (major === 22 && minor >= 13);
-    if (SQLITE_CELL === "none") expect(major === 18 || (major === 22 && minor < 5), process.version).toBe(true);
-    if (SQLITE_CELL === "builtin") expect(builtIn, process.version).toBe(true);
-
-    const store = path.join(root, "test/fixtures/sqlite/store.sqlite");
-    const sql = bin(["sql", "SELECT count(*) AS n FROM events", "--source", store]);
-    const print = bin([store, "--print", "json"]);
-    if (SQLITE_CELL === "none") {
-      for (const result of [sql, print]) {
-        expect(result.status).toBe(2);
-        expect(result.stdout).toBe("");
-        expect(result.stderr).toMatch(/unavailable\(sqlite-driver\).*better-sqlite3/);
-      }
-      return;
-    }
-    expect(sql.status, sql.stderr).toBe(0);
-    const table = JSON.parse(sql.stdout) as { schema: string; rows: number[][] };
-    expect(table.schema).toBe("kosmo.trace-sql/v1");
-    expect(table.rows[0]![0]).toBeGreaterThan(0);
-    expect(print.status, print.stderr).toBe(0);
-    expect((JSON.parse(print.stdout) as { schema: string }).schema).toBe("kosmo.trace-list/v1");
   });
 });

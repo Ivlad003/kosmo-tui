@@ -1,60 +1,20 @@
 /**
- * `y`: copy the selection as a full versioned trace-text document (task 5.9, spec
- * "Стек, закладки, порівняння та evidence").
+ * `y`: hand the copied text to a clipboard adapter (spec 6.7).
  *
- * The document is built by the same path review evidence uses (`buildEvidence` in
- * review-format.ts): the shared sanitizer from `@kosmo-callflow/trace-artifacts` masks
- * secrets, relativises host paths and escapes control data; the shared codec of the
- * source's projection version renders it under the 51,200-byte cap; the protocol parser
- * of that version must accept the result. A bare `(span ...)` is never offered.
+ * What is copied is decided by the view state: `update` answers `y` with the effect
+ * `{ kind: "copy", text }`, where `text` is the kosmo-text/v1 projection of the selected
+ * subtree with `--detail 0` under the 51 200 B cap (spec 7.2). kosmo-text escapes every data
+ * string itself, so the text is safe for an adapter and for the stdout fallback.
  *
  * Clipboard adapters are spawned without a shell (pbcopy, wl-copy, xclip, clip). When
- * none works the document is buffered and printed to stdout only after the terminal has
+ * none works the text is buffered and printed to stdout only after the terminal has
  * left the alternate screen, so it never interleaves with frames and survives the exit.
  */
 
 import { spawn } from "node:child_process";
 import { accessSync, constants as fsConstants, statSync } from "node:fs";
 import path from "node:path";
-import type { TraceTextDialect } from "@kosmo-callflow/protocol";
-import { buildEvidence, type EvidenceDocument, type SanitizeContext, type TraceTextVersion } from "./review-format.js";
 import type { Terminal } from "./terminal.js";
-
-export type CopyDocument = {
-  text: string;
-  version: TraceTextVersion;
-  format: TraceTextDialect;
-  bytes: number;
-  truncated: boolean;
-  /** True when some item has no recorded source line; the document says so (`nil`), never invents one. */
-  sourceLineUnavailable: boolean;
-};
-
-export type CopyDocumentResult = { ok: true; document: CopyDocument } | { ok: false; reason: string };
-
-/** Sanitize, encode and prove the document parses. */
-export function buildCopyDocument(
-  document: EvidenceDocument,
-  format: TraceTextDialect,
-  context: SanitizeContext = {}
-): CopyDocumentResult {
-  const built = buildEvidence(document, format, context);
-  if (!built.ok) return { ok: false, reason: built.message };
-  return {
-    ok: true,
-    document: {
-      text: built.evidence.text,
-      version: built.evidence.version,
-      format,
-      bytes: built.evidence.bytes,
-      truncated: built.evidence.truncated,
-      sourceLineUnavailable: document.items.some((item) => {
-        const source = (item as { source?: { state?: string; line?: number | null } }).source;
-        return item.kind === "span" && (source === undefined || source.state !== "available" || source.line === null);
-      })
-    }
-  };
-}
 
 export type ClipboardCommand = { command: string; args: string[] };
 

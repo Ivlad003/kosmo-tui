@@ -2,6 +2,3 @@ node_modules/
 dist/
 *.tgz
 .kosmo-callflow/
-# SQLite side files created when a test opens the shared fixture in place
-test/fixtures/cross-source/*.sqlite-shm
-test/fixtures/cross-source/*.sqlite-wal

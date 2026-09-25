@@ -1,241 +1,157 @@
 /**
- * Real-PTY tests (tasks 2.4 and 7.3). A pseudo-terminal comes from `script(1)`: its
- * stdin (our pipe) feeds the PTY master, so what we write arrives as keystrokes on the
- * child's controlling terminal, while `sh -c "printf … | node fixture -"` gives the
- * fixture a separate data pipe on stdin. The fixture runs `stty -a` on its tty right
- * after the session closes, proving the line discipline was restored (icanon/echo on).
+ * Real-PTY tests through the real bin (spec 13.2, 13.4). A pseudo-terminal comes from
+ * `script(1)` (test/pty.ts): what we write arrives as keystrokes on the viewer's controlling
+ * terminal, `screen()` replays the painted rows.
  *
- * Needs the built dist/ (`npm test` runs `pretest` → build). Skipped where `script` is
- * unavailable; Windows console input is not exercised here.
+ *  - json, ndjson and sqlite files open and the keyboard works; q exits 0;
+ *  - SIGINT, SIGTERM and SIGHUP restore the cursor, the main screen and cooked mode exactly
+ *    once and exit 130, 143 and 129;
+ *  - `-` without a controlling terminal is refused before anything is drawn: exit 1 with the
+ *    --print hint, both with a TTY stdout (the keyboard check) and with a pipe stdout.
+ *
+ * Needs the built dist/ (`npm test` runs `pretest` → build). The PTY cases are skipped where
+ * `script` is unavailable; Windows console input is not exercised here.
  */
-
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { spawn } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
-import { portableExport } from "./source-fixtures.js";
+import { afterAll, describe, expect, it } from "vitest";
+import { RECIPES } from "./fixture-recipes.js";
+import {
+  BIN,
+  ENTER,
+  RESTORE,
+  count,
+  distReady,
+  expectCookedTty,
+  scriptAvailable,
+  shellQuote,
+  startPty,
+  sttyAfterClose
+} from "./pty.js";
+import {
+  NODE_SQLITE_AVAILABLE,
+  cleanupTempDirs,
+  tempDir,
+  writeJson,
+  writeNdjson,
+  writeSqlite
+} from "./trace-writers.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const fixture = path.join(here, "fixtures", "pty-viewer.mjs");
-const bin = path.join(here, "..", "bin", "kosmo-tui.js");
-const distReady = existsSync(path.join(here, "..", "dist", "terminal-session.js"));
-const scriptAvailable =
-  (process.platform === "darwin" || process.platform === "linux") && existsSync("/usr/bin/script");
+afterAll(() => cleanupTempDirs());
 
-const ENTER = "\u001b[?1049h\u001b[?25l";
-const RESTORE = "\u001b[?25h\u001b[?1049l";
+const NODE = shellQuote(process.execPath);
+const TUI = shellQuote(BIN);
+const AFTER = `echo EXIT=$?; echo STTY_AFTER_CLOSE=$(stty -a | tr '\\n' ' ')`;
 
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
+function basicFile(kind: "json" | "ndjson" | "sqlite"): string {
+  const file = path.join(tempDir("kosmo-pty-"), `basic.kosmo-trace.${kind}`);
+  const doc = RECIPES["kosmo-trace/basic"]!();
+  if (kind === "json") writeJson(file, doc);
+  else if (kind === "ndjson") writeNdjson(file, doc);
+  else writeSqlite(file, doc);
+  return file;
 }
 
-function spawnInPty(command: string): ChildProcessWithoutNullStreams {
-  // script(1) takes the window size from its own stdin, which is a pipe here: 0x0.
-  const sized = `stty rows 24 cols 80; ${command}`;
-  const script =
-    process.platform === "darwin"
-      ? `script -q /dev/null sh -c ${shellQuote(sized)}`
-      : `script -qfec ${shellQuote(sized)} /dev/null`;
-  // Node's stdio pipes are sockets and BSD script(1) refuses a socket stdin
-  // (tcgetattr → ENOTSUP), so `cat` hands it a plain pipe.
-  return spawn("sh", ["-c", `cat | ${script}`], {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, TERM: "xterm-256color" }
-  });
-}
-
-type Session = {
-  child: ChildProcessWithoutNullStreams;
-  output(): string;
-  waitFor(pattern: RegExp, timeoutMs?: number): Promise<RegExpMatchArray>;
-  exited: Promise<number | null>;
-};
-
-function startSession(command: string): Session {
-  const child = spawnInPty(command);
-  let buffer = "";
-  const waiters: Array<() => void> = [];
-  const onChunk = (chunk: Buffer) => {
-    buffer += chunk.toString("utf8");
-    for (const waiter of [...waiters]) waiter();
-  };
-  child.stdout.on("data", onChunk);
-  child.stderr.on("data", onChunk);
-  const exited = new Promise<number | null>((resolve) => child.on("exit", (code) => resolve(code)));
-  return {
-    child,
-    output: () => buffer,
-    exited,
-    waitFor(pattern, timeoutMs = 10_000) {
-      return new Promise((resolve, reject) => {
-        const check = () => {
-          const match = buffer.match(pattern);
-          if (!match) return;
-          waiters.splice(waiters.indexOf(check), 1);
-          clearTimeout(timer);
-          resolve(match);
-        };
-        const timer = setTimeout(() => {
-          waiters.splice(waiters.indexOf(check), 1);
-          reject(new Error(`timed out waiting for ${pattern}; output so far: ${JSON.stringify(buffer)}`));
-        }, timeoutMs);
-        waiters.push(check);
-        check();
-      });
-    }
-  };
-}
-
-function count(haystack: string, needle: string): number {
-  return haystack.split(needle).length - 1;
-}
-
-/** `stty -a` captured by the fixture after the session closed, before process exit. */
-function sttyAfterClose(output: string): string {
-  const match = /STTY_AFTER_CLOSE=([^\r\n]*)/.exec(output);
-  if (!match) throw new Error(`no STTY_AFTER_CLOSE in ${JSON.stringify(output)}`);
-  return match[1]!;
+function expectRestoredOnce(out: string, marker: string): void {
+  expect(count(out, ENTER)).toBe(1);
+  expect(count(out, RESTORE)).toBe(1);
+  expect(out.indexOf(RESTORE)).toBeLessThan(out.indexOf(marker));
+  expectCookedTty(sttyAfterClose(out));
 }
 
 const ptyDescribe = scriptAvailable && distReady ? describe : describe.skip;
 
-ptyDescribe("real PTY", () => {
-  it("stdin carries data while keys arrive on the controlling terminal; data EOF does not swallow keys", async () => {
-    const command = `printf '%s\\n%s\\n' '{"frame":1}' '{"frame":2}' | ${shellQuote(process.execPath)} ${shellQuote(fixture)} -`;
-    const s = startSession(command);
-    try {
-      // Data stdin reached EOF before any key was sent.
-      await s.waitFor(/READY/);
-      expect(s.output()).toContain('DATA=["{\\"frame\\":1}","{\\"frame\\":2}"]');
-      expect(s.output()).toContain("EOF=true");
+ptyDescribe("real bin in a PTY", () => {
+  for (const kind of ["json", "ndjson", "sqlite"] as const) {
+    it.skipIf(kind === "sqlite" && !NODE_SQLITE_AVAILABLE)(
+      `opens a ${kind} file, the keyboard moves the selection, q exits 0 and restores the terminal`,
+      async () => {
+        const file = basicFile(kind);
+        const s = startPty(`cd ${shellQuote(path.dirname(file))} && ${NODE} ${TUI} ${shellQuote(file)}; ${AFTER}`);
+        try {
+          await s.waitForScreen(/GET \/cart · 4 spans · errored/);
+          s.write("j");
+          await s.waitForScreen(/loadCart · function · complete/);
+          s.write("j");
+          await s.waitForScreen(/calculateLineTotal · function · errored/);
+          s.write("q");
+          await s.waitFor(/EXIT=0/);
+          await s.waitFor(/STTY_AFTER_CLOSE=/);
+          s.child.stdin.end();
+          await s.exited;
+          expectRestoredOnce(s.output(), "EXIT=0");
+        } finally {
+          s.kill();
+        }
+      },
+      30_000
+    );
+  }
 
-      s.child.stdin.write("j");
-      await s.waitFor(/KEYS=\["j"\]/);
-      s.child.stdin.write("k");
-      await s.waitFor(/KEYS=\["j","k"\]/);
-      s.child.stdin.write("q");
-      await s.waitFor(/EXIT=0/);
-      s.child.stdin.end();
-      await s.exited;
-
-      const out = s.output();
-      // The keys never showed up as data.
-      expect(out).not.toMatch(/DATA=\[[^\]]*"j"/);
-      expect(count(out, ENTER)).toBe(1);
-      expect(count(out, RESTORE)).toBe(1);
-      expect(out.indexOf(ENTER)).toBeLessThan(out.indexOf(RESTORE));
-      expect(out.indexOf(RESTORE)).toBeLessThan(out.indexOf("STTY_AFTER_CLOSE="));
-      expect(out.indexOf(RESTORE)).toBeLessThan(out.indexOf("EXIT=0"));
-      const stty = sttyAfterClose(out);
-      expect(stty).toMatch(/(^|\s)icanon\b/);
-      expect(stty).toMatch(/(^|\s)echo\b/);
-      expect(stty).not.toMatch(/-icanon\b/);
-    } finally {
-      s.child.stdin.destroy();
-      s.child.kill("SIGKILL");
-    }
-  }, 20_000);
-
-  it("SIGTERM restores cursor/alt screen/raw mode exactly once and exits 143", async () => {
-    const command = `printf 'x\\n' | ${shellQuote(process.execPath)} ${shellQuote(fixture)} -`;
-    const s = startSession(command);
-    try {
-      await s.waitFor(/READY/);
-      const pid = Number((await s.waitFor(/PID=(\d+)/))[1]);
-      process.kill(pid, "SIGTERM");
-      await s.waitFor(/EXIT=143/);
-      s.child.stdin.end();
-      await s.exited;
-
-      const out = s.output();
-      expect(count(out, ENTER)).toBe(1);
-      expect(count(out, RESTORE)).toBe(1);
-      expect(out.indexOf(RESTORE)).toBeLessThan(out.indexOf("EXIT=143"));
-      const stty = sttyAfterClose(out);
-      expect(stty).toMatch(/(^|\s)icanon\b/);
-      expect(stty).not.toMatch(/-icanon\b/);
-      expect(stty).not.toMatch(/-echo\b/);
-    } finally {
-      s.child.stdin.destroy();
-      s.child.kill("SIGKILL");
-    }
-  }, 20_000);
-});
-
-ptyDescribe("real bin in a PTY (precursor of gate 8.1)", () => {
-  it("export without daemon: open, j/k, Enter detail, f writes a finding, q exits 0 and the terminal is restored", async () => {
-    const project = await mkdtemp(path.join(os.tmpdir(), "kosmo-tui-pty-"));
-    try {
-      await mkdir(path.join(project, ".kosmo-callflow"), { recursive: true });
-      await writeFile(path.join(project, ".kosmo-callflow", "project.json"), JSON.stringify({ projectId: "p" }));
-      const exported = JSON.stringify(portableExport());
-      await writeFile(path.join(project, "trace.json"), exported);
-      const command =
-        `cd ${shellQuote(project)} && ${shellQuote(process.execPath)} ${shellQuote(bin)} ./trace.json; ` +
-        `echo EXIT=$?; echo STTY_AFTER_CLOSE=$(stty -a | tr '\\n' ' ')`;
-      const s = startSession(command);
+  for (const [signal, code] of [
+    ["SIGINT", 130],
+    ["SIGTERM", 143],
+    ["SIGHUP", 129]
+  ] as const) {
+    it(`${signal} restores the terminal exactly once and exits ${code}`, async () => {
+      const file = basicFile("json");
+      // `exec` keeps the pid, so the echoed pid is the viewer's own.
+      const viewer = `echo PID=$$; exec ${NODE} ${TUI} ${shellQuote(file)}`;
+      const s = startPty(`sh -c ${shellQuote(viewer)}; ${AFTER}`);
       try {
-        await s.waitFor(/src\/cart\.ts#checkout/);
-        s.child.stdin.write("j");
-        await s.waitFor(/> \+ src\/cart\.ts#checkout/);
-        s.child.stdin.write("k");
-        s.child.stdin.write("\r");
-        await s.waitFor(/detail: src\/cart\.ts#checkout/);
-        s.child.stdin.write("f");
-        await s.waitFor(/:finding _/);
-        s.child.stdin.write("card declined upstream");
-        await s.waitFor(/:finding card declined upstream_/);
-        s.child.stdin.write("\r");
-        await s.waitFor(/finding saved: /);
-        s.child.stdin.write("q");
-        await s.waitFor(/EXIT=0/);
+        await s.waitForScreen(/GET \/cart · 4 spans/);
+        const pid = Number((await s.waitFor(/PID=(\d+)/))[1]);
+        process.kill(pid, signal);
+        await s.waitFor(new RegExp(`EXIT=${code}`));
         await s.waitFor(/STTY_AFTER_CLOSE=/);
         s.child.stdin.end();
         await s.exited;
-
-        const out = s.output();
-        expect(count(out, ENTER)).toBe(1);
-        expect(count(out, RESTORE)).toBe(1);
-        expect(out.indexOf(RESTORE)).toBeLessThan(out.indexOf("EXIT=0"));
-        const stty = sttyAfterClose(out);
-        expect(stty).toMatch(/(^|\s)icanon\b/);
-        expect(stty).toMatch(/(^|\s)echo\b/);
-        expect(stty).not.toMatch(/-icanon\b/);
-
-        const reviews = path.join(project, ".kosmo-callflow", "reviews");
-        const files = (await readdir(reviews)).filter((name) => name.endsWith(".md"));
-        expect(files).toHaveLength(1);
-        const review = await readFile(path.join(reviews, files[0]!), "utf8");
-        expect(review).toContain("card declined upstream");
-        expect(review).toContain('"spanId":"sp-1"');
-        expect(review).toContain("kosmo-trace-text");
-        expect(review).toContain(":projection-version 2");
-        // The source file was only read.
-        expect(await readFile(path.join(project, "trace.json"), "utf8")).toBe(exported);
+        expectRestoredOnce(s.output(), `EXIT=${code}`);
       } finally {
-        s.child.stdin.destroy();
-        s.child.kill("SIGKILL");
+        s.kill();
       }
+    }, 30_000);
+  }
+
+  it("`-` with a TTY stdout but no controlling terminal: exit 1 before anything is drawn, the --print hint", async () => {
+    // A detached child calls setsid(): its stdout is still the PTY, but /dev/tty no longer opens.
+    const launcher = [
+      'const { spawn } = require("node:child_process");',
+      `const child = spawn(process.execPath, [${JSON.stringify(BIN)}, "-"], { detached: true, stdio: ["pipe", "inherit", "inherit"] });`,
+      'child.stdin.end("");',
+      'child.on("exit", (code) => console.log("CHILD_EXIT=" + code));'
+    ].join(" ");
+    const s = startPty(`${NODE} -e ${shellQuote(launcher)}`);
+    try {
+      await s.waitFor(/CHILD_EXIT=\d+/);
+      s.child.stdin.end();
+      await s.exited;
+      const out = s.output();
+      expect(out).toContain("CHILD_EXIT=1");
+      expect(out).toContain(
+        "kosmo-tui: no-controlling-terminal: interactive terminal required: stdin carries data and no controlling terminal"
+      );
+      expect(out).toContain("--print");
+      expect(count(out, ENTER)).toBe(0);
     } finally {
-      await rm(project, { recursive: true, force: true });
+      s.kill();
     }
   }, 30_000);
 });
 
 (distReady && process.platform !== "win32" ? describe : describe.skip)("no controlling terminal", () => {
-  it("a session leader without a TTY gets the explicit refusal with exit 1 and the --print hint", async () => {
-    // detached → setsid(): the child has no controlling terminal, so /dev/tty fails.
-    const child = spawn(process.execPath, [fixture, "--probe"], { detached: true, stdio: ["pipe", "pipe", "pipe"] });
-    child.stdin.end();
+  it("`-` in a session without a TTY: exit 1, empty stdout, the --print hint", async () => {
+    // detached → setsid(): no controlling terminal, stdout is a pipe.
+    const child = spawn(process.execPath, [BIN, "-"], { detached: true, stdio: ["pipe", "pipe", "pipe"] });
+    child.stdin.end('{"type":"header","format":"kosmo-trace","version":1,"dataset":{"id":"d"}}\n');
     let out = "";
+    let err = "";
     child.stdout.on("data", (chunk: Buffer) => (out += chunk.toString("utf8")));
-    await new Promise((resolve) => child.on("exit", resolve));
-    expect(out).toContain("KEYBOARD=refused exit=1");
-    expect(out).toContain("interactive terminal required");
-    expect(out).toContain("no controlling terminal (/dev/tty)");
-    expect(out).toContain("--print");
+    child.stderr.on("data", (chunk: Buffer) => (err += chunk.toString("utf8")));
+    const code = await new Promise<number | null>((resolve) => child.on("exit", resolve));
+    expect(code).toBe(1);
+    expect(out).toBe("");
+    expect(err).toContain("kosmo-tui: no-controlling-terminal: interactive terminal required: stdout is not a TTY. ");
+    expect(err).toContain("--print");
   });
 });
