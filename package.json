@@ -1,9 +1,23 @@
 {
   "name": "@ivlad003/kosmo-tui",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Terminal viewer for kosmo-trace call traces",
   "type": "module",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ivlad003/kosmo-tui.git"
+  },
+  "homepage": "https://ivlad003.github.io/kosmo-tui/",
+  "bugs": {
+    "url": "https://github.com/Ivlad003/kosmo-tui/issues"
+  },
+  "keywords": [
+    "cli",
+    "tui",
+    "trace",
+    "kosmo-trace"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -28,6 +42,7 @@
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
     "pretest": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",

@@ -5,6 +5,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-25
+
+First publishable build. Install with `npx @ivlad003/kosmo-tui`. Node >= 22.13.0. No runtime dependencies.
+
 ### Changed: standalone kosmo-tui on `kosmo-trace/v1` (breaking)
 
 kosmo-tui no longer depends on kosmo-callflow and reads its own trace format.
@@ -18,7 +22,8 @@ kosmo-tui no longer depends on kosmo-callflow and reads its own trace format.
   `@ivlad003/kosmo-tui/schema/kosmo-trace-v1.schema.json`; the start screen with found and recent traces; the traces
   screen; Areas (module/feature, derived `~` areas); code snippets from disk in the detail pane with named states;
   framework kinds and `attrs` for Node, Express, NestJS, Next.js and React; `kosmo-text/v1` for `--print`, `d` and
-  `y`; `examples/demo.kosmo-trace.json`.
+  `y`; `examples/demo.kosmo-trace.json`; a Ukrainian usage guide in `docs/` (GitHub Pages). `prepublishOnly` builds
+  `dist` so the published tarball runs with `npx`.
 - **Changed:** `--print` takes `text|json|tab` (was `lisp|tab|json`) and `--detail 0|1`; span refs are
   `<id>`, `<session>:<id>` and `<trace>:<session>:<id>`; `engines.node` is `>=22.13.0` (was `>=18.19.0`); SIGHUP
   restores the terminal and exits 129; the only file written is `recent.json` (`-r` turns it off).
@@ -29,7 +34,7 @@ Local release candidate for task 8.5 of kosmo-callflow `extract-tui-trace-debugg
 published. The tarball is `artifacts/kosmo-tui-0.0.0.tgz` (sha256 in kosmo-callflow
 `docs/releases/2026-09-23-kosmo-tui-rc.md`), packed from `f4a32cc` plus the framework fixture
 parity test. That document also records the kosmo-callflow compatibility tuple and the publish
-blockers. The version stays `0.0.0` until the owner picks one at publish time.
+blockers. Superseded by 0.1.0.
 
 - Framework fixture parity (8.5): `test/framework-fixture-parity.test.ts` reads the Express, Nest,
   Next/Edge and Next Node (`next-node-action-request`) fixtures from the installed

@@ -1,0 +1,39 @@
+name: Publish
+
+# Publishes the built package (dist, bin, schema) to npm on a GitHub Release.
+# The org scope is the package name. Add a granular or classic token as the
+# NPM_TOKEN secret; it needs publish rights on that scope.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+          registry-url: https://registry.npmjs.org
+          scope: "@ivlad003"
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Test
+        run: npm test
+
+      - name: Publish
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

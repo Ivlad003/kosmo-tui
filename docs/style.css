@@ -1,0 +1,155 @@
+:root {
+  color-scheme: dark;
+  --bg: #12140f;
+  --panel: #1b1e16;
+  --line: #34382c;
+  --text: #e7e4d4;
+  --muted: #a3a48f;
+  --accent: #d6f27a;
+  --warn: #f0b45a;
+  --bad: #f08a72;
+  --ok: #8fd6a0;
+  --mono: "ui-monospace", "SFMono-Regular", Menlo, Consolas, monospace;
+  --sans: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  margin: 0 auto;
+  max-width: 46rem;
+  padding: 2.5rem 1.25rem 4rem;
+  color: var(--text);
+  background: var(--bg);
+  font: 1.05rem/1.55 var(--sans);
+}
+
+a {
+  color: var(--accent);
+}
+
+nav {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  font: 0.85rem/1.4 var(--mono);
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+nav a[aria-current="page"],
+nav a:hover {
+  color: var(--accent);
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  line-height: 1.2;
+}
+h1 {
+  font-size: 2rem;
+  margin: 0 0 0.4rem;
+}
+h2 {
+  margin-top: 2.4rem;
+  font-size: 1.35rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1.2rem;
+}
+h3 {
+  margin-top: 1.6rem;
+  font-size: 1.05rem;
+}
+
+p,
+li {
+  color: var(--text);
+}
+.lede {
+  color: var(--muted);
+  font-size: 1.15rem;
+}
+
+code,
+pre {
+  font-family: var(--mono);
+  font-size: 0.86rem;
+}
+code {
+  color: var(--accent);
+}
+pre {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  line-height: 1.45;
+}
+pre code {
+  color: var(--text);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  gap: 0.8rem;
+}
+@media (min-width: 40rem) {
+  .grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 0.9rem 1rem;
+}
+.card h2 {
+  border: 0;
+  margin: 0 0 0.4rem;
+  padding: 0;
+  font-size: 1rem;
+}
+.card.ok h2 {
+  color: var(--ok);
+}
+.card.bad h2 {
+  color: var(--bad);
+}
+.card p:last-child,
+.card ul:last-child {
+  margin-bottom: 0;
+}
+
+.callout {
+  border-left: 3px solid var(--warn);
+  padding: 0.2rem 0 0.2rem 0.9rem;
+  color: var(--muted);
+}

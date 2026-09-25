@@ -6,7 +6,8 @@ are grouped by module and feature, and framework calls (Express middleware, Nest
 Next server/client boundary) have readable names.
 
 kosmo-tui reads its own format, `kosmo-trace/v1`, from a JSON file, an NDJSON file or stream, or a SQLite store. It
-has no runtime dependencies and never writes to a trace.
+has no runtime dependencies and never writes to a trace. The usage guide, including what it does not solve, is
+[docs/index.html](docs/index.html) (Ukrainian; also published on GitHub Pages).
 
 ```sh
 npx @ivlad003/kosmo-tui                        # start screen: traces found here and recently opened
@@ -296,6 +297,19 @@ Values, `attrs` and URL query parameters are masked by key (`password`, `token`,
 are masked whatever their key. This is a second layer: record masked values in the producer. Every string from a trace
 or a code file is escaped before it reaches the terminal, and file links (OSC 8) are drawn only with
 `KOSMO_TUI_LINKS=1`. See [SECURITY.md](SECURITY.md).
+
+## Publish
+
+`prepublishOnly` builds `dist`. The tarball contains `dist`, `bin` and `schema` only. After `npm login` as a member of
+the `@ivlad003` scope:
+
+```sh
+npm publish --access public
+npx @ivlad003/kosmo-tui --version
+```
+
+`.github/workflows/publish.yml` does the same on a GitHub Release when the `NPM_TOKEN` secret can publish that scope.
+The version in this checkout is the version that will be published; do not reuse it.
 
 ## Development
 

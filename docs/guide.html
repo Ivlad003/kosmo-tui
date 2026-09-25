@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>kosmo-tui — інструкція і кейси</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <nav>
+      <a href="index.html">Межі</a>
+      <a href="guide.html" aria-current="page">Кейси</a>
+    </nav>
+    <h1>Інструкція</h1>
+    <p class="lede">Запуск у своєму проєкті, типові розбори і команди, які нічого не відкриють.</p>
+
+    <h2>0. Поставити і запустити</h2>
+    <p>Node >= 22.13.0. Окремої інсталяції не треба:</p>
+    <pre><code>npx @ivlad003/kosmo-tui
+npx @ivlad003/kosmo-tui ./trace.kosmo-trace.json
+npx @ivlad003/kosmo-tui ./trace.kosmo-trace.ndjson
+npx @ivlad003/kosmo-tui ./trace.kosmo-trace.sqlite</code></pre>
+    <p>
+      Без аргументів відкривається стартовий екран: файли <code>*.kosmo-trace.json|ndjson|sqlite</code> у поточній
+      директорії і на два рівні нижче (без <code>node_modules</code>, <code>.git</code> і прихованих директорій), плюс
+      до 20 недавніх шляхів з <code>~/.config/kosmo-tui/recent.json</code>. Файл відкривається тільки після Enter.
+    </p>
+    <p>
+      <code>-r</code> не пише <code>recent.json</code>. <code>--print</code> теж. Якщо домашня директорія не
+      визначається і <code>XDG_CONFIG_HOME</code> не задано, список недавніх вимкнений.
+    </p>
+
+    <h2>1. Побачити код біля впалого виклику</h2>
+    <p>Запускайте з кореня проєкту, де лежать <code>package.json</code> або <code>.git</code> і сам вихідний код.</p>
+    <pre><code>cd ~/work/shop
+npx @ivlad003/kosmo-tui ./traces/checkout.kosmo-trace.json</code></pre>
+    <ol>
+      <li>
+        Якщо трейсів кілька, <code>j</code>/<code>k</code> і Enter відкривають потрібний. Один трейс відкривається
+        одразу.
+      </li>
+      <li><code>j</code>/<code>k</code> ходять по дереву. <code>e</code> лишає тільки помилки.</li>
+      <li>
+        Унизу detail: файл, рядок, вікно коду з диска, <code>args</code>, <code>return</code>, <code>error</code>.
+      </li>
+      <li>
+        Рядок з <code>▶</code> — це рядок із траси. Якщо файл на диску змінився, вікно скаже
+        <code>changed-since-trace</code> або <code>moved to line N</code>.
+      </li>
+    </ol>
+    <p>
+      Корінь коду береться так: <code>--root</code> або <code>:root</code>, якщо ви їх дали; інакше
+      <code>dataset.root</code>, якщо це абсолютний шлях, який містить поточну директорію або директорію файла траси;
+      інакше найближчий <code>.git</code> / <code>package.json</code> над файлом траси; інакше поточна директорія.
+      Автоматичний вибір не може бути <code>/</code>, домашньою директорією чи вище неї.
+    </p>
+
+    <h2>2. Потік від producer</h2>
+    <p>kosmo-tui не інструментує процес. Producer пише NDJSON у stdout, переглядач читає stdin до EOF.</p>
+    <pre><code>node producer.mjs | npx @ivlad003/kosmo-tui -</code></pre>
+    <p>
+      Перший рядок — <code>header</code>, далі <code>trace</code>, <code>span</code>, <code>link</code> у будь-якому
+      порядку. Поки потік іде, на екрані <code>reading… N spans</code>. Модель будується один раз після EOF. Це не
+      <code>tail -f</code>: нові рядки після кінця потоку не з'являться.
+    </p>
+    <p>SQLite зі stdin не читається. Потрібен шлях до файла, інакше вихід 2:</p>
+    <pre><code>cat store.sqlite | npx @ivlad003/kosmo-tui -
+# read-error: a SQLite store cannot be read from a stream; pass its path</code></pre>
+
+    <h2>3. Хто кинув, і чи це ваш код</h2>
+    <ol>
+      <li><code>e</code> — тільки помилки.</li>
+      <li><code>s</code> — записані предки вибраного span.</li>
+      <li>
+        <code>:ancestors</code> — ланцюжок батьків до <code>root reached</code>, <code>parent unknown(…)</code> або
+        <code>cycle</code>.
+      </li>
+      <li><code>:callers</code> — усі span на тій самій <code>file:line</code>, згруповані за батьками.</li>
+      <li>
+        <code>:path &lt;from&gt; &lt;to&gt;</code> — <code>found</code>, <code>no-path</code> або
+        <code>unknown-path</code>.
+      </li>
+    </ol>
+    <p>
+      Батько ніколи не вгадується. Немає span — це <code>unknown(missing)</code>. Кілька кандидатів —
+      <code>unknown(ambiguous)</code>. Цикл ріжеться і позначається <code>cycle</code>.
+    </p>
+
+    <h2>4. Шар фреймворка і бізнес-логіка</h2>
+    <p>
+      <code>a</code> відкриває Areas: <code>module · feature</code>, кількість span і помилок. Похідні області позначені
+      <code>~</code>. Enter фільтрує дерево, предки лишаються тьмяними.
+    </p>
+    <p>
+      Рядок <code>┄┄ node → browser · browser ┄┄</code> — дитина в іншій сесії або runtime. Так видно межу SSR і
+      браузера, а не «просто вкладений виклик».
+    </p>
+    <p>Корисні фільтри:</p>
+    <pre><code>:filter errors on
+:filter kind nest.*
+:filter name /price/i
+:area cart
+:find /calculateLineTotal/
+:filter clear</code></pre>
+
+    <h2>5. Два трейси, один link</h2>
+    <p>
+      Link, чий інший кінець лежить в іншому трейсі, показується як <code>t_pdp · browser:add (follows-from)</code>, а
+      не як <code>missing</code>. <code>missing</code> лишається тільки тоді, коли span із цим id у відкритому трейсі
+      справді немає. Щоб відкрити той трейс: <code>T</code> або Backspace, потім Enter, або <code>:trace t_pdp</code>.
+    </p>
+
+    <h2>6. Скрипт і CI, без інтерфейсу</h2>
+    <p><code>--print</code> не відкриває термінал і не пише файл. Stdin читається до EOF без дедлайну.</p>
+    <pre><code>npx @ivlad003/kosmo-tui ./x.kosmo-trace.json --print --trace t_cart
+npx @ivlad003/kosmo-tui ./x.kosmo-trace.json --print json
+npx @ivlad003/kosmo-tui ./x.kosmo-trace.sqlite --print tab --trace t_cart</code></pre>
+    <table>
+      <thead>
+        <tr>
+          <th>формат</th>
+          <th>без --trace</th>
+          <th>з --trace</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>text</code></td>
+          <td>вихід 1, треба <code>--trace</code></td>
+          <td>kosmo-text/v1; <code>--detail 1</code> додає args/return/error</td>
+        </tr>
+        <tr>
+          <td><code>json</code></td>
+          <td>нормалізований документ, без ліміту байт</td>
+          <td>один трейс і link'и з кінцем у ньому</td>
+        </tr>
+        <tr>
+          <td><code>tab</code></td>
+          <td><code>id, name, spans, status</code></td>
+          <td>один рядок на span у порядку дерева</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      <code>text</code> і <code>tab</code> зупиняються на 51 200 байтах і закінчуються рядком
+      <code>… truncated: output-byte-cap</code>. <code>json</code> не обрізається за цим лімітом. Обрив пайпа (<code
+        >| head</code
+      >) — вихід 2, <code>output ended early (EPIPE)</code>.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>код</th>
+          <th>коли</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>0</td>
+          <td>нормально</td>
+        </tr>
+        <tr>
+          <td>1</td>
+          <td>невірні прапорці, файла немає, це директорія, немає термінала для UI</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>файл не читається або це не kosmo-trace, зокрема інша версія і SQLite зі stdin</td>
+        </tr>
+        <tr>
+          <td>130 / 143 / 129</td>
+          <td>SIGINT або Ctrl+C / SIGTERM / SIGHUP</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>7. Запуск не з того місця</h2>
+    <pre><code>cd ~
+npx @ivlad003/kosmo-tui /tmp/nomark/demo.kosmo-trace.json</code></pre>
+    <p>
+      Якщо автоматичний корінь непридатний, код з диска не читається. Вікно каже <code>no code root</code>, у статусі
+      <code>code root not set: …; use :root or --root</code>. Записаний у трасі snippet лишається. Явний корінь
+      приймається як є, навіть <code>/</code> чи домашня директорія:
+    </p>
+    <pre><code>npx @ivlad003/kosmo-tui ./x.kosmo-trace.json --root ~/work/shop
+# або вже в UI:
+:root ~/work/shop</code></pre>
+    <p>
+      Якщо корінь потім став симлінком в інше місце, читання зупиняється зі статусом <code>root-changed</code>. Файл за
+      симлінком поза коренем — <code>outside-root</code>. Файл понад 2 МіБ — <code>too-large</code>.
+    </p>
+
+    <h2>8. Ворожий текст у трасі</h2>
+    <p>
+      Назви, аргументи і код з траси не керують терміналом. OSC, CSI, C1 і bidi показуються як <code>\u001b…</code>.
+      Посилання на файл (OSC 8) малюються тільки з <code>KOSMO_TUI_LINKS=1</code> і тільки на <code>file://</code>
+      всередині кореня.
+    </p>
+
+    <h2>Клавіші</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>клавіша</th>
+          <th>дія</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>j k</code> стрілки PgUp PgDn <code>g G</code></td>
+          <td>рух</td>
+        </tr>
+        <tr>
+          <td><code>h l</code> Space</td>
+          <td>згорнути / розгорнути</td>
+        </tr>
+        <tr>
+          <td>Enter</td>
+          <td>відкрити файл або трейс; на дереві — фокус на detail</td>
+        </tr>
+        <tr>
+          <td>Tab / Esc</td>
+          <td>назад до дерева / закрити панель, скинути фільтр</td>
+        </tr>
+        <tr>
+          <td><code>T</code> Backspace</td>
+          <td>зі екрана трейсу до списку трейсів</td>
+        </tr>
+        <tr>
+          <td><code>v</code> <code>d</code></td>
+          <td>дерево ↔ таблиця / kosmo-text</td>
+        </tr>
+        <tr>
+          <td><code>/</code> <code>e</code> <code>a</code> <code>s</code></td>
+          <td>пошук / тільки помилки / areas / стек</td>
+        </tr>
+        <tr>
+          <td><code>m</code> <code>'</code></td>
+          <td>закладка / список закладок</td>
+        </tr>
+        <tr>
+          <td><code>y</code></td>
+          <td>копія kosmo-text вибраного піддерева</td>
+        </tr>
+        <tr>
+          <td><code>></code> <code>r</code></td>
+          <td>наступна сторінка трейсів (SQLite) / перечитати файл</td>
+        </tr>
+        <tr>
+          <td><code>:</code></td>
+          <td>командний рядок</td>
+        </tr>
+        <tr>
+          <td><code>q</code> Ctrl+C</td>
+          <td>вихід; Ctrl+C дає код 130</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Esc не повертає на старт, якщо ви відкрили файл аргументом. На старт він веде тільки тоді, коли ви прийшли зі
+      стартового екрана. Посилання на span: <code>.</code>, <code>&lt;id&gt;</code>,
+      <code>&lt;session&gt;:&lt;id&gt;</code> або <code>&lt;trace&gt;:&lt;session&gt;:&lt;id&gt;</code>. Неоднозначне
+      посилання показує кандидатів і нічого не вибирає.
+    </p>
+
+    <h2>Чого чекати даремно</h2>
+    <ul>
+      <li>Живий процес без записаної траси. Немає producer — немає що відкривати.</li>
+      <li>
+        Дописати рядки у вже відкритий файл і побачити їх без <code>r</code>. І навіть <code>r</code> не працює для
+        stdin.
+      </li>
+      <li>
+        Повний текст 200 000 span через <code>--print text</code>. Буде обрізання на 51 200 байтах. Для повного знімка —
+        <code>--print json</code>.
+      </li>
+      <li>Код з чужого дерева, якщо ви в <code>~</code> і не дали <code>--root</code>.</li>
+      <li>Гарантія, що пароль у полі <code>note</code> буде замаскований.</li>
+    </ul>
+  </body>
+</html>
