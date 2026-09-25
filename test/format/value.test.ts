@@ -500,10 +500,39 @@ describe("maskString (spec 8.3)", () => {
     expect(maskString("/a?%E0%A4%A=1")).toBe("/a?%E0%A4%A=1");
   });
 
+  it("masks secret-named params nested inside a query value, plain or percent-encoded", () => {
+    expect(maskString("?redirect=/a?sessionId=5")).toBe(`?redirect=/a?sessionId=${MASKED_TEXT}`);
+    expect(maskString("/login?next=/cart?token=abc&page=2")).toBe(`/login?next=/cart?token=${MASKED_TEXT}&page=2`);
+    expect(maskString("/l?next=/a?x=1?token=t#f")).toBe(`/l?next=/a?x=1?token=${MASKED_TEXT}#f`);
+    expect(maskString("/l?r=/b?next=/c?sid=9")).toBe(`/l?r=/b?next=/c?sid=${MASKED_TEXT}`);
+    expect(maskString("/l?r=%2Fa%3Ftoken%3Dabc%26page%3D2")).toBe(`/l?r=%2Fa%3Ftoken%3D${MASKED_TEXT}%26page%3D2`);
+    expect(maskString("/l?r=%2Fa%3fx%3d1%26sid%3d9")).toBe(`/l?r=%2Fa%3fx%3d1%26sid%3d${MASKED_TEXT}`);
+    expect(maskString("/l?r=%2Fa%3Fapi%5Fkey=k")).toBe(`/l?r=%2Fa%3Fapi%5Fkey=${MASKED_TEXT}`);
+    expect(maskString("/l?r=/a?token=")).toBe("/l?r=/a?token=");
+    expect(maskString("/l?r=/a?tokenizer=1&q=x")).toBe("/l?r=/a?tokenizer=1&q=x");
+  });
+
+  it("leaves text outside a query value exactly as before", () => {
+    for (const text of [
+      "a=b",
+      "a=b c=d",
+      "x = token",
+      "see the token=1 docs",
+      "100%3Ftoken%3D5",
+      "why?token",
+      "/l?q=password=x",
+      "/l?r=%2Fa%3Ftokenizer%3D1"
+    ]) {
+      expect(maskString(text), text).toBe(text);
+    }
+  });
+
   it("stays linear on long hostile input", () => {
-    const text = `?${"a".repeat(200_000)}&${"b=".repeat(100_000)}`;
     const started = Date.now();
-    maskString(text);
+    maskString(`?${"a".repeat(200_000)}&${"b=".repeat(100_000)}`);
+    maskString(`?r=${"?a=".repeat(70_000)}`);
+    maskString(`?r=${"%3Fa%3D".repeat(30_000)}`);
+    maskString(`?r=/${"?".repeat(100_000)}${"%3F".repeat(30_000)}${"a".repeat(100_000)}`);
     expect(Date.now() - started).toBeLessThan(2000);
   });
 });

@@ -583,15 +583,52 @@ function decodeQueryKey(key: string): string {
 }
 
 /**
+ * A parameter nested inside a query value (`?next=/cart?token=1`, `?r=%2Fa%3Ftoken%3D1`): led by `?`,
+ * `%3F` or `%26`, a key without `=`, `?` or an encoded lead / `=`, then `=` or `%3D`. It is only looked
+ * for inside the value of a parameter QUERY_PARAM already matched, so text outside a query is untouched.
+ */
+const NESTED_PARAM = /(\?|%3F|%26)((?:[^=?%]|%(?!3[DF]|26))+)(=|%3D)/gi;
+const ENCODED_AMPERSAND = /%26/gi;
+
+/**
+ * The value of an unmasked query parameter with any nested secret-named parameter masked. A nested value
+ * runs to the end of the outer value, or to the next `%26` when the pair itself is percent-encoded. One
+ * left-to-right pass: an unmasked nested pair is stepped over at its `=`, so deeper nesting costs nothing.
+ */
+function maskNestedQuery(value: string): string {
+  NESTED_PARAM.lastIndex = 0;
+  let out = "";
+  let last = 0;
+  for (let match = NESTED_PARAM.exec(value); match !== null; match = NESTED_PARAM.exec(value)) {
+    const valueStart = match.index + match[0].length;
+    if (valueStart === value.length || !isMaskedKey(decodeQueryKey(match[2] as string))) continue;
+    let valueEnd = value.length;
+    if (match[1] !== "?" || match[3] !== "=") {
+      ENCODED_AMPERSAND.lastIndex = valueStart;
+      valueEnd = ENCODED_AMPERSAND.exec(value)?.index ?? value.length;
+    }
+    if (valueEnd === valueStart) continue;
+    out += `${value.slice(last, valueStart)}${MASKED_TEXT}`;
+    last = valueEnd;
+    NESTED_PARAM.lastIndex = valueEnd;
+  }
+  return last === 0 ? value : out + value.slice(last);
+}
+
+/**
  * Spec 8.3 for one string: a credential-like string (`Bearer …`, `Basic …`, `Digest …`, `Negotiate …`, a JWT)
  * becomes MASKED_TEXT; otherwise every `key=value` query parameter (at the start, after `?` or `&`) whose
- * key is masked keeps its key and gets MASKED_TEXT as value. All other text is returned unchanged.
+ * key is masked keeps its key and gets MASKED_TEXT as value, and the value of any other parameter has its
+ * nested secret-named parameters masked (`maskNestedQuery`). All other text is returned unchanged.
  */
 export function maskString(text: string): string {
   if (isCredential(text)) return MASKED_TEXT;
-  return text.replace(QUERY_PARAM, (match: string, lead: string, key: string, value: string) =>
-    value !== "" && isMaskedKey(decodeQueryKey(key)) ? `${lead}${key}=${MASKED_TEXT}` : match
-  );
+  return text.replace(QUERY_PARAM, (match: string, lead: string, key: string, value: string) => {
+    if (value === "") return match;
+    if (isMaskedKey(decodeQueryKey(key))) return `${lead}${key}=${MASKED_TEXT}`;
+    const nested = maskNestedQuery(value);
+    return nested === value ? match : `${lead}${key}=${nested}`;
+  });
 }
 
 function maskEntries(entries: JsonObject): JsonObject {
