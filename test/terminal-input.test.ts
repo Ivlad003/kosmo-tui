@@ -123,7 +123,7 @@ describe("keyboard port", () => {
     });
     expect(result).toMatchObject({ ok: false, exitCode: 1 });
     expect(!result.ok && result.message).toBe(
-      "kosmo-tui: no-controlling-terminal: interactive terminal required: stdin carries data and no controlling terminal (/dev/tty) is available for keyboard input. Use --print [lisp|tab|json] for non-interactive output."
+      "kosmo-tui: no-controlling-terminal: interactive terminal required: stdin carries data and no controlling terminal (/dev/tty) is available for keyboard input. Use --print [text|json|tab] for non-interactive output."
     );
   });
 

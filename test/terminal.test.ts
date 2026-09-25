@@ -11,7 +11,7 @@ import {
 } from "../src/terminal.js";
 import { fakeTerminalIo } from "./terminal-fakes.js";
 
-describe("terminal (ported from kosmo-callflow connect/terminal.ts)", () => {
+describe("terminal", () => {
   it("repaints only the rows that changed", () => {
     const f = fakeTerminalIo();
     const term = createTerminal(f.input, f.output);

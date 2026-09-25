@@ -1,7 +1,7 @@
 {
   "name": "@ivlad003/kosmo-tui",
   "version": "0.0.0",
-  "description": "Terminal viewer and read-only debugger for recorded kosmo-callflow traces.",
+  "description": "Terminal viewer for kosmo-trace call traces",
   "type": "module",
   "license": "ISC",
   "publishConfig": {
@@ -14,50 +14,29 @@
     ".": {
       "types": "./dist/cli.d.ts",
       "default": "./dist/cli.js"
-    }
+    },
+    "./schema/*": "./schema/*"
   },
   "files": [
     "dist",
-    "bin"
+    "bin",
+    "schema"
   ],
   "engines": {
-    "node": ">=18.19.0"
+    "node": ">=22.13.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
     "pretest": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit && prettier --check .",
-    "format": "prettier --write .",
-    "deps:tarballs": "node scripts/deps-tarballs.mjs"
-  },
-  "dependencies": {
-    "@kosmo-callflow/protocol": "file:../kosmo-callflow/artifacts/tarballs/kosmo-callflow-protocol.tgz",
-    "@kosmo-callflow/query": "file:../kosmo-callflow/artifacts/tarballs/kosmo-callflow-query.tgz",
-    "@kosmo-callflow/replay": "file:../kosmo-callflow/artifacts/tarballs/kosmo-callflow-replay.tgz",
-    "@kosmo-callflow/trace-artifacts": "file:../kosmo-callflow/artifacts/tarballs/kosmo-callflow-trace-artifacts.tgz",
-    "@kosmo-callflow/trace-diff": "file:../kosmo-callflow/artifacts/tarballs/kosmo-callflow-trace-diff.tgz"
-  },
-  "peerDependencies": {
-    "better-sqlite3": ">=9"
-  },
-  "peerDependenciesMeta": {
-    "better-sqlite3": {
-      "optional": true
-    }
-  },
-  "overrides": {
-    "@kosmo-callflow/protocol": "$@kosmo-callflow/protocol",
-    "@kosmo-callflow/query": "$@kosmo-callflow/query",
-    "@kosmo-callflow/replay": "$@kosmo-callflow/replay",
-    "@kosmo-callflow/trace-artifacts": "$@kosmo-callflow/trace-artifacts",
-    "@kosmo-callflow/trace-diff": "$@kosmo-callflow/trace-diff"
+    "format": "prettier --write ."
   },
   "devDependencies": {
     "@types/node": "^22.18.6",
     "ajv": "^8.20.0",
-    "better-sqlite3": "^11.10.0",
     "prettier": "^3.3.3",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"

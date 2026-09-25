@@ -36,7 +36,7 @@ export type KeyboardDeps = {
   createTtyStream?: (fd: number) => TtyStream;
 };
 
-export const PRINT_HINT = "Use --print [lisp|tab|json] for non-interactive output.";
+export const PRINT_HINT = "Use --print [text|json|tab] for non-interactive output.";
 
 export function controllingTerminalPath(platform: string): string {
   return platform === "win32" ? "CONIN$" : "/dev/tty";

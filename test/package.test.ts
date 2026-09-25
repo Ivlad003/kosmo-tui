@@ -1,141 +1,159 @@
+/**
+ * The package after the cutover (spec 1 criterion 1, spec 15): zero runtime dependencies, no
+ * overrides or peers, Node >= 22.13, the JSON Schema published and exported, and nothing of the
+ * old sibling project left in the sources, tests, CI, manifest or lockfile.
+ */
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+
+type Manifest = {
   name: string;
+  version: string;
+  description: string;
   type: string;
-  bin: Record<string, string>;
-  engines: { node: string };
-  files: string[];
-  dependencies: Record<string, string>;
-  overrides: Record<string, string>;
-  peerDependencies: Record<string, string>;
-  peerDependenciesMeta: Record<string, { optional?: boolean }>;
+  license: string;
   publishConfig?: { access?: string };
+  bin: Record<string, string>;
+  exports: Record<string, unknown>;
+  files: string[];
+  engines: Record<string, string>;
+  scripts: Record<string, string>;
+  devDependencies: Record<string, string>;
+  [field: string]: unknown;
 };
 
-const ALLOWED = [
-  "@kosmo-callflow/protocol",
-  "@kosmo-callflow/query",
-  "@kosmo-callflow/replay",
-  "@kosmo-callflow/trace-artifacts",
-  "@kosmo-callflow/trace-diff"
-];
+const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as Manifest;
+const lock = JSON.parse(readFileSync(path.join(root, "package-lock.json"), "utf8")) as {
+  lockfileVersion: number;
+  packages: Record<string, { dev?: boolean; dependencies?: Record<string, string>; resolved?: string }>;
+};
 
-describe("package boundary (spec: Окремий проєкт і опублікована межа)", () => {
-  it("declares the bin, ESM, Node >=18.19.0 and published files", () => {
+/** Spelled in two parts, so this file does not find itself. */
+const OLD_PROJECT = ["kosmo", "callflow"].join("-");
+
+/** Every file under `dir`, skipping dependencies and build output. */
+function filesUnder(dir: string): string[] {
+  return readdirSync(path.join(root, dir), { recursive: true, encoding: "utf8" })
+    .map((file) => path.join(dir, file))
+    .filter((file) => !/(^|[\\/])(node_modules|dist)([\\/]|$)/.test(file))
+    .filter((file) => statSync(path.join(root, file)).isFile());
+}
+
+describe("package manifest (spec 15)", () => {
+  it("declares the bin, ESM, public access and the new description", () => {
     expect(pkg.name).toBe("@ivlad003/kosmo-tui");
     expect(pkg.type).toBe("module");
     expect(pkg.publishConfig?.access).toBe("public");
     expect(pkg.bin).toEqual({ "kosmo-tui": "bin/kosmo-tui.js" });
-    expect(pkg.engines.node).toBe(">=18.19.0");
-    expect(pkg.files).toEqual(["dist", "bin"]);
+    expect(pkg.description).toBe("Terminal viewer for kosmo-trace call traces");
   });
 
-  it("limits runtime dependencies to the five @kosmo-callflow packages", () => {
-    expect(Object.keys(pkg.dependencies).sort()).toEqual(ALLOWED);
+  it("needs Node >= 22.13.0 (node:sqlite without a flag, process.getBuiltinModule)", () => {
+    expect(pkg.engines).toEqual({ node: ">=22.13.0" });
   });
 
-  it("pins every @kosmo-callflow dependency to a kosmo-callflow tarball (1.11), overrides included", () => {
-    for (const name of ALLOWED) {
-      expect(pkg.dependencies[name]).toBe(
-        `file:../kosmo-callflow/artifacts/tarballs/${name.slice(1).replace("/", "-")}.tgz`
-      );
-      // Transitive @kosmo-callflow edges (query -> protocol/replay/trace-artifacts) follow the same pin,
-      // so none can resolve to a stale registry copy.
-      expect(pkg.overrides[name]).toBe(`$${name}`);
+  it("has zero runtime dependencies, no peers, no overrides", () => {
+    for (const field of [
+      "dependencies",
+      "optionalDependencies",
+      "peerDependencies",
+      "peerDependenciesMeta",
+      "bundleDependencies",
+      "bundledDependencies",
+      "overrides"
+    ]) {
+      expect(pkg[field], field).toBeUndefined();
     }
   });
 
-  it("the lockfile installs each @kosmo-callflow package once, from its tarball, never from a registry or link", () => {
-    const lock = JSON.parse(readFileSync(path.join(root, "package-lock.json"), "utf8")) as {
-      packages: Record<string, { resolved?: string; integrity?: string; link?: boolean }>;
-    };
-    const entries = Object.entries(lock.packages).filter(([key]) => key.includes("@kosmo-callflow/"));
-    expect(entries.map(([key]) => key).sort()).toEqual(ALLOWED.map((name) => `node_modules/${name}`));
-    for (const [key, entry] of entries) {
-      expect(entry.link, key).toBeUndefined();
-      expect(entry.resolved, key).toBe(pkg.dependencies[key.slice("node_modules/".length)]);
-      expect(entry.integrity, key).toMatch(/^sha512-/);
-    }
+  it("devDependencies are the build and test tools only", () => {
+    expect(Object.keys(pkg.devDependencies).sort()).toEqual(["@types/node", "ajv", "prettier", "typescript", "vitest"]);
+    expect(pkg.scripts["deps:tarballs"]).toBeUndefined();
   });
 
-  it("resolves the installed tarball contents, not kosmo-callflow workspace sources", () => {
+  it("publishes dist, bin and schema, and exports ./schema/*", () => {
+    expect(pkg.files).toEqual(["dist", "bin", "schema"]);
+    expect(pkg.exports).toEqual({
+      ".": { types: "./dist/cli.d.ts", default: "./dist/cli.js" },
+      "./schema/*": "./schema/*"
+    });
     const require = createRequire(path.join(root, "package.json"));
-    for (const name of ALLOWED) {
-      const dir = path.join(root, "node_modules", name);
-      expect(lstatSync(dir).isSymbolicLink(), `${name} is a workspace link`).toBe(false);
-      expect(existsSync(path.join(dir, "src")), `${name} ships src/`).toBe(false);
-      const manifest = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8")) as {
-        exports: Record<string, unknown>;
-      };
-      for (const subpath of Object.keys(manifest.exports)) {
-        if (subpath.includes("*") || subpath === "./package.json") continue;
-        const specifier = subpath === "." ? name : `${name}/${subpath.slice(2)}`;
-        const resolved = realpathSync(require.resolve(specifier, { paths: [root] }));
-        expect(resolved.startsWith(realpathSync(dir) + path.sep), `${specifier} -> ${resolved}`).toBe(true);
+    const schema = require.resolve("@ivlad003/kosmo-tui/schema/kosmo-trace-v1.schema.json");
+    expect(schema).toBe(path.join(root, "schema", "kosmo-trace-v1.schema.json"));
+    expect((JSON.parse(readFileSync(schema, "utf8")) as { $id?: string }).$id).toMatch(/kosmo-trace-v1\.schema\.json$/);
+  });
+
+  it("the lockfile installs development tools only", () => {
+    expect(lock.lockfileVersion).toBe(3);
+    expect(lock.packages[""]?.dependencies).toBeUndefined();
+    const runtime = Object.entries(lock.packages).filter(([key, entry]) => key !== "" && entry.dev !== true);
+    expect(runtime.map(([key]) => key)).toEqual([]);
+    for (const [key, entry] of Object.entries(lock.packages)) {
+      expect(entry.resolved ?? "", key).not.toMatch(/^file:/);
+    }
+  });
+});
+
+describe("criterion 1: the old sibling project is gone", () => {
+  it("src, test, .github, package.json and package-lock.json never mention it", () => {
+    const files = [
+      ...filesUnder("src"),
+      ...filesUnder("test"),
+      ...filesUnder(".github"),
+      "package.json",
+      "package-lock.json"
+    ];
+    const hits = files.filter((file) => readFileSync(path.join(root, file), "utf8").includes(OLD_PROJECT));
+    expect(hits).toEqual([]);
+  });
+
+  it("scripts/ with its tarball and parity helpers is removed", () => {
+    expect(existsSync(path.join(root, "scripts"))).toBe(false);
+  });
+
+  it("src imports only relative modules and node: builtins", () => {
+    const specifier = /(?:^|\n)\s*(?:import|export)\s[^;]*?\sfrom\s+["']([^"']+)["']/g;
+    for (const file of filesUnder("src").filter((name) => name.endsWith(".ts"))) {
+      const text = readFileSync(path.join(root, file), "utf8");
+      for (const match of text.matchAll(specifier)) {
+        expect(match[1]!, `${file}: ${match[1]}`).toMatch(/^(\.\.?\/|node:)/);
       }
     }
-    const fixtures = require.resolve("@kosmo-callflow/protocol/fixtures/manifest.json");
-    expect(realpathSync(fixtures)).toBe(
-      realpathSync(path.join(root, "node_modules/@kosmo-callflow/protocol/fixtures/manifest.json"))
-    );
-  });
-
-  it("has better-sqlite3 as the only, optional, peer", () => {
-    expect(Object.keys(pkg.peerDependencies)).toEqual(["better-sqlite3"]);
-    expect(pkg.peerDependenciesMeta["better-sqlite3"]?.optional).toBe(true);
-  });
-
-  it("source never imports UI/CLI/daemon packages or terminal UI frameworks", () => {
-    const forbidden =
-      /from\s+["'](react|ink|blessed|kosmo-callflow|@kosmo-callflow\/(cli|ui|daemon|mcp|sdk-[\w-]+))(["'/])/;
-    for (const file of readdirSync(path.join(root, "src"), { recursive: true, encoding: "utf8" })) {
-      const full = path.join(root, "src", file);
-      if (!statSync(full).isFile()) continue;
-      const text = readFileSync(full, "utf8");
-      expect(text, file).not.toMatch(forbidden);
-    }
-  });
-
-  it("the declared @kosmo-callflow packages resolve and expose the APIs D11 relies on", async () => {
-    const replay = await import("@kosmo-callflow/replay");
-    const diff = await import("@kosmo-callflow/trace-diff");
-    const artifacts = await import("@kosmo-callflow/trace-artifacts");
-    const query = await import("@kosmo-callflow/query");
-    const protocol = await import("@kosmo-callflow/protocol");
-    expect(typeof replay.seekReplay).toBe("function");
-    expect(typeof replay.replayTo).toBe("function");
-    expect(typeof replay.importPortableExport).toBe("function");
-    expect(typeof diff.diffTraces).toBe("function");
-    expect(typeof artifacts.maskArtifactText).toBe("function");
-    expect(typeof artifacts.relativeArtifactPath).toBe("function");
-    expect(typeof query.parseQueryExpression).toBe("function");
-    expect(Object.keys(protocol).length).toBeGreaterThan(0);
   });
 });
 
 describe("bin launcher", () => {
+  const bin = (args: string[]) =>
+    spawnSync(process.execPath, [path.join(root, "bin", "kosmo-tui.js"), ...args], { encoding: "utf8", cwd: root });
+
   it("runs dist/cli.js through run(process, {})", () => {
     expect(existsSync(path.join(root, "dist", "cli.js")), "run `npm run build` first").toBe(true);
-    const help = spawnSync(process.execPath, [path.join(root, "bin", "kosmo-tui.js"), "--help"], { encoding: "utf8" });
+    const help = bin(["--help"]);
     expect(help.status).toBe(0);
     expect(help.stdout).toContain("Usage:");
-    const bad = spawnSync(process.execPath, [path.join(root, "bin", "kosmo-tui.js"), "./definitely-missing.json"], {
-      encoding: "utf8",
-      cwd: root
-    });
-    expect(bad.status).toBe(1);
-    expect(bad.stdout).toBe("");
-    expect(bad.stderr).toBe("kosmo-tui: file-not-found: ./definitely-missing.json\n");
-    const version = spawnSync(process.execPath, [path.join(root, "bin", "kosmo-tui.js"), "--version"], {
-      encoding: "utf8"
-    });
-    expect(version.stdout.trim()).toBe((pkg as unknown as { version: string }).version);
+    expect(help.stdout).toContain("--print [text|json|tab]");
+    const version = bin(["--version"]);
+    expect(version.stdout.trim()).toBe(pkg.version);
+  });
+
+  it("a missing path is exit 1 with an empty stdout (spec 6.8)", () => {
+    const missing = bin(["./definitely-missing.json"]);
+    expect(missing.status).toBe(1);
+    expect(missing.stdout).toBe("");
+    expect(missing.stderr).toBe("kosmo-tui: file-not-found: ./definitely-missing.json\n");
+  });
+
+  it("a non-interactive stdout gets the --print hint", () => {
+    const start = bin([]);
+    expect(start.status).toBe(1);
+    expect(start.stderr).toBe(
+      "kosmo-tui: no-controlling-terminal: interactive terminal required: stdout is not a TTY. Use --print [text|json|tab] for non-interactive output.\n"
+    );
   });
 });

@@ -8,3 +8,4 @@ test/fixtures/kosmo-trace
 test/fixtures/frameworks
 test/fixtures/project
 test/golden
+test/apps

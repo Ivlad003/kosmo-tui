@@ -167,7 +167,7 @@ describe.skipIf(!NODE_SQLITE_AVAILABLE)("sqlite reader: refusals", () => {
 
   it("kosmo_meta decides format and version", async () => {
     const wrongFormat = store();
-    sqliteExec(wrongFormat, "UPDATE kosmo_meta SET value = 'kosmo-callflow' WHERE key = 'format'");
+    sqliteExec(wrongFormat, "UPDATE kosmo_meta SET value = 'other-trace-format' WHERE key = 'format'");
     expect((await openError(wrongFormat)).message).toBe(
       "not-a-kosmo-trace(kosmo_meta(format): format is not kosmo-trace)"
     );

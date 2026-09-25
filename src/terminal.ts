@@ -1,6 +1,5 @@
 /**
- * Terminal I/O for the interactive viewer (design D8), ported from kosmo-callflow
- * `packages/cli/src/connect/terminal.ts`.
+ * Terminal I/O for the interactive viewer.
  *
  * The only impure rendering module: it owns raw mode, the alternate screen, cursor
  * visibility, resize and frame diffing. Input and output are injected, so diffing and
