@@ -19,6 +19,7 @@ import {
   EXIT_OK,
   EXIT_SOURCE,
   EXIT_USAGE,
+  absorbStreamErrors,
   describeError,
   exitCodeForSignal,
   type Proc,
@@ -65,6 +66,8 @@ export async function run(proc: Proc, deps: RunDeps = {}): Promise<number> {
     return EXIT_USAGE;
   }
   const args = parsed.args;
+  // `kosmo-tui --help | true`: the reader may be gone, and the EPIPE must not crash the exit 0.
+  if (args.command === "help" || args.command === "version") absorbStreamErrors(proc.stdout);
   if (args.command === "help") {
     proc.stdout.write(USAGE);
     return EXIT_OK;

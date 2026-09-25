@@ -301,7 +301,7 @@ describe("--print stopped by our own signal (spec 6.8)", () => {
   });
 });
 
-describe("writeOnce settles on every path and leaves no listener", () => {
+describe("writeOnce settles on every path; one permanent no-op error listener stays", () => {
   /** A stream like process.stdout: an EventEmitter, so an `error` without a listener throws. */
   function emitterStdout(write: (emitter: EventEmitter, callback?: (error?: Error | null) => void) => void) {
     const emitter = new EventEmitter();
@@ -338,7 +338,7 @@ describe("writeOnce settles on every path and leaves no listener", () => {
     const { emitter, stdout } = emitterStdout((emitter) => setTimeout(() => emitter.emit("error", epipe()), 5));
     expect(await tab(stdout)).toEqual({ code: EXIT_SOURCE, err: "kosmo-tui: output ended early (EPIPE)\n" });
     await settle();
-    expect(emitter.listenerCount("error")).toBe(0);
+    expect(emitter.listenerCount("error")).toBe(1);
   });
 
   it("the callback error followed by the stream's own error event (as Node does) settles once and never throws", async () => {
@@ -348,13 +348,31 @@ describe("writeOnce settles on every path and leaves no listener", () => {
     });
     expect(await tab(stdout)).toEqual({ code: EXIT_SOURCE, err: "kosmo-tui: output ended early (EPIPE)\n" });
     await settle();
-    expect(emitter.listenerCount("error")).toBe(0);
+    expect(emitter.listenerCount("error")).toBe(1);
   });
 
-  it("a successful write removes its listener too", async () => {
+  it("a successful write leaves only the permanent listener, so an EPIPE at any later time is absorbed", async () => {
     const { emitter, stdout } = emitterStdout((_emitter, callback) => callback?.(null));
-    expect(await tab(stdout)).toEqual({ code: EXIT_OK, err: "" });
-    await settle();
     expect(emitter.listenerCount("error")).toBe(0);
+    expect(await tab(stdout)).toEqual({ code: EXIT_OK, err: "" });
+    // No deferred removal: the count is final as soon as runPrint returns.
+    expect(emitter.listenerCount("error")).toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(() => emitter.emit("error", epipe())).not.toThrow();
+    // Once per runPrint: a second run adds one more, never one per write.
+    expect(await tab(stdout)).toEqual({ code: EXIT_OK, err: "" });
+    expect(emitter.listenerCount("error")).toBe(2);
+  });
+
+  it("the listener is on before the first write", async () => {
+    let atWrite = -1;
+    const { emitter, stdout } = emitterStdout((emitter, callback) => {
+      atWrite = emitter.listenerCount("error");
+      callback?.(null);
+    });
+    await tab(stdout);
+    // The permanent one and writeOnce's own.
+    expect(atWrite).toBe(2);
+    expect(emitter.listenerCount("error")).toBe(1);
   });
 });

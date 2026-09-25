@@ -45,6 +45,18 @@ export type Proc = {
   off?(signal: SignalName, handler: () => void): unknown;
 };
 
+/**
+ * A no-op `error` listener that stays on the stream for the rest of the process: Node emits EPIPE
+ * (a closed pipe: `kosmo-tui … | head`) as an `error` event, possibly after the write callback,
+ * and an `error` event without a listener is an uncaught exception. Callers that care about the
+ * failure still see it through the write callback or their own listener.
+ */
+export function absorbStreamErrors(stream: Writable): void {
+  stream.on?.("error", ignoreStreamError);
+}
+
+const ignoreStreamError = (() => undefined) as (...args: never[]) => void;
+
 /** Spec 6.8: a path that does not exist or is a directory is 1, every other reader failure is 2. */
 export function exitCodeForReaderError(error: ReaderError): 1 | 2 {
   return error.code === "file-not-found" || error.code === "is-directory" ? EXIT_USAGE : EXIT_SOURCE;

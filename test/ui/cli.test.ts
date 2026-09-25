@@ -1,5 +1,9 @@
 /** Task 24: the composition root `run(proc, deps)` on the new code (spec 6.8). */
-import { readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import * as cli from "../../src/cli.js";
 import { EXIT_OK, EXIT_SIGHUP, EXIT_SIGINT, EXIT_SIGTERM, EXIT_SOURCE, EXIT_USAGE, USAGE, run } from "../../src/cli.js";
@@ -7,6 +11,8 @@ import type { PrintInput } from "../../src/output/print.js";
 import type { OpenTuiInput } from "../../src/ui/open.js";
 import { fixtureFile } from "../fixture-recipes.js";
 import { fakeProc, fakeStdin } from "./proc-fakes.js";
+
+const BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../bin/kosmo-tui.js");
 
 describe("run(proc, deps)", () => {
   it("keeps the exit codes of spec 6.8 and exports no other", () => {
@@ -22,6 +28,38 @@ describe("run(proc, deps)", () => {
       "EXIT_SOURCE",
       "EXIT_USAGE"
     ]);
+  });
+
+  it("--help and --version survive a closed stdout (EPIPE): exit 0, no unhandled error", async () => {
+    for (const argv of [["--help"], ["--version"]]) {
+      const emitter = new EventEmitter();
+      const proc = fakeProc(argv);
+      proc.stdout = {
+        write: () => {
+          process.nextTick(() => emitter.emit("error", Object.assign(new Error("write EPIPE"), { code: "EPIPE" })));
+          return false;
+        },
+        on: (event, listener) => emitter.on(event, listener as (...args: unknown[]) => void),
+        off: (event, listener) => emitter.off(event, listener as (...args: unknown[]) => void)
+      };
+      expect(await run(proc, { readVersion: () => "1.0.0" })).toBe(EXIT_OK);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(emitter.listenerCount("error"), argv[0]).toBe(1);
+      expect(() => emitter.emit("error", new Error("late"))).not.toThrow();
+    }
+  });
+
+  it("the real binary: `kosmo-tui --help | true` and `--version | true` exit 0 without a crash", async () => {
+    expect(existsSync(BIN.replace(/bin[\\/]kosmo-tui\.js$/, "dist/cli.js")), "run `npm run build` first").toBe(true);
+    for (const flag of ["--help", "--version"]) {
+      // The read end is closed before the child writes, so its write fails with EPIPE.
+      const child = spawn(process.execPath, [BIN, flag], { stdio: ["ignore", "pipe", "pipe"] });
+      child.stdout.destroy();
+      let stderr = "";
+      child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
+      const code = await new Promise<number | null>((resolve) => child.on("close", (status) => resolve(status)));
+      expect({ flag, code, stderr }).toEqual({ flag, code: 0, stderr: "" });
+    }
   });
 
   it("--help, --version and usage errors need no terminal and touch nothing", async () => {

@@ -22,6 +22,7 @@
 import type { TraceModel } from "../format/model.js";
 import { spanKey, type LinkRow, type SpanValues, type TraceSummary } from "../format/types.js";
 import {
+  absorbStreamErrors,
   EXIT_OK,
   EXIT_SOURCE,
   describeError,
@@ -57,6 +58,8 @@ const NO_VALUES: ValuesLookup = () => undefined;
 
 export async function runPrint(input: PrintInput, deps: PrintDeps = {}): Promise<number> {
   const { args, proc, signal } = input;
+  // Before the first write, once per run: a late EPIPE is then never an unhandled `error` event.
+  absorbStreamErrors(proc.stdout);
   const fail = (code: number, text: string): number => {
     // Stopped by our own SIGINT/SIGTERM/SIGHUP: whatever broke is the cancellation, so stay silent.
     if (signal.aborted) return exitCodeForSignal(signal.reason);
@@ -185,8 +188,8 @@ export function linksOfModel(model: TraceModel): LinkRow[] {
 /**
  * Write once. A real stream (it has `writable`) is awaited until its write callback or its
  * `error` event, whichever comes first; the promise settles exactly once. Node calls the
- * callback with the error and emits `error` on a later tick, so the listener is removed one
- * macrotask after settling (on every path): that late EPIPE is absorbed, never a crash.
+ * callback with the error and emits `error` on a later tick; that late event lands on the
+ * permanent no-op listener runPrint installed, so this listener can go as soon as it settles.
  */
 async function writeOnce(stdout: Writable, text: string): Promise<Error | null> {
   let failed: Error | null = null;
@@ -212,7 +215,7 @@ async function writeOnce(stdout: Writable, text: string): Promise<Error | null> 
     done();
   }
   await settled;
-  setImmediate(() => stdout.off?.("error", onError));
+  stdout.off?.("error", onError);
   return failed;
 }
 
