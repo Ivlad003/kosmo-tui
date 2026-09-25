@@ -13,9 +13,9 @@
  * whose decoded path has no control/bidi character, no `.`/`..`/empty segment, and lies inside `root`.
  */
 
-const CONTROLS = /[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g;
-const CONTROLS_KEEP_NEWLINE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f‪-‮⁦-⁩]/g;
-const HAS_CONTROL = /[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/;
+const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
+const CONTROLS_KEEP_NEWLINE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
+const HAS_CONTROL = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/;
 const FILE_URI = /^file:\/\/\/[A-Za-z0-9\-._~!$&'()*+,;=:@%/]*$/;
 
 function hex4(char: string): string {

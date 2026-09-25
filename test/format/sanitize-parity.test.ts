@@ -47,8 +47,8 @@ describe("escapeTerminalControls parity with @kosmo-callflow/trace-artifacts (te
   });
 
   it("deliberately differs: bidi controls are escaped here and raw in callflow", () => {
-    expect(escapeTerminalControls("a‮b")).toBe("a\\u202eb");
-    expect(callflowEscape("a‮b")).toBe("a‮b");
+    expect(escapeTerminalControls("a\u202eb")).toBe("a\\u202eb");
+    expect(callflowEscape("a\u202eb")).toBe("a\u202eb");
   });
 
   it("deliberately differs: multiline keeps \\t escaped, callflow's preserveNewlines keeps it raw", () => {
