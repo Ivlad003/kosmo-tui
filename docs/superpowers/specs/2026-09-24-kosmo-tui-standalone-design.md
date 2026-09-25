@@ -26,7 +26,7 @@ render/effect React, server/client-межа Next) мають зрозумілі 
 ### Критерії успіху
 
 1. `npm ci && npm test` проходить у CI-job'і без сусіднього checkout'а kosmo-callflow, зі
-   згенерованим заново `package-lock.json`. `grep -rn kosmo-callflow src test scripts .github
+   згенерованим заново `package-lock.json`. `grep -rn kosmo-callflow src test .github
 package.json package-lock.json` нічого не знаходить.
 2. `kosmo-tui ./x.kosmo-trace.json`, `kosmo-tui ./x.kosmo-trace.sqlite` і `producer | kosmo-tui -`
    відкривають трейс у форматі `kosmo-trace/v1`.
