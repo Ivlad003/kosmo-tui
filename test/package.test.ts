@@ -171,3 +171,54 @@ describe("bin launcher", () => {
     );
   });
 });
+
+describe("pure modules (the ports-and-adapters split)", () => {
+  /** No port adapter lives in these directories: src/code reads the disk only through RootFs and SnippetFs. */
+  const PURE = [
+    ...filesUnder("src/format"),
+    ...filesUnder("src/code"),
+    ...["json", "kosmo-text", "tab"].map((name) => path.join("src/output", `${name}.ts`)),
+    ...["state", "render", "panes", "detail", "rows", "labels", "keys", "commands", "refs"].map((name) =>
+      path.join("src/ui", `${name}.ts`)
+    )
+  ].filter((file) => file.endsWith(".ts"));
+  const FORBIDDEN = ["fs", "fs/promises", "process", "sqlite", "child_process", "os", "net"];
+
+  /** Each forbidden builtin imported (static, dynamic or `export … from`, with or without `node:`), and `process.`. */
+  function violations(source: string): string[] {
+    // Comments may name what they avoid; only code counts.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+    const found: string[] = [];
+    for (const match of code.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)["']([^"']+)["']/g)) {
+      const specifier = match[1]!.replace(/^node:/, "");
+      if (FORBIDDEN.includes(specifier)) found.push(match[1]!);
+    }
+    if (/(?<![\w.$])process\s*\./.test(code) || /\bglobalThis\s*\.\s*process\b/.test(code)) found.push("process.");
+    return found;
+  }
+
+  it("the checker catches every form it forbids and lets node:path through", () => {
+    expect(violations('import { readFile } from "node:fs";')).toEqual(["node:fs"]);
+    expect(violations('import os from "os";\nconst x = await import("node:child_process");')).toEqual([
+      "os",
+      "node:child_process"
+    ]);
+    expect(violations('export { x } from "node:fs/promises";')).toEqual(["node:fs/promises"]);
+    expect(violations("const cwd = process.cwd();")).toEqual(["process."]);
+    expect(violations("const env = globalThis.process;")).toEqual(["process."]);
+    expect(violations('import path from "node:path";\nconst p = proc.process;\n// process.exit()')).toEqual([]);
+    expect(violations('import { DatabaseSync } from "node:sqlite";\nimport net from "node:net";')).toEqual([
+      "node:sqlite",
+      "node:net"
+    ]);
+  });
+
+  it.each(PURE)("%s imports no fs, process, sqlite, child_process, os or net", (file) => {
+    expect(violations(readFileSync(path.join(root, file), "utf8"))).toEqual([]);
+  });
+
+  it("covers the files it names", () => {
+    for (const file of PURE) expect(existsSync(path.join(root, file)), file).toBe(true);
+    expect(PURE.length).toBeGreaterThanOrEqual(6 + 2 + 3 + 9);
+  });
+});
