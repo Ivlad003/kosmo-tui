@@ -277,6 +277,35 @@ describe("snippet states", () => {
     ]);
   });
 
+  it("after `moved` the `└ …` marker follows the shifted range and `more`, not the recorded endLine", () => {
+    const range = (from: number, to: number) =>
+      Array.from({ length: to - from + 1 }, (_, index) => ({ n: from + index, text: `line ${from + index}` }));
+    const bottomOf = (target: SpanRow, snippet: Snippet, height: number) =>
+      plain(render(target, { width: 40, height }, { snippet })).find((line) => line.startsWith("└"));
+    const full = "└───────────────────────────────────────";
+    const more = "└ … ────────────────────────────────────";
+    // 12..20 moved up to 8..16: the whole shifted range is shown, nothing continues below.
+    const up: Snippet = { state: "moved", file: "src/cart.ts", lines: range(8, 16), target: 8, movedFrom: 12 };
+    expect(bottomOf(EXAMPLE, up, 20)).toBe(full);
+    // 12..20 moved down to 16..24 in too few rows: line 24 is cut, so the function goes on below.
+    const down: Snippet = { state: "moved", file: "src/cart.ts", lines: range(16, 24), target: 16, movedFrom: 12 };
+    expect(bottomOf(EXAMPLE, down, 8)).toBe(more);
+    expect(bottomOf(EXAMPLE, down, 20)).toBe(full);
+    // 12..60 moved to 30: the window is capped at 40 lines (30..69) with `more`, all of it shown.
+    const long = { ...EXAMPLE, location: { ...EXAMPLE.location!, endLine: 60 } };
+    const capped: Snippet = {
+      state: "moved",
+      file: "src/cart.ts",
+      lines: range(30, 69),
+      target: 30,
+      movedFrom: 12,
+      more: true
+    };
+    expect(bottomOf(long, capped, 60)).toBe(more);
+    const { more: _more, ...uncapped } = capped;
+    expect(bottomOf(long, uncapped, 60)).toBe(full);
+  });
+
   it("tabs in the recorded snippet become spaces to the next stop of 4", () => {
     const tabbed = span({ id: "t", location: { file: "src/t.ts", line: 7, snippet: "\tif (x)\t{" } });
     const missing: Snippet = { state: "file-missing", file: "src/t.ts", lines: [], target: 7 };

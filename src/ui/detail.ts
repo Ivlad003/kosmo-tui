@@ -252,9 +252,12 @@ function codeBox(input: DetailInput, location: Location, width: number, color: C
       last: null
     };
   };
-  // `└ … ──` when the function goes on below the last line shown.
+  // `└ … ──` when the function goes on below the last line shown (spec 6.4: `line..endLine`, up to 40
+  // lines, then `…`). The range is the snippet's, which after `moved` is shifted with the ▶ line, and
+  // `more` says it was capped at 40; the recorded `endLine` is not where the function ends on disk.
+  const rangeEnd = fromDisk ? snippet!.lines[snippet!.lines.length - 1]!.n : null;
   const bottom = (last: number | null): string =>
-    location.endLine !== undefined && last !== null && last < location.endLine
+    location.endLine !== undefined && last !== null && rangeEnd !== null && (last < rangeEnd || snippet!.more === true)
       ? rule(`└ ${ELLIPSIS}`)
       : `└${"─".repeat(Math.max(0, width - 1))}`;
   return { top, body, bottom };
