@@ -385,9 +385,17 @@ CREATE TABLE kosmo_links (
   немає: фрагменти з диска не читаються, OSC 8 вимкнено, вікно коду показує лише записаний
   `snippet` (заголовок `no code root`) або рядок `code root not set: …`, а рядок стану трейсу —
   `code root not set: cwd is the home directory or above it; use :root or --root` (для `/` —
-  `cwd is the filesystem root`). До відкриття датасету кореня теж немає, якщо не задано `--root`.
+  `cwd is the filesystem root`). До відкриття датасету кореня теж немає, якщо не задано `--root`:
+  тоді `:root` показує `code root: chosen when a trace opens; set one with :root or --root`. Esc назад
+  на стартовий екран закриває датасет разом із його коренем і причиною: корінь знову `--root`/`:root`
+  (або його немає), а наступний датасет обчислює корінь і повідомлення заново.
 - `--root`/`:root` задає користувач, тож жодна з цих перевірок до них не застосовується (зокрема
-  `--root ~` і `--root /` дозволені).
+  `--root ~` і `--root /` дозволені). Сесія один раз бере їхній realpath у момент задання, тож кожен
+  збережений корінь — realpath.
+- **Читання обмежене збереженим коренем.** Realpath файлу мусить лежати під самим збереженим рядком
+  кореня. Якщо realpath кореня вже не дорівнює йому (директорію проєкту після відкриття підмінили
+  симлінком, наприклад на `~`), корінь не розкривається заново і не розширюється: фрагмент не
+  читається, стан `root-changed`.
 - Продюсери можуть не писати `dataset.root` у переносні файли, бо абсолютні шляхи хоста — приватні дані.
 - _Змінено 2026-09-25 після рев'ю етапу 1:_ раніше правило 2 приймало будь-яку наявну директорію, і
   ворожий трейс із `"root": "/"` та `location.file: "etc/passwd"` показував той файл у вікні коду.
@@ -792,6 +800,7 @@ argv ─┬─ шлях ──► sniff ──► reader.open ──► validate
   - `ok`;
   - `file-missing`;
   - `outside-root` (realpath виходить за корінь через symlink);
+  - `root-changed` (realpath кореня вже не той збережений корінь, 4.8; нічого не читається);
   - `too-large` (> 2 MiB);
   - `unreadable` (EACCES та ін.);
   - `not-text` (NUL-байти або невалідний UTF-8);
@@ -800,8 +809,9 @@ argv ─┬─ шлях ──► sniff ──► reader.open ──► validate
     `moved to line N`.
 - **`file:line`** — OSC 8 посилання лише при `KOSMO_TUI_LINKS=1` (як зараз). URI будується лише з
   провалідованого `root + location.file`; без кореня (4.8, правило 4) посилань немає.
-- **Без кореня** (4.8) вікно коду має заголовок `<file> · no code root`: під ним записаний `snippet`
-  як рядок `▶` або, якщо його немає, `│  code root not set: <причина>; use :root or --root`.
+- **Без кореня** (4.8) вікно коду має заголовок `<file> · no code root · recorded snippet`, коли є
+  записаний `snippet`: він стоїть рядком `▶`. Без нього заголовок `<file> · no code root`, а під ним
+  `│  code root not set: <причина>; use :root or --root`.
 
 ### 6.5 Панель Areas (`a`)
 
@@ -883,15 +893,15 @@ kosmo-tui --help | --version
   після `--print` (`<file> --print json`). `--print=<fmt>` — завжди формат: інше значення → помилка
   використання `--print must be text, json or tab`. Слово після `--print` — формат, лише якщо це
   `text`, `json` або `tab`; інакше воно звичайний позиційний аргумент. Два різні формати
-  (`--print json --format tab`) → помилка `--print json conflicts with --format tab`. Без жодного
+  (`<file> --print json --format tab`) → помилка `--print json conflicts with --format tab`. Без жодного
   способу формат — `text`.
 - **`--print <слово>` без іншого позиційного аргументу:** слово читається як файл трейсу, а не як
   формат (файл може так називатися): `kosmo-tui --print json --format tab` друкує файл `json` у
   форматі `tab`. Формат тоді береться з `--format`, інакше `text`. Якщо це `text` без `--trace`,
-  помилка каже саме це: `json was read as the trace file (no other file was given), so the output
-format is text, which needs --trace <id>; to print a file as json, name it first: <file> --print
-json` (для слова `text` — без останньої частини). З іншим позиційним аргументом, з будь-якого
-  боку, слово лишається форматом (`json --print tab` друкує файл `json` у форматі `tab`).
+  помилка каже саме це:
+  `json was read as the trace file (no other file was given), so the output format is text, which needs --trace <id>; to print a file as json, name it first: <file> --print json`
+  (для слова `text` — без останньої частини). З іншим позиційним аргументом, з будь-якого боку,
+  слово лишається форматом (`json --print tab` друкує файл `json` у форматі `tab`).
 - **Визначення контейнера:**
   1. SQLite magic → sqlite;
   2. інакше читається перший непорожній рядок (≤ 1 MiB, без BOM): повний JSON-об'єкт з
@@ -1900,7 +1910,7 @@ validation чи проби `'use cache'` виконується у worker'ах, 
 | NDJSON / stdin                  | `reading… N spans`, `no-controlling-terminal`, `stream stopped at line N: <reason>`, `stream stopped: too-large`, `N unknown lines skipped`                                                                                 |
 | Батько                          | `unknown(ambiguous)`, `unknown(missing)`, `cycle`                                                                                                                                                                           |
 | Location / snippet / attrs      | `no location`, `invalid-location`, `invalid-snippet`, `invalid-attrs`, `invalid-attrs(N)`                                                                                                                                   |
-| Фрагмент коду                   | `ok`, `file-missing`, `outside-root`, `too-large`, `unreadable`, `not-text`, `changed-since-trace`, `moved to line N`, `no code root`                                                                                       |
+| Фрагмент коду                   | `ok`, `file-missing`, `outside-root`, `root-changed`, `too-large`, `unreadable`, `not-text`, `changed-since-trace`, `moved to line N`, `no code root`                                                                       |
 | Значення                        | `recorded`, `truncated` (`viewer-cap`), `masked`, `not-recorded(reason)`, `live`, `invalid-value(<позиція>)`, `unknown-tag`, `loading` (SQLite), у live — `unavailable` на ім'я                                             |
 | Можливість                      | `reload: unavailable(stdin-stream)` та інші `<capability>: unavailable(<reason>)`                                                                                                                                           |
 | Рядок Targets (Node)            | `unverified`, `tool process, not your app`, `supervisor (no app code)`, `inspector-off`, `inspector-port-busy (best guess)`, `inspector-enable-timeout`, `restarted`                                                        |
