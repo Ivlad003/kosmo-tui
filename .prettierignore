@@ -10,3 +10,4 @@ test/fixtures/project
 test/golden
 test/apps
 examples/demo.kosmo-trace.json
+examples/storefront/cart-and-pdp.kosmo-trace.json

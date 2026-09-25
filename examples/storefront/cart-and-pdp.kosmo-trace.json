@@ -1,0 +1,27 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_storefront_cart_pdp","producer":{"name":"hand-written","version":"1.0.0"},"createdAt":"2026-09-24T12:00:00Z","title":"storefront-next-template@1a5b952b: cart and PDP loaders (sfnext dev)"},
+  "traces": [
+    {"id":"t_cart","name":"GET /cart"},
+    {"id":"t_pdp","name":"GET /product/25565189M"}
+  ],
+  "spans": [
+    {"trace":"t_pdp","session":"ssr","id":"req","parent":null,"order":0,"name":"GET /product/25565189M","kind":"http.server","status":"complete","durationMs":212.6,"runtime":"node","area":{"module":"sfnext-dev","feature":"pdp"},"attrs":{"http.request.method":"GET","http.route":"/product/:productId","http.response.status_code":200},"args":{"state":"recorded","value":[{"method":"GET","url":"/product/25565189M","headers":{"accept":"text/html"}}]}},
+    {"trace":"t_pdp","session":"ssr","id":"loader","parent":"req","order":1,"name":"loader","status":"complete","durationMs":148.3,"runtime":"node","location":{"file":"src/routes/_app.product.$productId.tsx","line":137},"area":{"module":"src/routes","feature":"pdp"},"attrs":{"code.function":"loader"},"args":{"state":"recorded","value":[{"params":{"productId":"25565189M"},"request":{"method":"GET","url":"http://localhost:5173/product/25565189M"}}]},"return":{"state":"recorded","value":{"product":{"id":"25565189M","name":"Classic Crew Neck Tee","price":29.99,"currency":"USD","orderable":true},"recommendations":{"$type":"class","name":"Promise","value":{"state":"pending"}}}}},
+    {"trace":"t_pdp","session":"ssr","id":"product","parent":"loader","order":2,"name":"GET /product/shopper-products/v1/products/{id}","kind":"http.client","status":"complete","durationMs":121.7,"runtime":"node","area":{"module":"commerce-sdk-isomorphic","feature":"pdp"},"attrs":{"http.request.method":"GET","http.response.status_code":200},"args":{"state":"recorded","value":[{"parameters":{"id":"25565189M","allImages":true}}]}},
+    {"trace":"t_pdp","session":"ssr","id":"reco","parent":"loader","order":3,"name":"GET /product/shopper-products/v1/products/{id}/recommendations","kind":"http.client","status":"complete","durationMs":64.2,"runtime":"node","area":{"module":"commerce-sdk-isomorphic","feature":"pdp"},"attrs":{"http.request.method":"GET","http.response.status_code":404},"return":{"state":"recorded","value":{"status":404,"title":"Not Found"}}},
+    {"trace":"t_pdp","session":"ssr","id":"render","parent":"req","order":4,"name":"ProductPage","kind":"react.render","status":"complete","durationMs":18.9,"runtime":"node","area":{"module":"src/routes","feature":"pdp"}},
+    {"trace":"t_pdp","session":"browser","id":"hydrate","parent":"req","parentSession":"ssr","order":0,"name":"ProductPage","kind":"react.render","status":"complete","durationMs":7.4,"runtime":"browser","area":{"module":"src/routes","feature":"pdp"}},
+    {"trace":"t_pdp","session":"browser","id":"click","parent":"hydrate","order":1,"name":"onAddToCart","status":"complete","durationMs":96.1,"runtime":"browser","area":{"module":"src/components","feature":"cart"},"args":{"state":"recorded","value":[{"productId":"25565189M","quantity":1}]}},
+    {"trace":"t_pdp","session":"browser","id":"add","parent":"click","order":2,"name":"POST /action/cart-item-add","kind":"http.client","status":"complete","durationMs":88.5,"runtime":"browser","area":{"module":"src/components","feature":"cart"},"attrs":{"http.request.method":"POST","http.response.status_code":200}},
+    {"trace":"t_cart","session":"ssr","id":"req","parent":null,"order":0,"name":"GET /cart","kind":"http.server","status":"complete","durationMs":176.4,"runtime":"node","area":{"module":"sfnext-dev","feature":"cart"},"attrs":{"http.request.method":"GET","http.route":"/cart","http.response.status_code":200},"args":{"state":"recorded","value":[{"method":"GET","url":"/cart","headers":{"accept":"text/html"}}]}},
+    {"trace":"t_cart","session":"ssr","id":"loader","parent":"req","order":1,"name":"loader","status":"complete","durationMs":131.8,"runtime":"node","location":{"file":"src/routes/_app.cart.tsx","line":116},"area":{"module":"src/routes","feature":"cart"},"attrs":{"code.function":"loader"},"args":{"state":"recorded","value":[{"params":{},"request":{"method":"GET","url":"http://localhost:5173/cart"}}]},"return":{"state":"recorded","value":{"basket":{"basketId":"bk_example_0001","currency":"USD","productItems":[{"productId":"25565189M","productName":"Classic Crew Neck Tee","quantity":1,"price":29.99}],"productSubTotal":29.99,"orderTotal":29.99}}}},
+    {"trace":"t_cart","session":"ssr","id":"basket","parent":"loader","order":2,"name":"GET /checkout/shopper-baskets/v1/baskets/{basketId}","kind":"http.client","status":"complete","durationMs":102.5,"runtime":"node","area":{"module":"commerce-sdk-isomorphic","feature":"cart"},"attrs":{"http.request.method":"GET","http.response.status_code":200},"args":{"state":"recorded","value":[{"parameters":{"basketId":"bk_example_0001"}}]}},
+    {"trace":"t_cart","session":"ssr","id":"render","parent":"req","order":3,"name":"CartPage","kind":"react.render","status":"complete","durationMs":12.3,"runtime":"node","area":{"module":"src/routes","feature":"cart"}}
+  ],
+  "links": [
+    {"from":{"trace":"t_cart","session":"ssr","id":"req"},"to":{"trace":"t_pdp","session":"browser","id":"add"},"kind":"follows-from"},
+    {"from":{"trace":"t_pdp","session":"browser","id":"add"},"to":{"trace":"t_pdp","session":"browser","id":"click"},"kind":"caused-by"}
+  ]
+}
