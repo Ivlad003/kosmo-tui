@@ -302,20 +302,28 @@ export type AncestorWalk = { readonly frames: readonly SpanRef[]; readonly stop:
 
 /** Walks kept per model: the stack pane and its item count ask for the same span on every frame. */
 const ANCESTOR_MEMO_SPANS = 4;
-/** spanKey → walk, oldest first. A pure memo: a model never changes, and an entry goes with its model. */
+/**
+ * spanKey → walk, least recently used first (a hit moves its entry to the end), so the first key is
+ * the one to evict. A pure memo: a model never changes, and an entry goes with its model.
+ */
 const ancestorMemo = new WeakMap<TraceModel, Map<string, AncestorWalk>>();
 
 /**
  * Recorded ancestors of `ref`: the span itself first, then each resolved parent. `stop` is the
  * `parentOf` of the last frame (`root`, `unknown(…)` or `cycle`). Iterative, bounded by the model size.
- * Memoized for the last ANCESTOR_MEMO_SPANS spans of each model, so a deep chain is walked once, not
- * once per frame or pane move.
+ * Memoized for the ANCESTOR_MEMO_SPANS most recently used spans of each model (LRU), so a deep chain
+ * is walked once, not once per frame or pane move.
  */
 export function ancestorsOf(model: TraceModel, ref: SpanRef): AncestorWalk {
   const key = spanKey(ref);
   let memo = ancestorMemo.get(model);
   const known = memo?.get(key);
-  if (known !== undefined) return known;
+  if (known !== undefined) {
+    // Map order is insertion order: re-insert to make this the most recently used entry.
+    memo!.delete(key);
+    memo!.set(key, known);
+    return known;
+  }
   const walk = walkAncestors(model, ref);
   if (memo === undefined) {
     memo = new Map();

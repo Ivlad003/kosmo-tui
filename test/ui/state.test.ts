@@ -173,6 +173,19 @@ describe("visibleRows", () => {
     expect(rowIndex(last, last.selected)).toBe(49_999);
   });
 
+  it("memoises the ancestor walk for the last 4 spans used: a hit counts as a use", () => {
+    const deep = model(chain(10));
+    const walks = ["c1", "c2", "c3", "c4"].map((id) => ancestorsOf(deep, ref(id)));
+    expect(ancestorsOf(deep, ref("c1"))).toBe(walks[0]); // a hit: c1 is now the most recent
+    ancestorsOf(deep, ref("c5")); // evicts the least recently used, c2, not c1
+    expect(ancestorsOf(deep, ref("c1"))).toBe(walks[0]);
+    expect(ancestorsOf(deep, ref("c3"))).toBe(walks[2]);
+    expect(ancestorsOf(deep, ref("c4"))).toBe(walks[3]);
+    const again = ancestorsOf(deep, ref("c2"));
+    expect(again).not.toBe(walks[1]);
+    expect(again).toEqual(walks[1]);
+  });
+
   it("memoises rows per model: two traces rendered in turn keep their own rows", () => {
     const one = onTrace(multiSession());
     const two = onTrace(model(chain(3)));
