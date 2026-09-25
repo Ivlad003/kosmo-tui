@@ -9,6 +9,7 @@
 import { LIMITS } from "../format/validate.js";
 import { ABORTED, concatBytes, errorText, fatalAt, nextChunk, readerError, releaseIterator } from "./common.js";
 import { openJsonFile, parseJsonDocument } from "./json.js";
+import { openNdjson } from "./ndjson.js";
 import { SNIFF_HEAD_BYTES, SQLITE_MAGIC, firstLineComplete, sniffContainer } from "./sniff.js";
 import type { OpenResult, OpenedDataset, Origin, ReaderDeps } from "./types.js";
 
@@ -38,6 +39,7 @@ export async function openTarget(origin: Origin, deps: ReaderDeps, signal: Abort
   const kind = sniffContainer(head, path);
   if (kind === null) return { ok: false, error: fatalAt("not-a-kosmo-trace", "$", "empty input") };
   if (kind === "json") return openJsonFile(path, stat.size, deps.fs);
+  if (kind === "ndjson") return openNdjson(origin, deps.fs.createReadStream(path), deps, signal);
   return notReadable(kind);
 }
 
@@ -111,10 +113,7 @@ async function openStream(
     };
   }
   const rest = prepend(head, iterator, done);
-  if (kind === "ndjson") {
-    releaseIterator(iterator);
-    return notReadable(kind);
-  }
+  if (kind === "ndjson") return openNdjson(origin, rest, deps, signal);
   const collected = await collect(rest, LIMITS.fileBytes, signal);
   if (!collected.ok) return collected;
   return parseJsonDocument(collected.bytes, origin);
@@ -149,7 +148,7 @@ async function collect(
   }
 }
 
-/** Tasks 9 and 10 replace this with the ndjson and sqlite readers. */
-function notReadable(kind: "ndjson" | "sqlite"): OpenResult {
+/** Task 10 replaces this with the sqlite reader. */
+function notReadable(kind: "sqlite"): OpenResult {
   return { ok: false, error: readerError("read-error", `read-error: ${kind} containers are not readable yet`) };
 }
