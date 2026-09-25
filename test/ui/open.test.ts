@@ -9,7 +9,8 @@ import type { TuiArgs } from "../../src/args.js";
 import { EXIT_OK, EXIT_SIGINT, EXIT_USAGE } from "../../src/proc.js";
 import { openKeyboardInput } from "../../src/terminal-input.js";
 import type { TerminalOptions } from "../../src/terminal.js";
-import { RECLAIM_AFTER_EOF_MS, openTui, type OpenTuiDeps } from "../../src/ui/open.js";
+import { RECLAIM_AFTER_EOF_MS, openTui, resolveHome, type OpenTuiDeps } from "../../src/ui/open.js";
+import { RECENT_DISABLED_BANNER } from "../../src/ui/session.js";
 import { RECIPES, fixtureFile } from "../fixture-recipes.js";
 import { chunks, memoryFs, neverEnding } from "../readers/reader-fakes.js";
 import { toNdjsonLines } from "../trace-writers.js";
@@ -196,19 +197,58 @@ describe("an uncaught error (spec 13.2)", () => {
     expect(s.terminal.closes).toBe(1);
     expect(s.closedPorts).toEqual(["tty"]);
   });
+});
 
-  it("a homedir throw happens before the keyboard or terminal is taken", async () => {
-    const s = setup();
-    const deps: OpenTuiDeps = {
-      ...s.deps,
-      homedir: () => {
-        throw new Error("homedir broke");
-      },
-      keyboard: () => {
-        throw new Error("keyboard opened");
+describe("without a home directory (os.homedir() throws or is empty)", () => {
+  const broken = (): string => {
+    throw new Error("homedir broke");
+  };
+
+  it("resolveHome: a throw, an empty or a relative answer is null", () => {
+    expect(resolveHome(() => "/home/me")).toBe("/home/me");
+    expect(resolveHome(broken)).toBeNull();
+    expect(resolveHome(() => "")).toBeNull();
+    expect(resolveHome(() => "relative/home")).toBeNull();
+  });
+
+  it("the TUI still starts; recent.json is disabled and the start screen says so", async () => {
+    for (const homedir of [broken, () => ""]) {
+      const s = setup();
+      const startFs = memoryStartFs({ "/w/a.kosmo-trace.json": { text: "{}", mtimeMs: 1 } });
+      const session = run(tui(undefined, { readOnly: false }), fakeProc([]), { ...s.deps, startFs, homedir });
+      await until(() => s.terminal.screen().includes("a.kosmo-trace.json"), "start rows");
+      await until(() => s.terminal.screen().includes(RECENT_DISABLED_BANNER), "recent banner");
+      expect(startFs.calls.some((call) => call.includes("recent.json"))).toBe(false);
+      s.terminal.key("q");
+      expect(await session).toBe(EXIT_OK);
+    }
+  });
+
+  it("opening a trace without a home writes no recent.json", async () => {
+    const s = setup({ files: { "/w/x.kosmo-trace.json": BASIC } });
+    const startFs = memoryStartFs();
+    const deps: OpenTuiDeps = { ...s.deps, startFs, homedir: broken };
+    const session = run(tui("/w/x.kosmo-trace.json", { readOnly: false }), fakeProc([]), deps);
+    await until(() => s.terminal.screen().includes("GET /cart · 4 spans"), "trace screen");
+    s.terminal.key("q");
+    expect(await session).toBe(EXIT_OK);
+    expect(startFs.calls).toEqual([]);
+  });
+
+  it("with XDG_CONFIG_HOME the recent list keeps working and there is no banner", async () => {
+    const s = setup({ files: { "/w/x.kosmo-trace.json": BASIC } });
+    const startFs = memoryStartFs({
+      "/xdg/kosmo-tui/recent.json": {
+        text: JSON.stringify([{ path: "/w/x.kosmo-trace.json", openedAt: "2026-09-24T10:00:00.000Z" }]),
+        mtimeMs: 1
       }
-    };
-    await expect(run(tui(), fakeProc([]), deps)).rejects.toThrow("homedir broke");
-    expect(s.created).toHaveLength(0);
+    });
+    const proc = fakeProc([], { env: { XDG_CONFIG_HOME: "/xdg" } });
+    const session = run(tui(undefined, { readOnly: false }), proc, { ...s.deps, startFs, homedir: broken });
+    await until(() => s.terminal.screen().includes("Recent"), "recent rows");
+    expect(s.terminal.screen()).not.toContain("recent: disabled");
+    expect(startFs.calls).toContain("readFile /xdg/kosmo-tui/recent.json");
+    s.terminal.key("q");
+    expect(await session).toBe(EXIT_OK);
   });
 });

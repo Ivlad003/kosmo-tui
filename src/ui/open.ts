@@ -15,6 +15,8 @@
  *  - On the way out the keyboard handle is closed and data stdin destroyed, so a producer
  *    that still writes gets EPIPE instead of blocking on a full pipe. A throw that escapes
  *    the session closes the terminal before it propagates to run() (exit 2).
+ *  - The home directory is read once, before the terminal is taken; if `os.homedir()` throws
+ *    or answers "" the session runs with `home: null` (see `resolveHome`).
  */
 import os from "node:os";
 import path from "node:path";
@@ -56,8 +58,23 @@ export type OpenTuiDeps = {
   readonly startFs?: StartFs;
   readonly clipboard?: SessionClipboard;
   readonly timers?: SessionTimers;
+  /** `os.homedir` in production; a throw, an empty or a relative answer means "no home" (null). */
   readonly homedir?: () => string;
 };
+
+/**
+ * The home directory, or null when it cannot be known. Never throws: without a home the TUI
+ * still runs (recent.json only under `$XDG_CONFIG_HOME`, no home check for dataset.root).
+ */
+export function resolveHome(homedir: () => string): string | null {
+  let home: unknown;
+  try {
+    home = homedir();
+  } catch {
+    return null;
+  }
+  return typeof home === "string" && home !== "" && path.isAbsolute(home) ? home : null;
+}
 
 /** Data stdin of `kosmo-tui -`: a byte stream that also says when it ended. */
 type DataStdin = AsyncIterable<Uint8Array> & {
@@ -106,7 +123,7 @@ export async function openTui(input: OpenTuiInput, deps: OpenTuiDeps = {}): Prom
       `no-controlling-terminal: interactive terminal required: stdout is not a TTY. ${PRINT_HINT}`
     );
   }
-  const home = (deps.homedir ?? os.homedir)();
+  const home = resolveHome(deps.homedir ?? os.homedir);
   const keyboard = (deps.keyboard ?? openKeyboardInput)({
     platform,
     stdin: proc.stdin as unknown as TerminalInput,

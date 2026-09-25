@@ -31,7 +31,8 @@ node bin/kosmo-tui.js examples/demo.kosmo-trace.json
 two levels below (without `node_modules`, `.git` and hidden directories), then up to 20 recently opened paths from
 `$XDG_CONFIG_HOME/kosmo-tui/recent.json` (or `~/.config/kosmo-tui/recent.json`). Files are only listed, never opened,
 until you press Enter. A file that is gone shows `file-not-found`; an open error is a banner and you stay on the start
-screen. `-r` never writes `recent.json`.
+screen. `-r` never writes `recent.json`. If the home directory cannot be determined and `$XDG_CONFIG_HOME` is not set,
+the recent list is off and a banner says so.
 
 **Traces screen**: every trace of the dataset with its span count and status; a trace with `http.server` spans also
 shows `METHOD route → status` of its first request and `N requests` when there are several. A dataset with one trace
@@ -72,8 +73,9 @@ it, with the code window read from the project root. The `▶` line is always vi
 The code window names its state when the file does not match the trace: `file-missing`, `outside-root` (a symlink
 leaves the root), `too-large` (over 2 MiB), `unreadable`, `not-text`, `changed-since-trace`, or `moved to line N`
 (the recorded snippet was found within 40 lines). The root is `--root` or `:root`, else `dataset.root` when that
-directory exists, else the nearest directory with `.git` or `package.json` above the trace file, else the current
-directory.
+directory exists and (by real path) is or contains the current directory or the trace file's directory, else the
+nearest directory with `.git` or `package.json` above the trace file, else the current directory. A `dataset.root`
+of `/`, your home directory or anything unrelated is ignored, and the status line says `dataset.root ignored (…)`.
 
 A child whose session or runtime differs from its parent's gets a separator row: `┄┄ browser → node · n1 ┄┄`.
 **Areas** (`a`) lists `module · feature` with span and error counts; derived areas (from the file's directory, or the

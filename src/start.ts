@@ -6,7 +6,8 @@
  *   `*.kosmo-trace.json`, `*.kosmo-trace.ndjson`, `*.kosmo-trace.sqlite` become rows with
  *   path (relative to cwd), size and mtime. Files are only stat'ed, never opened.
  * - Recent: up to 20 absolute paths in `$XDG_CONFIG_HOME/kosmo-tui/recent.json` (or
- *   `~/.config/kosmo-tui/recent.json`), each with only `path` and `openedAt`. A missing
+ *   `~/.config/kosmo-tui/recent.json`; with neither — no home directory — it is disabled),
+ *   each with only `path` and `openedAt`. A missing
  *   file is flagged, a corrupt recent.json reads as empty, `-r` (readOnly) never writes,
  *   and a write is atomic: a temp file in the same directory, then rename.
  *
@@ -74,11 +75,15 @@ export async function scanTraces(cwd: string, fs: StartFs): Promise<StartRow[]> 
   return rows.sort((a, b) => (b.mtimeMs ?? 0) - (a.mtimeMs ?? 0) || compareText(a.path, b.path));
 }
 
-/** `$XDG_CONFIG_HOME/kosmo-tui/recent.json`, or `~/.config/…` when it is unset, empty or relative. */
-export function recentPath(env: Readonly<Record<string, string | undefined>>, home: string): string {
+/**
+ * `$XDG_CONFIG_HOME/kosmo-tui/recent.json`, or `~/.config/…` when it is unset, empty or relative.
+ * null when neither exists (no usable home directory): recent.json is then disabled.
+ */
+export function recentPath(env: Readonly<Record<string, string | undefined>>, home: string | null): string | null {
   const xdg = env.XDG_CONFIG_HOME;
-  const base = xdg !== undefined && xdg !== "" && path.isAbsolute(xdg) ? xdg : path.join(home, ".config");
-  return path.join(base, "kosmo-tui", "recent.json");
+  if (xdg !== undefined && xdg !== "" && path.isAbsolute(xdg)) return path.join(xdg, "kosmo-tui", "recent.json");
+  if (home === null || home === "" || !path.isAbsolute(home)) return null;
+  return path.join(home, ".config", "kosmo-tui", "recent.json");
 }
 
 /** Entries of recent.json in file order; anything unreadable or malformed reads as none. */
@@ -153,11 +158,12 @@ export async function recordRecent(
 
 /** Everything the start screen lists: found rows, then recent rows. */
 export async function loadStartRows(
-  input: { cwd: string; env: Readonly<Record<string, string | undefined>>; home: string },
+  input: { cwd: string; env: Readonly<Record<string, string | undefined>>; home: string | null },
   fs: StartFs
 ): Promise<StartRow[]> {
   const found = await scanTraces(input.cwd, fs);
-  const recent = await recentRows(await readRecent(recentPath(input.env, input.home), fs), fs);
+  const file = recentPath(input.env, input.home);
+  const recent = file === null ? [] : await recentRows(await readRecent(file, fs), fs);
   return [...found, ...recent];
 }
 

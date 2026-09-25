@@ -33,7 +33,7 @@ describe("node ports", () => {
 
   it("nodeRootFs finds the nearest package.json above a trace file (spec 4.8 rule 3)", async () => {
     const trace = path.join(PROJECT, "src", "x.kosmo-trace.json");
-    expect(await resolveRoot({ traceFile: trace, cwd: tmp }, nodeRootFs)).toBe(PROJECT);
+    expect(await resolveRoot({ traceFile: trace, cwd: tmp, home: null }, nodeRootFs)).toEqual({ root: PROJECT });
     expect(await nodeRootFs.isDirectory(PROJECT)).toBe(true);
     expect(await nodeRootFs.isDirectory(path.join(PROJECT, "package.json"))).toBe(false);
   });

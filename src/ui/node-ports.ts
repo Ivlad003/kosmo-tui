@@ -39,7 +39,8 @@ export const nodeRootFs: RootFs = {
   },
   async exists(file) {
     return (await stat(file).catch(() => undefined)) !== undefined;
-  }
+  },
+  realpath: (dir) => realpath(dir)
 };
 
 function direntKind(entry: {

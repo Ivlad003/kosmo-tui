@@ -270,6 +270,40 @@ describe("reload, root and copy", () => {
     expect(await session).toBe(EXIT_OK);
   });
 
+  it("dataset.root is used only when it contains cwd or the trace directory; otherwise a notice says why (spec 4.8)", async () => {
+    const withRoot = (root: string): string => {
+      const doc = JSON.parse(BASIC) as { dataset: Record<string, unknown> };
+      doc.dataset.root = root;
+      return JSON.stringify(doc);
+    };
+    const hostile = CART.replace("export async function calculateLineTotal", "HOSTILE");
+    const cases: Array<[string, string, string | null]> = [
+      ["/", "/w", "dataset.root ignored (the filesystem root): /"],
+      ["/home/me", "/w", "dataset.root ignored (the home directory or above it): /home/me"],
+      ["/other", "/w", "dataset.root ignored (contains neither cwd nor the trace directory): /other"],
+      ["/w", "/w", null]
+    ];
+    for (const [datasetRoot, expected, notice] of cases) {
+      const terminal = fakeTerminal();
+      const deps = sessionDeps(terminal, {
+        origin: { path: TRACE_FILE },
+        reader: { fs: memoryFs({ [TRACE_FILE]: withRoot(datasetRoot) }) },
+        rootFs: memoryRootFs({ dirs: ["/", "/home/me", "/other", "/w"], files: ["/w/package.json"] }),
+        snippetFs: memorySnippetFs({ "/w/src/cart.ts": CART, "/other/src/cart.ts": hostile, "/src/cart.ts": hostile })
+      });
+      const roots: string[] = [];
+      const session = runSession({ ...deps, onRootChange: (root) => roots.push(root) });
+      await until(() => terminal.screen().includes("4 spans"), `trace screen (${datasetRoot})`);
+      terminal.key("jj");
+      await until(() => terminal.screen().includes("│▶ 12  export async function calculateLineTotal"), "snippet");
+      expect(roots.at(-1), datasetRoot).toBe(expected);
+      if (notice === null) expect(terminal.screen()).not.toContain("dataset.root ignored");
+      else expect(terminal.screen(), datasetRoot).toContain(notice);
+      terminal.key("q");
+      expect(await session).toBe(EXIT_OK);
+    }
+  });
+
   it("y copies kosmo-text/v1 of the selected subtree; without a clipboard it is printed after the terminal is restored", async () => {
     const terminal = fakeTerminal();
     const clipboard = fakeClipboard(

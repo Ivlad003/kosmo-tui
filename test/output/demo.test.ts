@@ -53,7 +53,7 @@ describe("examples/demo.kosmo-trace.json", () => {
   it("every location matches its code in examples/demo/src (the README code window)", async () => {
     const parsed = validateDocument(JSON.parse(readFileSync(DEMO, "utf8")));
     if (!parsed.ok) throw new Error("demo");
-    const codeRoot = await resolveRoot({ traceFile: DEMO, cwd: os.tmpdir() }, nodeRootFs);
+    const { root: codeRoot } = await resolveRoot({ traceFile: DEMO, cwd: os.tmpdir(), home: null }, nodeRootFs);
     expect(codeRoot).toBe(root);
     for (const trace of parsed.acc.traceSummaries()) {
       for (const span of parsed.acc.spansOf(trace.id)) {

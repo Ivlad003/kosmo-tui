@@ -11,6 +11,7 @@
  * `isSafeOsc8Uri` is the only gate for OSC 8 hyperlinks (spec 6.4, 8.2): a `file:///` URI made of RFC 3986
  * path characters only (so `?`, `#`, spaces and raw non-ASCII must be percent-encoded, see `toFileUri`),
  * whose decoded path has no control/bidi character, no `.`/`..`/empty segment, and lies inside `root`.
+ * A `root` that is empty or the filesystem root `/` admits nothing.
  */
 
 const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
@@ -51,6 +52,7 @@ export function isSafeOsc8Uri(uri: string, root: string): boolean {
   const segments = path.split("/").slice(1);
   if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) return false;
   const base = root.replace(/\/+$/, "");
-  if (base === "") return true;
+  // An empty or `/` root is no root at all: it would admit every path on the machine.
+  if (base === "") return false;
   return path === base || path.startsWith(`${base}/`);
 }

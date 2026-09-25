@@ -67,7 +67,6 @@ describe("isSafeOsc8Uri (spec 6.4, 8.2)", () => {
     expect(isSafeOsc8Uri("file:///work/app/src/cart.ts", "/work/app/")).toBe(true);
     expect(isSafeOsc8Uri(toFileUri("/work/app/src/my file#1.ts"), root)).toBe(true);
     expect(isSafeOsc8Uri(toFileUri("/work/app/src/кошик.ts"), root)).toBe(true);
-    expect(isSafeOsc8Uri("file:///anything/at/all.ts", "/")).toBe(true);
   });
 
   it("rejects other schemes, hosts and relative forms", () => {
@@ -85,6 +84,13 @@ describe("isSafeOsc8Uri (spec 6.4, 8.2)", () => {
     expect(isSafeOsc8Uri("file:///work/app/./x.ts", root)).toBe(false);
     expect(isSafeOsc8Uri("file:///work/app//x.ts", root)).toBe(false);
     expect(isSafeOsc8Uri("file:///work/app", "relative/root")).toBe(false);
+  });
+
+  it("an empty or `/` root admits nothing (there is no valid root)", () => {
+    for (const bad of ["", "/", "//", "///"]) {
+      expect(isSafeOsc8Uri("file:///anything/at/all.ts", bad), JSON.stringify(bad)).toBe(false);
+      expect(isSafeOsc8Uri("file:///etc/passwd", bad), JSON.stringify(bad)).toBe(false);
+    }
   });
 
   it("rejects raw or percent-encoded control and bidi characters, raw ? # space and backslash", () => {

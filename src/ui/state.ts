@@ -30,6 +30,7 @@ import {
 } from "../format/types.js";
 import { utf8Bytes } from "../format/validate.js";
 import { renderKosmoText } from "../output/kosmo-text.js";
+import type { DatasetRootRejection } from "../code/root.js";
 import type { ContainerKind, Notice, Origin, ReaderError, TraceListPage } from "../readers/types.js";
 import type { Snippet } from "../code/snippet.js";
 import { regexFromLiteral } from "./refs.js";
@@ -53,13 +54,22 @@ export type StartRow = {
   readonly missing: boolean;
 };
 export type Bookmark = { readonly ref: SpanRef; readonly name: string };
+/** A reader notice, or one the session adds: `dataset.root` failed the trust check of spec 4.8 rule 2. */
+export type ViewNotice =
+  | Notice
+  | {
+      readonly kind: "dataset-root-ignored";
+      readonly datasetRoot: string;
+      readonly reason: DatasetRootRejection;
+      readonly stdin: boolean;
+    };
 export type DatasetView = {
   readonly info: DatasetInfo;
   readonly kind: ContainerKind;
   readonly origin: Origin;
   readonly traces: readonly TraceSummary[];
   readonly hasMore: boolean;
-  readonly notices: readonly Notice[];
+  readonly notices: readonly ViewNotice[];
   readonly reloadable: boolean;
 };
 export type ResultsKind = "find" | "callers" | "ancestors" | "path";

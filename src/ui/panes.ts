@@ -9,11 +9,11 @@
  */
 
 import { clipPrefix, measureLimit, padVisible, truncateVisible, visibleWidth } from "../ansi.js";
+import type { DatasetRootRejection } from "../code/root.js";
 import { THEME, paint, type ColorLevel } from "../color.js";
 import type { TraceModel } from "../format/model.js";
 import { spanKey } from "../format/types.js";
 import { renderKosmoText } from "../output/kosmo-text.js";
-import type { Notice } from "../readers/types.js";
 import { escapeTerminalControls } from "../sanitize.js";
 import { STATUS_GLYPH, areaText, locationText } from "./labels.js";
 import { formatSpanRef } from "./refs.js";
@@ -27,6 +27,7 @@ import {
   visibleStartRows,
   visibleTraces,
   type TreeRow,
+  type ViewNotice,
   type ViewState
 } from "./state.js";
 
@@ -128,7 +129,7 @@ export function keyHints(state: ViewState): string {
   return parts.filter((part) => part !== null).join(" · ");
 }
 
-export function noticeText(notice: Notice): string {
+export function noticeText(notice: ViewNotice): string {
   switch (notice.kind) {
     case "stream-stopped":
       return notice.line === null
@@ -138,6 +139,19 @@ export function noticeText(notice: Notice): string {
       return `${notice.count} unknown lines skipped`;
     case "unknown-fields-ignored":
       return `${notice.count} unknown fields ignored`;
+    case "dataset-root-ignored":
+      return `dataset.root ignored (${rootRejectionText(notice.reason, notice.stdin)}): ${escapeTerminalControls(notice.datasetRoot)}`;
+  }
+}
+
+function rootRejectionText(reason: DatasetRootRejection, stdin: boolean): string {
+  switch (reason) {
+    case "filesystem-root":
+      return "the filesystem root";
+    case "home":
+      return "the home directory or above it";
+    case "unrelated":
+      return stdin ? "does not contain the current directory" : "contains neither cwd nor the trace directory";
   }
 }
 

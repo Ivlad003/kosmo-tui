@@ -114,12 +114,20 @@ export function memorySnippetFs(files: Record<string, string>): SnippetFs & { re
   };
 }
 
-export function memoryRootFs(entries: { dirs?: readonly string[]; files?: readonly string[] } = {}): RootFs {
+/**
+ * In-memory RootFs. `links` maps a path to its real path (a symlink); `realpath` of any other
+ * path is the path itself, like a disk where cwd and home exist but hold nothing else.
+ */
+export function memoryRootFs(
+  entries: { dirs?: readonly string[]; files?: readonly string[]; links?: Readonly<Record<string, string>> } = {}
+): RootFs {
   const dirs = new Set(entries.dirs ?? []);
   const files = new Set(entries.files ?? []);
+  const links = entries.links ?? {};
   return {
     isDirectory: async (path) => dirs.has(path),
-    exists: async (path) => dirs.has(path) || files.has(path)
+    exists: async (path) => dirs.has(path) || files.has(path),
+    realpath: async (path) => links[path] ?? path
   };
 }
 

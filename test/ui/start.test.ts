@@ -166,6 +166,11 @@ describe("recent.json location", () => {
     expect(recentPath({}, "/home/me")).toBe("/home/me/.config/kosmo-tui/recent.json");
     expect(recentPath({ XDG_CONFIG_HOME: "" }, "/home/me")).toBe("/home/me/.config/kosmo-tui/recent.json");
     expect(recentPath({ XDG_CONFIG_HOME: "rel/dir" }, "/home/me")).toBe("/home/me/.config/kosmo-tui/recent.json");
+    // No home: only $XDG_CONFIG_HOME keeps recent.json; without it recent.json is disabled.
+    expect(recentPath({ XDG_CONFIG_HOME: "/xdg" }, null)).toBe("/xdg/kosmo-tui/recent.json");
+    expect(recentPath({}, null)).toBeNull();
+    expect(recentPath({ XDG_CONFIG_HOME: "rel/dir" }, null)).toBeNull();
+    expect(recentPath({}, "")).toBeNull();
   });
 });
 

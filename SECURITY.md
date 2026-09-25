@@ -10,14 +10,21 @@ from a trace.
 - **The only write is `recent.json`**: `$XDG_CONFIG_HOME/kosmo-tui/recent.json` (or `~/.config/kosmo-tui/recent.json`)
   keeps at most 20 absolute paths with the time each was opened, nothing else. It is written through a temp file and
   a rename, with mode `0600` in a directory created with mode `0700`. `-r` / `--read-only` turns it off; `--print`
-  never writes it.
+  never writes it. Without a home directory and without `$XDG_CONFIG_HOME` it is off as well.
 - **Code is read only inside the project root.** `location.file` must be a relative path without `..`, a scheme or
   control characters; a file whose real path leaves the root through a symlink is not read (`outside-root`), and
   files over 2 MiB are not read (`too-large`).
+- **A trace cannot choose the project root.** The root is `--root`/`:root` (you choose it), else `dataset.root` from
+  the trace only when its real path is, or contains, the current directory or the trace file's directory (for stdin:
+  the current directory only), and is neither `/` nor your home directory or a directory above it. Otherwise
+  `dataset.root` is ignored, the status line says so, and the root falls back to the nearest directory with `.git`
+  or `package.json` above the trace file, else the current directory. So a trace file can make kosmo-tui show code
+  from the directory tree it was opened from, never from elsewhere on the machine.
 - **Terminal safety.** Every string from a trace, a code file or an error message that quotes the input is escaped
   (C0, DEL, C1 and bidi controls become `\uXXXX`) before it is laid out. The terminal writer then lets through only
   SGR colors and OSC 8 links it validated itself; any other escape sequence in a frame is shown escaped.
-- **OSC 8 file links** are drawn only with `KOSMO_TUI_LINKS=1`, and only for `file://` URIs inside the project root.
+- **OSC 8 file links** are drawn only with `KOSMO_TUI_LINKS=1`, and only for `file://` URIs inside the project root;
+  a root of `/` allows no links at all.
 - **Masking** of values, `attrs` and URL query parameters (by key: `password`, `token`, `authorization`, `cookie`,
   `api key`, `session id`, …; by content: `Bearer …`, JWTs) applies in the viewer, in `--print` and in `y`. It is a
   second layer and cannot be complete: a secret copied into an innocently named field is not caught. Producers must

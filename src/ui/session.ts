@@ -24,7 +24,7 @@
  * All I/O goes through `SessionDeps`; this module imports no node:fs and no process.
  */
 import path from "node:path";
-import { resolveRoot, type RootFs } from "../code/root.js";
+import { resolveRoot, type RootFs, type RootResolution } from "../code/root.js";
 import { loadSnippet, type Snippet, type SnippetFs } from "../code/snippet.js";
 import { utf8Bytes } from "../format/bytes.js";
 import { spanKey, type Location, type SpanRef } from "../format/types.js";
@@ -43,7 +43,15 @@ import { loadStartRows, recentPath, recordRecent, type StartFs } from "../start.
 import type { Terminal } from "../terminal.js";
 import { decodeKey } from "./keys.js";
 import { renderFrame, type RenderEnv } from "./render.js";
-import { initialState, update, type Action, type DatasetView, type Effect, type ViewState } from "./state.js";
+import {
+  initialState,
+  update,
+  type Action,
+  type DatasetView,
+  type Effect,
+  type ViewNotice,
+  type ViewState
+} from "./state.js";
 
 /** Upper bound for coalescing background repaints (stream progress). */
 export const SESSION_REFRESH_MS = 250;
@@ -74,7 +82,11 @@ export type SessionDeps = {
   readonly clipboard: SessionClipboard;
   readonly render: RenderEnv;
   readonly cwd: string;
-  readonly home: string;
+  /**
+   * The user's home directory; null when it is unknown (os.homedir() failed or was empty). Then
+   * recent.json works only under `$XDG_CONFIG_HOME`, and dataset.root has no home check (spec 4.8).
+   */
+  readonly home: string | null;
   readonly env: Readonly<Record<string, string | undefined>>;
   /** `-r`: recent.json is never written. */
   readonly readOnly: boolean;
@@ -143,17 +155,31 @@ function readError(error: unknown): ReaderError {
   return { code: "read-error", message: `read-error: ${describeError(error)}` };
 }
 
-function datasetView(dataset: OpenedDataset): DatasetView {
+function datasetView(dataset: OpenedDataset, ignored: RootResolution["ignored"]): DatasetView {
+  const rootNotice: ViewNotice[] =
+    ignored === undefined
+      ? []
+      : [
+          {
+            kind: "dataset-root-ignored",
+            datasetRoot: ignored.datasetRoot,
+            reason: ignored.reason,
+            stdin: dataset.origin === "stdin"
+          }
+        ];
   return {
     info: dataset.info,
     kind: dataset.kind,
     origin: dataset.origin,
     traces: dataset.traces.items,
     hasMore: dataset.traces.hasMore,
-    notices: dataset.notices,
+    notices: [...rootNotice, ...dataset.notices],
     reloadable: dataset.origin !== "stdin"
   };
 }
+
+/** Spec 6.1: without a home directory recent.json lives only under `$XDG_CONFIG_HOME`. */
+export const RECENT_DISABLED_BANNER = "recent: disabled (no home directory; set XDG_CONFIG_HOME to keep a recent list)";
 
 type Outcome = { readonly code: number; readonly error?: string };
 
@@ -376,10 +402,11 @@ export async function runSession(deps: SessionDeps): Promise<number> {
       paint();
       return;
     }
-    if (options.record && origin !== "stdin") {
+    const recentFile = recentPath(deps.env, deps.home);
+    if (options.record && origin !== "stdin" && recentFile !== null) {
       void recordRecent(
         {
-          file: recentPath(deps.env, deps.home),
+          file: recentFile,
           opened: origin.path,
           cwd: deps.cwd,
           now: now(),
@@ -389,9 +416,10 @@ export async function runSession(deps: SessionDeps): Promise<number> {
         deps.startFs
       );
     }
-    const root = await resolveRoot(
+    const { root, ignored } = await resolveRoot(
       {
         cwd: deps.cwd,
+        home: deps.home,
         ...(rootOverride === null ? {} : { flag: rootOverride }),
         ...(result.dataset.info.root === undefined ? {} : { datasetRoot: result.dataset.info.root }),
         ...(origin === "stdin" ? {} : { traceFile: origin.path })
@@ -408,7 +436,7 @@ export async function runSession(deps: SessionDeps): Promise<number> {
     dataset = result.dataset;
     if (previous !== null && previous !== result.dataset) void retire(previous);
     if (root !== state.root) dispatch({ type: "rootChanged", root });
-    dispatch({ type: "datasetOpened", dataset: datasetView(result.dataset) });
+    dispatch({ type: "datasetOpened", dataset: datasetView(result.dataset, ignored) });
     paint();
   }
 
@@ -545,6 +573,9 @@ export async function runSession(deps: SessionDeps): Promise<number> {
       const rows = await loadStartRows({ cwd: deps.cwd, env: deps.env, home: deps.home }, deps.startFs);
       if (closed) return;
       dispatch({ type: "startRows", rows });
+      if (recentPath(deps.env, deps.home) === null) {
+        dispatch({ type: "showBanner", level: "info", text: RECENT_DISABLED_BANNER });
+      }
       paint();
     } catch {
       // An unreadable cwd or config leaves the start screen empty; it never ends the session.
