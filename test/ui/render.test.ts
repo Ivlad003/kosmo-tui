@@ -614,6 +614,42 @@ describe("views and panes", () => {
     expect(stack).toContain(" ▸ #25000 ✓ c24999  (no location)");
     expect(stack[19]).toBe("   root reached");
   });
+
+  it("the stack walk runs once per (model, span) across frames and pane moves", () => {
+    let parentCalls = 0;
+    const base = model(chain(2_000));
+    const deep = new Proxy(base, {
+      get(target, key) {
+        const value: unknown = Reflect.get(target, key, target);
+        if (key === "parentOf") {
+          return (at: SpanRef) => {
+            parentCalls += 1;
+            return target.parentOf(at);
+          };
+        }
+        return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      }
+    });
+    const opened = apply(
+      { ...cartState(), trace: null },
+      { type: "traceLoaded", model: deep },
+      { type: "moveTo", edge: "last" },
+      { type: "openPane", pane: "stack" }
+    );
+    parentCalls = 0;
+    let state = opened;
+    for (let frame = 0; frame < 5; frame += 1) {
+      state = apply(state, { type: "paneMove", delta: 7 });
+      renderFrame(state, { cols: 80, rows: 24 }, PLAIN);
+    }
+    // At most one walk of the 2 000-deep chain (2 000 parentOf calls) plus a few per frame for the
+    // tree and detail; one walk per frame or per move would be 10 times that.
+    expect(parentCalls).toBeGreaterThanOrEqual(2_000);
+    expect(parentCalls).toBeLessThan(2_200);
+    const before = parentCalls;
+    expect(plain(stackPane(state, 80, 20, COLOR_NONE))).toContain(" ▸ #35 ✓ c1964  (no location)");
+    expect(parentCalls).toBe(before);
+  });
 });
 
 describe("header and footer", () => {

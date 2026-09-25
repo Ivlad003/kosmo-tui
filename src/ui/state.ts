@@ -287,11 +287,33 @@ export function sessionSeparator(parent: SpanRow, child: SpanRow): string | unde
 
 export type AncestorWalk = { readonly frames: readonly SpanRef[]; readonly stop: ParentOf };
 
+/** Walks kept per model: the stack pane and its item count ask for the same span on every frame. */
+const ANCESTOR_MEMO_SPANS = 4;
+/** spanKey → walk, oldest first. A pure memo: a model never changes, and an entry goes with its model. */
+const ancestorMemo = new WeakMap<TraceModel, Map<string, AncestorWalk>>();
+
 /**
  * Recorded ancestors of `ref`: the span itself first, then each resolved parent. `stop` is the
  * `parentOf` of the last frame (`root`, `unknown(…)` or `cycle`). Iterative, bounded by the model size.
+ * Memoized for the last ANCESTOR_MEMO_SPANS spans of each model, so a deep chain is walked once, not
+ * once per frame or pane move.
  */
 export function ancestorsOf(model: TraceModel, ref: SpanRef): AncestorWalk {
+  const key = spanKey(ref);
+  let memo = ancestorMemo.get(model);
+  const known = memo?.get(key);
+  if (known !== undefined) return known;
+  const walk = walkAncestors(model, ref);
+  if (memo === undefined) {
+    memo = new Map();
+    ancestorMemo.set(model, memo);
+  }
+  memo.set(key, walk);
+  if (memo.size > ANCESTOR_MEMO_SPANS) memo.delete(memo.keys().next().value as string);
+  return walk;
+}
+
+function walkAncestors(model: TraceModel, ref: SpanRef): AncestorWalk {
   const frames: SpanRef[] = [ref];
   let stop = model.parentOf(ref);
   let guard = model.size;
