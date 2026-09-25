@@ -47,7 +47,9 @@ describe("keyboard port", () => {
     const stdin = fakeTerminalIo({ isTTY: false }).input;
     const result = openKeyboardInput({ platform: "linux", stdin, stdinCarriesData: false });
     expect(result).toMatchObject({ ok: false, exitCode: 1 });
-    expect(!result.ok && result.message).toMatch(/interactive terminal required.*--print/);
+    expect(!result.ok && result.message).toMatch(
+      /^kosmo-tui: no-controlling-terminal: interactive terminal required: .*--print/
+    );
   });
 
   it("stdin data: keys come from the controlling terminal and the data stdin is never put into raw mode", () => {
@@ -121,7 +123,7 @@ describe("keyboard port", () => {
     });
     expect(result).toMatchObject({ ok: false, exitCode: 1 });
     expect(!result.ok && result.message).toBe(
-      "kosmo-tui: interactive terminal required: stdin carries data and no controlling terminal (/dev/tty) is available for keyboard input. Use --print [lisp|tab|json] for non-interactive output."
+      "kosmo-tui: no-controlling-terminal: interactive terminal required: stdin carries data and no controlling terminal (/dev/tty) is available for keyboard input. Use --print [lisp|tab|json] for non-interactive output."
     );
   });
 

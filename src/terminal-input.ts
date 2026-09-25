@@ -36,7 +36,7 @@ export type KeyboardDeps = {
   createTtyStream?: (fd: number) => TtyStream;
 };
 
-const PRINT_HINT = "Use --print [lisp|tab|json] for non-interactive output.";
+export const PRINT_HINT = "Use --print [lisp|tab|json] for non-interactive output.";
 
 export function controllingTerminalPath(platform: string): string {
   return platform === "win32" ? "CONIN$" : "/dev/tty";
@@ -47,7 +47,11 @@ function describePath(platform: string): string {
 }
 
 function refuse(reason: string): KeyboardResult {
-  return { ok: false, exitCode: 1, message: `kosmo-tui: interactive terminal required: ${reason}. ${PRINT_HINT}` };
+  return {
+    ok: false,
+    exitCode: 1,
+    message: `kosmo-tui: no-controlling-terminal: interactive terminal required: ${reason}. ${PRINT_HINT}`
+  };
 }
 
 /** Cheap check used during argument validation: can a controlling terminal be opened? */
