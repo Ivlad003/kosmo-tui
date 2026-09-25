@@ -15,8 +15,8 @@
  *  - Progress of a stream is shown at most every `refreshMs` (≤ 250 ms); answers to user
  *    actions are painted at once.
  *  - Late answers never land on the wrong thing: a replaced open, a replaced dataset, a
- *    changed root, or Esc back to the start screen (the view dataset is gone; task 14 emits
- *    no cancel) drops them. A dataset that opens after that is closed immediately.
+ *    changed root, or Esc back to the start screen (the `closeDataset` effect) drops them.
+ *    A dataset that opens after that is closed immediately; close() awaits every close.
  *  - The terminal is restored exactly once, before anything is written to stdout/stderr:
  *    q, Ctrl+C, SIGINT (130), SIGTERM (143), SIGHUP (129), a render failure or a throw
  *    inside update or an effect (2, spec 13.2).
@@ -179,9 +179,13 @@ export async function runSession(deps: SessionDeps): Promise<number> {
 
   let openGeneration = 0;
   let openController: AbortController | null = null;
-  let pendingOpen: Promise<void> | null = null;
+  /** Opens and reloads in flight; close() awaits every one of them. */
+  const pendingOpens = new Set<Promise<void>>();
+  /** Closes of replaced and abandoned datasets; close() awaits them before it returns. */
+  const closing = new Set<Promise<void>>();
   let traceGeneration = 0;
-  let loadingMore = false;
+  /** The dataset a `>` page load is in flight for; another dataset may page at once. */
+  let loadingMoreFor: OpenedDataset | null = null;
   let progress: number | null = null;
   let progressTimer: unknown = null;
 
@@ -221,24 +225,30 @@ export async function runSession(deps: SessionDeps): Promise<number> {
   function dispatch(action: Action): void {
     if (closed || outcome !== null) return;
     const before = state.root;
-    const hadDataset = state.dataset !== null;
     const [next, effects] = update(state, action);
     state = next;
     if (state.root !== before) deps.onRootChange?.(state.root);
-    // update applies every traceLoaded and emits no cancel when Esc clears the dataset.
-    if (hadDataset && state.dataset === null) abandonDataset();
     for (const effect of effects) runEffect(effect);
   }
 
-  /** The view no longer has a dataset (Esc, spec 6.2). Late replies must not bring it back. */
+  /** `closeDataset`: the view no longer has a dataset (Esc, spec 6.2). Late replies must not bring it back. */
   function abandonDataset(): void {
     const previous = dataset;
     dataset = null;
     traceGeneration += 1;
     openGeneration += 1;
     openController?.abort();
+    loadingMoreFor = null;
     clearProgress();
-    if (previous !== null) void previous.close().catch(() => undefined);
+    if (previous !== null) retire(previous);
+  }
+
+  /** Close a dataset nobody shows any more; close() awaits it. Close errors are ignored, as everywhere. */
+  function retire(old: OpenedDataset): Promise<void> {
+    const running = old.close().catch(() => undefined);
+    closing.add(running);
+    void running.finally(() => closing.delete(running));
+    return running;
   }
 
   function clearProgress(): void {
@@ -290,6 +300,9 @@ export async function runSession(deps: SessionDeps): Promise<number> {
       case "setRoot":
         background(setRoot(effect.dir));
         return;
+      case "closeDataset":
+        abandonDataset();
+        return;
     }
   }
 
@@ -338,10 +351,8 @@ export async function runSession(deps: SessionDeps): Promise<number> {
 
   function track(work: Promise<void>): void {
     const running = work.catch(fail);
-    pendingOpen = running;
-    void running.finally(() => {
-      if (pendingOpen === running) pendingOpen = null;
-    });
+    pendingOpens.add(running);
+    void running.finally(() => pendingOpens.delete(running));
   }
 
   async function opened(
@@ -351,7 +362,7 @@ export async function runSession(deps: SessionDeps): Promise<number> {
     result: OpenResult
   ): Promise<void> {
     if (closed || outcome !== null || generation !== openGeneration) {
-      if (result.ok) await result.dataset.close().catch(() => undefined);
+      if (result.ok) await retire(result.dataset);
       return;
     }
     clearProgress();
@@ -390,12 +401,12 @@ export async function runSession(deps: SessionDeps): Promise<number> {
     // Publish only once the answer is still current, so an in-flight loadValues/loadSnippet
     // is not dropped while the view still shows "loading" for the previous dataset.
     if (closed || outcome !== null || generation !== openGeneration) {
-      await result.dataset.close().catch(() => undefined);
+      await retire(result.dataset);
       return;
     }
     const previous = dataset;
     dataset = result.dataset;
-    if (previous !== null && previous !== result.dataset) void previous.close().catch(() => undefined);
+    if (previous !== null && previous !== result.dataset) void retire(previous);
     if (root !== state.root) dispatch({ type: "rootChanged", root });
     dispatch({ type: "datasetOpened", dataset: datasetView(result.dataset) });
     paint();
@@ -417,13 +428,13 @@ export async function runSession(deps: SessionDeps): Promise<number> {
 
   async function loadMore(): Promise<void> {
     const current = dataset;
-    if (current === null || loadingMore) return;
+    if (current === null || loadingMoreFor === current) return;
     if (current.loadMoreTraces === undefined) {
       dispatch({ type: "tracesPage", page: { items: [], hasMore: false } });
       paint();
       return;
     }
-    loadingMore = true;
+    loadingMoreFor = current;
     try {
       const page = await current.loadMoreTraces(lifetime.signal);
       if (closed || current !== dataset) return;
@@ -432,7 +443,7 @@ export async function runSession(deps: SessionDeps): Promise<number> {
       if (closed || current !== dataset) return;
       dispatch({ type: "tracesPageFailed", error: readError(error) });
     } finally {
-      loadingMore = false;
+      if (loadingMoreFor === current) loadingMoreFor = null;
     }
     paint();
   }
@@ -552,10 +563,12 @@ export async function runSession(deps: SessionDeps): Promise<number> {
     terminal.close();
     deps.clipboard.fallback.flush();
     // An aborted stream read settles at once and releases stdin (the producer gets EPIPE).
-    await pendingOpen;
+    await Promise.all([...pendingOpens]);
+    // Then the open dataset and every replaced or abandoned one still closing; stderr comes after.
     const current = dataset;
     dataset = null;
-    await current?.close().catch(() => undefined);
+    if (current !== null) retire(current);
+    await Promise.all([...closing]);
   }
 
   terminal.onKey((chunk) => {

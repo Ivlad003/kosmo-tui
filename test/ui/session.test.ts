@@ -12,7 +12,7 @@ import { EXIT_OK, EXIT_SIGHUP, EXIT_SIGINT, EXIT_SIGTERM, EXIT_SOURCE, EXIT_USAG
 import { nodeReaderFs } from "../../src/readers/node-fs.js";
 import { openTarget } from "../../src/readers/open.js";
 import { loadSqliteModule } from "../../src/readers/sqlite-loader.js";
-import type { OpenResult } from "../../src/readers/types.js";
+import type { OpenResult, OpenedDataset, TraceListPage } from "../../src/readers/types.js";
 import { SESSION_REFRESH_MS, runSession, splitKeys } from "../../src/ui/session.js";
 import { RECIPES, fixtureFile } from "../fixture-recipes.js";
 import { chunks, memoryFs, neverEnding } from "../readers/reader-fakes.js";
@@ -463,6 +463,89 @@ describe("lifecycle (spec 13.2: terminal restored on every way out)", () => {
     for (let turn = 0; turn < 30; turn += 1) await new Promise((resolve) => setImmediate(resolve));
     expect(terminal.screen()).toContain(" Found in ./ (depth 2)");
     expect(terminal.screen()).not.toContain("4 spans");
+    terminal.key("q");
+    expect(await session).toBe(EXIT_OK);
+  });
+
+  /** Start rows a (first) and b; each opens BASIC as a paged list, so Enter stays on the trace list. */
+  function pagedStart(
+    terminal: ReturnType<typeof fakeTerminal>,
+    wrap: (name: string, dataset: OpenedDataset) => OpenedDataset
+  ): ReturnType<typeof sessionDeps> {
+    const startFs = memoryStartFs({
+      "/w/a.kosmo-trace.json": { text: "{}", mtimeMs: 2 },
+      "/w/b.kosmo-trace.json": { text: "{}", mtimeMs: 1 }
+    });
+    const fs = memoryFs({ "a.kosmo-trace.json": BASIC, "b.kosmo-trace.json": BASIC });
+    return sessionDeps(terminal, {
+      startFs,
+      reader: { fs },
+      open: async (origin, reader, signal) => {
+        const result = await openTarget(origin, reader, signal);
+        if (!result.ok || origin === "stdin") return result;
+        const paged = { ...result.dataset, traces: { ...result.dataset.traces, hasMore: true } };
+        return { ok: true, dataset: wrap(origin.path, paged) };
+      }
+    });
+  }
+
+  it("close() waits for the close of a dataset abandoned with Esc, after the terminal and the fallback", async () => {
+    const terminal = fakeTerminal();
+    let release: () => void = () => undefined;
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    let closeCalls = 0;
+    const deps = pagedStart(terminal, (_name, opened) => ({
+      ...opened,
+      close: async () => {
+        closeCalls += 1;
+        await slow;
+        terminal.log.push("dataset:closed");
+      }
+    }));
+    const session = runSession(deps);
+    await until(() => terminal.screen().includes("b.kosmo-trace.json"), "start rows");
+    terminal.key("\r");
+    await until(() => terminal.screen().includes("GET /cart"), "trace list");
+    terminal.key("\u001b");
+    expect(terminal.screen()).toContain(" Found in ./ (depth 2)");
+    expect(closeCalls).toBe(1);
+    let settled = false;
+    void session.then(() => (settled = true));
+    terminal.key("q");
+    for (let turn = 0; turn < 30; turn += 1) await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+    expect(terminal.closes).toBe(1);
+    release();
+    expect(await session).toBe(EXIT_OK);
+    expect(closeCalls).toBe(1);
+    expect(terminal.log.slice(-3)).toEqual(["terminal:close", "fallback:flush 0", "dataset:closed"]);
+  });
+
+  it("a page load in flight when Esc abandons the dataset does not block > on the next one", async () => {
+    const terminal = fakeTerminal();
+    const asked: string[] = [];
+    const deps = pagedStart(terminal, (name, opened) => ({
+      ...opened,
+      loadMoreTraces: (): Promise<TraceListPage> => {
+        asked.push(name);
+        // a never answers; b answers with an empty last page.
+        return name === "a.kosmo-trace.json"
+          ? new Promise(() => undefined)
+          : Promise.resolve({ items: [], hasMore: false });
+      }
+    }));
+    const session = runSession(deps);
+    await until(() => terminal.screen().includes("b.kosmo-trace.json"), "start rows");
+    terminal.key("\r");
+    await until(() => terminal.screen().includes("GET /cart"), "a listed");
+    terminal.key(">");
+    await until(() => asked.length === 1, "a asked for a page");
+    terminal.key("\u001b");
+    terminal.key("j\r");
+    await until(() => terminal.screen().includes("GET /cart"), "b listed");
+    terminal.key(">");
+    await until(() => asked.length === 2, "b asked for a page");
+    expect(asked).toEqual(["a.kosmo-trace.json", "b.kosmo-trace.json"]);
     terminal.key("q");
     expect(await session).toBe(EXIT_OK);
   });

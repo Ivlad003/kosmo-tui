@@ -367,6 +367,62 @@ describe("start and traces screens", () => {
   });
 });
 
+describe("dataset lifecycle", () => {
+  const rows = [{ path: "a.kosmo-trace.json", size: 1, mtimeMs: 0, source: "found" as const, missing: false }];
+
+  function listedFromStart(): ViewState {
+    return run(
+      initialState({ root: "/work", readOnly: false, start: rows }),
+      { type: "activate" },
+      { type: "datasetOpened", dataset: dataset([summary("t1"), summary("t2")]) }
+    ).state;
+  }
+
+  it("Esc from the trace list back to the start screen emits closeDataset", () => {
+    const back = run(listedFromStart(), { type: "escape" });
+    expect(back.state.screen).toBe("start");
+    expect(back.state.dataset).toBeNull();
+    expect(back.effects).toEqual([{ kind: "closeDataset" }]);
+    // Esc on the start screen afterwards has nothing to close.
+    expect(run(back.state, { type: "escape" }).effects).toEqual([]);
+  });
+
+  it("a traceLoaded without a dataset is a no-op", () => {
+    const back = run(listedFromStart(), { type: "escape" }).state;
+    const late = update(back, { type: "traceLoaded", model: multiSession() });
+    expect(late[0]).toBe(back);
+    expect(late[1]).toEqual([]);
+  });
+
+  it("switching to another trace drops the old trace's values and snippets", () => {
+    const one = model([span({ id: "r", order: 0, location: { file: "src/r.ts", line: 1 } })]);
+    const two = model([span({ id: "q", trace: "t2", order: 0, location: { file: "src/q.ts", line: 1 } })]);
+    const snippet: Snippet = { state: "ok", file: "src/r.ts", lines: [{ n: 1, text: "r" }], target: 1 };
+    const first = run(
+      listedFromStart(),
+      { type: "traceLoaded", model: one },
+      { type: "valuesLoaded", ref: ref("r"), values: VALUES },
+      { type: "snippetLoaded", ref: ref("r"), snippet }
+    ).state;
+    expect(first.cacheBytes).toBe(jsonBytes(VALUES) + jsonBytes(snippet));
+    const switched = run(first, { type: "openTrace", id: "t2" }, { type: "traceLoaded", model: two });
+    const q = JSON.stringify(["t2", "s1", "q"]);
+    expect([...switched.state.values.keys()]).toEqual([q]);
+    expect([...switched.state.snippets.keys()]).toEqual([q]);
+    expect(switched.state.values.get(q)).toBe("loading");
+    expect(switched.state.cacheBytes).toBe(0);
+    expect(switched.effects).toEqual([
+      { kind: "loadTrace", id: "t2" },
+      { kind: "loadValues", ref: ref("q", "s1", "t2") },
+      { kind: "loadSnippet", ref: ref("q", "s1", "t2"), location: { file: "src/q.ts", line: 1 } }
+    ]);
+    // The same trace loaded again keeps what it already has.
+    const same = run(first, { type: "traceLoaded", model: one }).state;
+    expect(same.values.get(JSON.stringify(["t1", "s1", "r"]))).toEqual(VALUES);
+    expect(same.cacheBytes).toBe(first.cacheBytes);
+  });
+});
+
 describe("reload", () => {
   it("stdin cannot be re-read: reload: unavailable(stdin-stream)", () => {
     const state = run(initialState({ root: "/work", readOnly: false }), {

@@ -115,6 +115,8 @@ export type Effect =
   | { kind: "copy"; text: string }
   | { kind: "reload" }
   | { kind: "setRoot"; dir: string }
+  /** The view dropped its dataset (Esc to the start screen): late answers are dropped, then it is closed. */
+  | { kind: "closeDataset" }
   | { kind: "quit" };
 
 export type Action =
@@ -824,7 +826,7 @@ function escape(state: ViewState): Result {
         snippets: new Map(),
         cacheBytes: 0
       },
-      NO_EFFECTS
+      [{ kind: "closeDataset" }]
     ];
   }
   if (state.pane !== "tree") return [{ ...state, pane: "tree" }, NO_EFFECTS];
@@ -1029,9 +1031,25 @@ function datasetOpened(state: ViewState, dataset: DatasetView): Result {
   return [vanished === null ? listed : banner(listed, "info", vanished), NO_EFFECTS];
 }
 
+/** Keep only the cache entries of `trace`; spanKey starts with the trace id. */
+function cacheOfTrace(state: ViewState, trace: string): ViewState {
+  const prefix = `${JSON.stringify([trace]).slice(0, -1)},`;
+  const keep = <V>(map: ReadonlyMap<string, V>): Map<string, V> =>
+    new Map([...map].filter(([key]) => key.startsWith(prefix)));
+  const values = keep(state.values);
+  const snippets = keep(state.snippets);
+  return { ...state, values, snippets, cacheBytes: mapBytes(values) + mapBytes(snippets) };
+}
+
 function traceLoaded(state: ViewState, model: TraceModel): Result {
+  // Defence in depth: the session drops late answers, but without a dataset there is nothing to show
+  // a trace of (Esc went back to the start screen).
+  if (state.dataset === null) return [state, NO_EFFECTS];
+  // Another trace (`:trace`, a bookmark, a result): the previous trace's values and snippets go;
+  // entries of this trace, including requests in flight, stay.
+  const cached = cacheOfTrace(state, model.trace.id);
   const loaded: ViewState = {
-    ...state,
+    ...cached,
     screen: "trace",
     trace: model,
     pane: "tree",
