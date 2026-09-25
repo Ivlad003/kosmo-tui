@@ -13,7 +13,7 @@ function prng(seed: number): () => number {
   };
 }
 
-const ALPHABET = ["a", "Z", "0", "é", "я", "購", "￿", "", "😀", "\ud800", "\udc00", "\u0000", "~"];
+const ALPHABET = ["a", "Z", "0", "é", "я", "購", "\uFFFF", "\uE000", "😀", "\ud800", "\udc00", "\u0000", "~"];
 
 function randomText(next: () => number): string {
   let text = "";
@@ -43,8 +43,8 @@ describe("utf8Bytes", () => {
 
 describe("compareBytes", () => {
   it("orders by UTF-8 bytes, which differs from UTF-16 order for astral vs U+E000–U+FFFF", () => {
-    expect(compareBytes("￿", "😀")).toBe(-1);
-    expect("￿" < "😀").toBe(false); // plain JS string order disagrees
+    expect(compareBytes("\uFFFF", "😀")).toBe(-1);
+    expect("\uFFFF" < "😀").toBe(false); // plain JS string order disagrees
     expect(compareBytes("Z", "a")).toBe(-1);
     expect(compareBytes("z", "é")).toBe(-1);
     expect(compareBytes("ab", "a")).toBe(1);
