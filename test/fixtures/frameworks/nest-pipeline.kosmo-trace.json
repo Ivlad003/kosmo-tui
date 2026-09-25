@@ -1,0 +1,23 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_nest","producer":{"name":"kosmo-nest-recorder","version":"0.1.0"}},
+  "traces": [
+    {"id":"t_nest","name":"nest pipeline"}
+  ],
+  "spans": [
+    {"trace":"t_nest","session":"s1","id":"r1","parent":null,"order":0,"name":"GET /orders/:id","kind":"http.server","status":"complete","durationMs":6.2,"runtime":"node","attrs":{"http.request.method":"GET","http.route":"/orders/:id","http.response.status_code":200}},
+    {"trace":"t_nest","session":"s1","id":"r1_helmet","parent":"r1","order":1,"name":"helmet","kind":"express.middleware","status":"complete","runtime":"node","location":{"file":"node_modules/helmet/index.cjs","line":530},"attrs":{"express.handoff":"next"}},
+    {"trace":"t_nest","session":"s1","id":"r1_logger","parent":"r1","order":2,"name":"LoggerMiddleware.use","kind":"nest.middleware","status":"complete","runtime":"node","location":{"file":"src/common/logger.middleware.ts","line":6},"attrs":{"express.handoff":"next"}},
+    {"trace":"t_nest","session":"s1","id":"r1_guard","parent":"r1","order":3,"name":"AuthGuard.canActivate","kind":"nest.guard","status":"complete","runtime":"node","location":{"file":"src/auth/auth.guard.ts","line":9},"attrs":{"nest.binding":"global"},"return":{"state":"recorded","value":true}},
+    {"trace":"t_nest","session":"s1","id":"r1_icpt","parent":"r1","order":4,"name":"LoggingInterceptor.intercept","kind":"nest.interceptor","status":"complete","runtime":"node","location":{"file":"src/common/logging.interceptor.ts","line":11},"attrs":{"nest.binding":"controller"}},
+    {"trace":"t_nest","session":"s1","id":"r1_pipe","parent":"r1_icpt","order":5,"name":"ParseIntPipe.transform","kind":"nest.pipe","status":"complete","runtime":"node","location":{"file":"node_modules/@nestjs/common/pipes/parse-int.pipe.js","line":58},"attrs":{"nest.binding":"param","nest.pipe.arg_type":"param","nest.pipe.arg_data":"id"},"args":{"state":"recorded","value":["42"]},"return":{"state":"recorded","value":42}},
+    {"trace":"t_nest","session":"s1","id":"r1_handler","parent":"r1_icpt","order":6,"name":"OrdersController.findOne","kind":"nest.handler","status":"complete","runtime":"node","location":{"file":"src/orders/orders.controller.ts","line":18},"area":{"module":"src/orders","feature":"orders"},"attrs":{"nest.handler":"OrdersController.findOne"},"args":{"state":"recorded","value":[42]},"return":{"state":"recorded","value":{"id":42,"total":99.5}}},
+    {"trace":"t_nest","session":"s1","id":"r2","parent":null,"order":7,"name":"GET /admin/stats","kind":"http.server","status":"complete","runtime":"node","attrs":{"http.request.method":"GET","http.route":"/admin/stats","http.response.status_code":403}},
+    {"trace":"t_nest","session":"s1","id":"r2_guard","parent":"r2","order":8,"name":"RolesGuard.canActivate","kind":"nest.guard","status":"complete","runtime":"node","location":{"file":"src/auth/roles.guard.ts","line":14},"attrs":{"nest.binding":"method"},"return":{"state":"recorded","value":false}},
+    {"trace":"t_nest","session":"s1","id":"r2_filter","parent":"r2","order":9,"name":"HttpExceptionFilter.catch","kind":"nest.filter","status":"complete","runtime":"node","location":{"file":"src/common/http-exception.filter.ts","line":8},"args":{"state":"recorded","value":[{"$type":"class","name":"ForbiddenException","value":{"name":"ForbiddenException","message":"Forbidden resource"}}]}},
+    {"trace":"t_nest","session":"s1","id":"r3","parent":null,"order":10,"name":"POST /orders","kind":"http.server","status":"complete","runtime":"node","attrs":{"http.request.method":"POST","http.route":"/orders","http.response.status_code":400}},
+    {"trace":"t_nest","session":"s1","id":"r3_pipe","parent":"r3","order":11,"name":"ValidationPipe.transform","kind":"nest.pipe","status":"errored","runtime":"node","location":{"file":"node_modules/@nestjs/common/pipes/validation.pipe.js","line":74},"attrs":{"nest.binding":"global","nest.pipe.arg_type":"body"},"args":{"state":"recorded","value":[{"qty":-1}]},"error":{"state":"recorded","value":{"$type":"class","name":"BadRequestException","value":{"name":"BadRequestException","message":"qty must be a positive number"}}}},
+    {"trace":"t_nest","session":"s1","id":"r3_filter","parent":"r3","order":12,"name":"HttpExceptionFilter.catch","kind":"nest.filter","status":"complete","runtime":"node","location":{"file":"src/common/http-exception.filter.ts","line":8}}
+  ]
+}

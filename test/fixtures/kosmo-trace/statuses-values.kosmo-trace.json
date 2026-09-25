@@ -1,0 +1,20 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_status"},
+  "traces": [
+    {"id":"t_status","name":"all statuses and values"}
+  ],
+  "spans": [
+    {"trace":"t_status","session":"s1","id":"st_complete","parent":null,"order":0,"name":"completeCall","status":"complete","args":{"state":"recorded","value":null},"return":{"state":"recorded","value":{"$type":"undefined"}}},
+    {"trace":"t_status","session":"s1","id":"st_errored","parent":"st_complete","order":1,"name":"erroredCall","status":"errored","error":{"state":"recorded","value":{"$type":"class","name":"RangeError","value":{"name":"RangeError","message":"boom","stack":"RangeError: boom\n    at erroredCall (src/a.ts:3:9)"}}}},
+    {"trace":"t_status","session":"s1","id":"st_running","parent":"st_complete","order":2,"name":"runningCall","status":"running"},
+    {"trace":"t_status","session":"s1","id":"st_suspended","parent":"st_complete","order":3,"name":"suspendedRender","kind":"react.render","status":"suspended","runtime":"browser"},
+    {"trace":"t_status","session":"s1","id":"st_aborted","parent":null,"order":4,"name":"GET /slow","kind":"http.server","status":"unknown","statusReason":"aborted","attrs":{"http.request.method":"GET","http.route":"/slow","http.response.completion":"aborted"}},
+    {"trace":"t_status","session":"s1","id":"st_unknown","parent":null,"order":5,"name":"unknownCall","status":"unknown"},
+    {"trace":"t_status","session":"s1","id":"v_tags","parent":"st_complete","order":6,"name":"allTags","status":"complete","args":{"state":"recorded","value":[{"$type":"undefined"},{"$type":"number","value":"NaN"},{"$type":"number","value":"Infinity"},{"$type":"number","value":"-Infinity"},{"$type":"number","value":"-0"},{"$type":"bigint","value":"123456789012345678901234567890"},{"$type":"function","name":"handler"},{"$type":"symbol","description":"token"},{"$type":"date","value":"2026-09-24T10:00:00.000Z"},{"$type":"map","entries":[["k",1],[{"$type":"symbol","description":"s"},{"$type":"undefined"}]]},{"$type":"set","values":[1,"two"]},{"$type":"class","name":"Cart","value":{"items":2}},{"$type":"class","name":"RegExp","value":{"source":"^a+$","flags":"gi"}},{"$type":"class","name":"Promise","value":{"state":"pending"}},{"$type":"class","name":"Buffer","value":{"length":16}},{"$type":"accessor","get":true,"set":false},[1,{"$type":"hole"},3],{"$type":"cycle","path":"$.a.b"},{"password":{"$type":"masked"},"user":"ann"},{"$type":"object","entries":{"$type":"literal key","plain":1}}]}},
+    {"trace":"t_status","session":"s1","id":"v_truncated","parent":"st_complete","order":7,"name":"truncatedValues","status":"complete","args":{"state":"truncated","value":[1,2,{"$type":"more","count":120}],"reason":"producer-cap"},"return":{"state":"truncated","value":{"$type":"object","entries":{"a":{"$type":"deeper"}},"more":7}},"error":{"state":"truncated","value":{"$type":"string-cut","value":"very long mess","length":40000}}},
+    {"trace":"t_status","session":"s1","id":"v_masked","parent":"st_complete","order":8,"name":"maskedValues","status":"complete","args":{"state":"masked","reason":"policy"},"return":{"state":"masked"},"error":{"state":"not-recorded"}},
+    {"trace":"t_status","session":"s1","id":"v_not_recorded","parent":"st_complete","order":9,"name":"notRecordedValues","status":"complete","args":{"state":"not-recorded","reason":"level"},"return":{"state":"not-recorded","reason":"threw"}}
+  ]
+}

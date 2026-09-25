@@ -1,0 +1,18 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_react","producer":{"name":"kosmo-react-recorder","version":"0.1.0"}},
+  "traces": [
+    {"id":"t_react","name":"cart page render"}
+  ],
+  "spans": [
+    {"trace":"t_react","session":"browser","id":"rd_app","parent":null,"order":0,"name":"App","kind":"react.render","status":"complete","runtime":"browser","location":{"file":"src/App.tsx","line":5}},
+    {"trace":"t_react","session":"browser","id":"rd_cart","parent":"rd_app","order":1,"name":"CartView","kind":"react.render","status":"complete","runtime":"browser","location":{"file":"src/cart/CartView.tsx","line":12},"area":{"module":"src/cart","feature":"cart"},"args":{"state":"recorded","value":[{"items":2}]}},
+    {"trace":"t_react","session":"browser","id":"rd_cart_dup","parent":"rd_app","order":2,"name":"CartView","kind":"react.render","status":"complete","runtime":"browser","location":{"file":"src/cart/CartView.tsx","line":12},"area":{"module":"src/cart","feature":"cart"},"attrs":{"react.strict_mode.duplicate":true},"args":{"state":"recorded","value":[{"items":2}]}},
+    {"trace":"t_react","session":"browser","id":"ef_setup1","parent":"rd_cart","order":3,"name":"useCartSync","kind":"react.effect","status":"complete","runtime":"browser","location":{"file":"src/cart/useCartSync.ts","line":7},"attrs":{"react.effect.type":"passive","react.effect.phase":"setup"}},
+    {"trace":"t_react","session":"browser","id":"ef_cleanup","parent":"rd_cart","order":4,"name":"useCartSync","kind":"react.effect","status":"complete","runtime":"browser","location":{"file":"src/cart/useCartSync.ts","line":7},"attrs":{"react.effect.type":"passive","react.effect.phase":"cleanup","react.strict_mode.duplicate":true}},
+    {"trace":"t_react","session":"browser","id":"ef_setup2","parent":"rd_cart","order":5,"name":"useCartSync","kind":"react.effect","status":"complete","runtime":"browser","location":{"file":"src/cart/useCartSync.ts","line":7},"attrs":{"react.effect.type":"passive","react.effect.phase":"setup","react.strict_mode.duplicate":true}},
+    {"trace":"t_react","session":"browser","id":"rd_list","parent":"rd_app","order":6,"name":"ProductList","kind":"react.render","status":"suspended","statusReason":"SuspenseException","runtime":"browser","location":{"file":"src/products/ProductList.tsx","line":20}},
+    {"trace":"t_react","session":"browser","id":"ef_layout","parent":"rd_app","order":7,"name":"useMeasure","kind":"react.effect","status":"complete","runtime":"browser","location":{"file":"src/hooks/useMeasure.ts","line":3},"attrs":{"react.effect.type":"layout","react.effect.phase":"setup"}}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_express","producer":{"name":"kosmo-express-recorder","version":"0.1.0"}},
+  "traces": [
+    {"id":"t_express","name":"orders API"}
+  ],
+  "spans": [
+    {"trace":"t_express","session":"s1","id":"req1","parent":null,"order":0,"name":"GET /api/orders/:id","kind":"http.server","status":"errored","durationMs":9.5,"runtime":"node","attrs":{"http.request.method":"GET","http.route":"/api/orders/:id","http.response.status_code":500,"http.response.completion":"finish"}},
+    {"trace":"t_express","session":"s1","id":"router1","parent":"req1","order":1,"name":"router","kind":"express.router","status":"complete","runtime":"node","location":{"file":"src/app.ts","line":12},"attrs":{"express.mount_path":"/api"}},
+    {"trace":"t_express","session":"s1","id":"mw_cors","parent":"router1","order":2,"name":"corsMiddleware","kind":"express.middleware","status":"complete","durationMs":0.2,"runtime":"node","location":{"file":"node_modules/.pnpm/cors@2.8.5/node_modules/cors/lib/index.js","line":188},"attrs":{"express.handoff":"next"}},
+    {"trace":"t_express","session":"s1","id":"mw_json","parent":"router1","order":3,"name":"jsonParser","kind":"express.middleware","status":"complete","durationMs":0.6,"runtime":"node","location":{"file":"node_modules/body-parser/lib/types/json.js","line":101},"attrs":{"express.handoff":"next"}},
+    {"trace":"t_express","session":"s1","id":"h_get","parent":"router1","order":4,"name":"getOrder","kind":"express.handler","status":"errored","durationMs":4.1,"runtime":"node","location":{"file":"src/routes/orders.ts","line":14,"snippet":"router.get(\"/:id\", async (req, res, next) => {"},"area":{"module":"src/routes","feature":"orders"},"attrs":{"express.handoff":"next-error"},"args":{"state":"recorded","value":[{"params":{"id":"42"}}]},"error":{"state":"recorded","value":{"$type":"class","name":"Error","value":{"name":"Error","message":"order 42 not found in cache"}}}},
+    {"trace":"t_express","session":"s1","id":"eh","parent":"router1","order":5,"name":"errorHandler","kind":"express.error-handler","status":"complete","durationMs":0.3,"runtime":"node","location":{"file":"src/middleware/errors.ts","line":5},"area":{"module":"src/middleware","feature":"orders"},"attrs":{"express.handoff":"response","error.type":"Error"}},
+    {"trace":"t_express","session":"s1","id":"req2","parent":null,"order":6,"name":"POST /api/orders","kind":"http.server","status":"running","runtime":"node","attrs":{"http.request.method":"POST","http.route":"/api/orders"}},
+    {"trace":"t_express","session":"s1","id":"router2","parent":"req2","order":7,"name":"router","kind":"express.router","status":"running","runtime":"node","location":{"file":"src/app.ts","line":12},"attrs":{"express.mount_path":"/api"}},
+    {"trace":"t_express","session":"s1","id":"mw_auth","parent":"router2","order":8,"name":"authenticate","kind":"express.middleware","status":"running","runtime":"node","location":{"file":"src/middleware/auth.ts","line":3},"area":{"module":"src/middleware","feature":"auth"}}
+  ]
+}

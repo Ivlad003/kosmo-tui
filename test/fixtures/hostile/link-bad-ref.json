@@ -1,0 +1,11 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_hostile"},
+  "links": [
+    {"from":{"trace":"t","id":"a"},"to":{"trace":"t","session":"s1","id":"a"},"kind":"caused-by"}
+  ],
+  "spans": [
+    {"trace":"t","session":"s1","id":"a","parent":null,"order":0,"name":"call","status":"complete"}
+  ]
+}

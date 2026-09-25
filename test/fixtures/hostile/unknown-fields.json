@@ -1,0 +1,12 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_hostile","futureField":1},
+  "traces": [
+    {"id":"t","futureField":1}
+  ],
+  "spans": [
+    {"trace":"t","session":"s1","id":"a","parent":null,"order":0,"name":"call","status":"complete","futureField":true,"location":{"file":"src/a.ts","line":1,"futureField":1}}
+  ],
+  "x-extra": {"any":"thing"}
+}

@@ -1,0 +1,21 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_next","producer":{"name":"kosmo-next-recorder","version":"0.1.0"}},
+  "traces": [
+    {"id":"t_next_action","name":"add to cart (next dev)"},
+    {"id":"t_next_deployed","name":"GET /products (deployed edge)"}
+  ],
+  "spans": [
+    {"trace":"t_next_action","session":"browser","id":"b1","parent":null,"order":0,"name":"onSubmit","status":"complete","runtime":"browser","location":{"file":"app/cart/AddToCart.tsx","line":14}},
+    {"trace":"t_next_action","session":"browser","id":"b2","parent":"b1","order":1,"name":"addToCart","kind":"next.server-action","status":"complete","runtime":"browser","location":{"file":"app/cart/actions.ts","line":3},"attrs":{"next.action.id":"7f3a9c"}},
+    {"trace":"t_next_action","session":"node","id":"n1","parent":"b2","parentSession":"browser","order":0,"name":"POST /cart","kind":"http.server","status":"complete","runtime":"node","attrs":{"http.request.method":"POST","http.route":"/cart","http.response.status_code":200,"next.request.type":"action"}},
+    {"trace":"t_next_action","session":"node","id":"n_mw","parent":"n1","order":1,"name":"middleware","kind":"next.middleware","status":"complete","runtime":"edge","location":{"file":"middleware.ts","line":4}},
+    {"trace":"t_next_action","session":"node","id":"n2","parent":"n1","order":2,"name":"addToCart","kind":"next.server-action","status":"complete","runtime":"node","location":{"file":"app/cart/actions.ts","line":3},"attrs":{"next.action.id":"7f3a9c"},"args":{"state":"recorded","value":[{"productId":"p1","qty":1}]},"return":{"state":"recorded","value":{"ok":true}}},
+    {"trace":"t_next_action","session":"node","id":"n3","parent":"n1","order":3,"name":"render /cart","kind":"next.render","status":"complete","runtime":"node","location":{"file":"app/cart/page.tsx","line":1}},
+    {"trace":"t_next_deployed","session":"edge","id":"e1","parent":null,"order":0,"name":"middleware","kind":"next.middleware","status":"complete","runtime":"edge","location":{"file":"middleware.ts","line":4}},
+    {"trace":"t_next_deployed","session":"node","id":"n4","parent":"e1","parentSession":"edge","order":0,"name":"GET /products","kind":"http.server","status":"complete","runtime":"node","attrs":{"http.request.method":"GET","http.route":"/products","http.response.status_code":200,"next.request.type":"document"}},
+    {"trace":"t_next_deployed","session":"node","id":"n5","parent":"n4","order":1,"name":"render /products","kind":"next.render","status":"complete","runtime":"node","location":{"file":"app/products/page.tsx","line":1}},
+    {"trace":"t_next_deployed","session":"node","id":"n6","parent":"n4","order":2,"name":"GET /api/products","kind":"next.route-handler","status":"complete","runtime":"node","location":{"file":"app/api/products/route.ts","line":5}}
+  ]
+}

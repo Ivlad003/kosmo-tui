@@ -1,0 +1,20 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_multi","producer":{"name":"kosmo-tui-fixtures"}},
+  "traces": [
+    {"id":"t_checkout","name":"checkout click"},
+    {"id":"t_health","name":"GET /health"}
+  ],
+  "spans": [
+    {"trace":"t_checkout","session":"browser","id":"b1","parent":null,"order":0,"name":"onCheckoutClick","status":"complete","runtime":"browser","location":{"file":"app/components/Checkout.tsx","line":21}},
+    {"trace":"t_checkout","session":"browser","id":"b2","parent":"b1","order":1,"name":"fetch /api/checkout","kind":"http.client","status":"complete","runtime":"browser","location":{"file":"app/lib/api.ts","line":8},"attrs":{"http.request.method":"POST"}},
+    {"trace":"t_checkout","session":"browser","id":"x1","parent":"b1","order":2,"name":"hydrateCart","status":"complete","runtime":"browser"},
+    {"trace":"t_checkout","session":"node","id":"n1","parent":"b2","order":0,"name":"POST /api/checkout","kind":"http.server","status":"complete","runtime":"node","location":{"file":"server/routes/checkout.ts","line":4},"attrs":{"http.request.method":"POST","http.route":"/api/checkout","http.response.status_code":201}},
+    {"trace":"t_checkout","session":"node","id":"x1","parent":"n1","order":1,"name":"validateCart","status":"complete","runtime":"node","location":{"file":"server/cart/validate.ts","line":2}},
+    {"trace":"t_checkout","session":"node","id":"n2","parent":"x1","order":2,"name":"createOrder","status":"complete","runtime":"node","location":{"file":"server/orders/create.ts","line":9}},
+    {"trace":"t_checkout","session":"node","id":"n3","parent":"b1","parentSession":"browser","order":3,"name":"notifyBrowser","status":"complete","runtime":"node"},
+    {"trace":"t_health","session":"s1","id":"h1","parent":null,"order":0,"name":"GET /health","kind":"http.server","status":"complete","runtime":"node","attrs":{"http.request.method":"GET","http.route":"/health","http.response.status_code":200}},
+    {"trace":"t_orphan","session":"s1","id":"o1","parent":null,"order":0,"name":"backgroundJob","status":"running","runtime":"node"}
+  ]
+}

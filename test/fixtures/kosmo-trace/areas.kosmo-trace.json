@@ -1,0 +1,20 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_areas"},
+  "traces": [
+    {"id":"t_areas","name":"areas"}
+  ],
+  "spans": [
+    {"trace":"t_areas","session":"s1","id":"ar_explicit","parent":null,"order":0,"name":"explicitBoth","status":"complete","location":{"file":"src/cart/total.ts","line":4},"area":{"module":"src/cart","feature":"cart"}},
+    {"trace":"t_areas","session":"s1","id":"ar_module","parent":"ar_explicit","order":1,"name":"explicitModule","status":"complete","location":{"file":"src/cart/tax.ts","line":1},"area":{"module":"src/cart"}},
+    {"trace":"t_areas","session":"s1","id":"ar_feature","parent":"ar_explicit","order":2,"name":"explicitFeature","status":"complete","area":{"feature":"checkout"}},
+    {"trace":"t_areas","session":"s1","id":"ar_empty","parent":"ar_explicit","order":3,"name":"emptyAreaObject","status":"complete","location":{"file":"src/cart/index.ts","line":2},"area":{}},
+    {"trace":"t_areas","session":"s1","id":"ar_derived","parent":"ar_explicit","order":4,"name":"derivedFromFile","status":"errored","location":{"file":"src/cart/discount.ts","line":9}},
+    {"trace":"t_areas","session":"s1","id":"ar_rootfile","parent":"ar_explicit","order":5,"name":"rootFile","status":"complete","location":{"file":"main.ts","line":1}},
+    {"trace":"t_areas","session":"s1","id":"ar_nm","parent":"ar_explicit","order":6,"name":"expressRouter","kind":"express.router","status":"complete","location":{"file":"node_modules/express/lib/router/index.js","line":280}},
+    {"trace":"t_areas","session":"s1","id":"ar_scoped","parent":"ar_explicit","order":7,"name":"nestRouterExplorer","status":"complete","location":{"file":"node_modules/@nestjs/core/router/router-explorer.js","line":40}},
+    {"trace":"t_areas","session":"s1","id":"ar_pnpm","parent":"ar_explicit","order":8,"name":"cors","kind":"express.middleware","status":"complete","location":{"file":"node_modules/.pnpm/cors@2.8.5/node_modules/cors/lib/index.js","line":188}},
+    {"trace":"t_areas","session":"s1","id":"ar_unknown","parent":"ar_explicit","order":9,"name":"noLocationNoArea","status":"complete"}
+  ]
+}

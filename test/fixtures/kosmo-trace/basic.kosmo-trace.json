@@ -1,0 +1,14 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_basic","producer":{"name":"kosmo-tui-fixtures","version":"1.0.0"},"createdAt":"2026-09-24T10:00:00Z","title":"checkout bug repro"},
+  "traces": [
+    {"id":"t_cart","name":"GET /cart"}
+  ],
+  "spans": [
+    {"trace":"t_cart","session":"s1","id":"sp_1","parent":null,"order":0,"name":"GET /cart","kind":"http.server","status":"errored","durationMs":14.2,"runtime":"node","location":{"file":"src/server.ts","line":10,"column":1},"area":{"module":"src/server","feature":"cart"},"attrs":{"http.request.method":"GET","http.route":"/cart","http.response.status_code":500}},
+    {"trace":"t_cart","session":"s1","id":"sp_2","parent":"sp_1","order":1,"name":"loadCart","status":"complete","durationMs":3.1,"runtime":"node","location":{"file":"src/cart.ts","line":3},"area":{"module":"src/cart","feature":"cart"},"args":{"state":"recorded","value":["u_42"]},"return":{"state":"recorded","value":{"items":[{"id":7,"qty":2}]}}},
+    {"trace":"t_cart","session":"s1","id":"sp_3","parent":"sp_1","order":2,"name":"calculateLineTotal","status":"errored","durationMs":1.8,"runtime":"node","location":{"file":"src/cart.ts","line":12,"column":3,"endLine":20,"snippet":"export async function calculateLineTotal(item, qty) {"},"area":{"module":"src/cart","feature":"cart"},"attrs":{"code.function":"calculateLineTotal"},"args":{"state":"recorded","value":[{"id":7},2]},"return":{"state":"not-recorded","reason":"threw"},"error":{"state":"recorded","value":{"name":"RangeError","message":"discount > 100%"}}},
+    {"trace":"t_cart","session":"s1","id":"sp_4","parent":"sp_3","order":3,"name":"price","status":"complete","durationMs":0.4,"runtime":"node","location":{"file":"src/pricing.ts","line":5},"args":{"state":"recorded","value":[7]},"return":{"state":"recorded","value":12.5}}
+  ]
+}

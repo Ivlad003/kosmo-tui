@@ -1,0 +1,21 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_links"},
+  "traces": [
+    {"id":"t_links","name":"effect → fetch"},
+    {"id":"t_links_server","name":"GET /api/cart"}
+  ],
+  "spans": [
+    {"trace":"t_links","session":"browser","id":"e1","parent":null,"order":0,"name":"useCartEffect","kind":"react.effect","status":"complete","runtime":"browser","attrs":{"react.effect.type":"passive","react.effect.phase":"setup"}},
+    {"trace":"t_links","session":"browser","id":"f1","parent":null,"order":1,"name":"fetch /api/cart","kind":"http.client","status":"complete","runtime":"browser","attrs":{"http.request.method":"GET"}},
+    {"trace":"t_links","session":"browser","id":"f2","parent":null,"order":2,"name":"fetch /api/prices","kind":"http.client","status":"complete","runtime":"browser"},
+    {"trace":"t_links_server","session":"node","id":"srv1","parent":null,"order":0,"name":"GET /api/cart","kind":"http.server","status":"complete","runtime":"node","attrs":{"http.request.method":"GET","http.route":"/api/cart","http.response.status_code":200}}
+  ],
+  "links": [
+    {"from":{"trace":"t_links","session":"browser","id":"f1"},"to":{"trace":"t_links","session":"browser","id":"e1"},"kind":"caused-by"},
+    {"from":{"trace":"t_links","session":"browser","id":"f2"},"to":{"trace":"t_links","session":"browser","id":"f1"},"kind":"follows-from"},
+    {"from":{"trace":"t_links","session":"browser","id":"f2"},"to":{"trace":"t_links","session":"browser","id":"gone"},"kind":"caused-by"},
+    {"from":{"trace":"t_links_server","session":"node","id":"srv1"},"to":{"trace":"t_links","session":"browser","id":"f1"},"kind":"caused-by"}
+  ]
+}

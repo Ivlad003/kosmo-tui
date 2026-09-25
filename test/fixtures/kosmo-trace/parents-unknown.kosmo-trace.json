@@ -1,0 +1,21 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_parents"},
+  "traces": [
+    {"id":"t_parents","name":"parent resolution"}
+  ],
+  "spans": [
+    {"trace":"t_parents","session":"s1","id":"r1","parent":null,"order":0,"name":"root","status":"complete"},
+    {"trace":"t_parents","session":"s1","id":"m1","parent":"ghost","order":1,"name":"missingParent","status":"complete"},
+    {"trace":"t_parents","session":"s1","id":"a1","parent":"dup","order":2,"name":"ambiguousParent","status":"complete"},
+    {"trace":"t_parents","session":"s1","id":"ps1","parent":"r1","parentSession":"s9","order":3,"name":"explicitMissing","status":"complete"},
+    {"trace":"t_parents","session":"s1","id":"ps3","parent":"r1","parentSession":"s1","order":4,"name":"explicitSameSession","status":"complete"},
+    {"trace":"t_parents","session":"s2","id":"dup","parent":null,"order":0,"name":"dupInS2","status":"complete"},
+    {"trace":"t_parents","session":"s2","id":"ps2","parent":"r1","parentSession":"s1","order":1,"name":"explicitOtherSession","status":"complete"},
+    {"trace":"t_parents","session":"s2","id":"ps4","parent":"dup","parentSession":"s1","order":2,"name":"explicitNoFallback","status":"complete"},
+    {"trace":"t_parents","session":"s2","id":"ps5","parent":"r1","parentSession":"s2","order":3,"name":"explicitOwnSessionMissing","status":"complete"},
+    {"trace":"t_parents","session":"s2","id":"c1","parent":"m1","parentSession":"s1","order":4,"name":"childOfMissing","status":"complete"},
+    {"trace":"t_parents","session":"s3","id":"dup","parent":null,"order":0,"name":"dupInS3","status":"complete"}
+  ]
+}

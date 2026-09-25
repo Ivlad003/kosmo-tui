@@ -1,0 +1,18 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_cycles"},
+  "traces": [
+    {"id":"t_cycles","name":"cycles"}
+  ],
+  "spans": [
+    {"trace":"t_cycles","session":"s1","id":"n0","parent":null,"order":0,"name":"realRoot","status":"complete"},
+    {"trace":"t_cycles","session":"s1","id":"c1","parent":"c2","order":5,"name":"cycleA","status":"complete"},
+    {"trace":"t_cycles","session":"s1","id":"c2","parent":"c1","order":3,"name":"cycleB","status":"complete"},
+    {"trace":"t_cycles","session":"s1","id":"d1","parent":"c1","order":6,"name":"hangsOffCycle","status":"complete"},
+    {"trace":"t_cycles","session":"s1","id":"self1","parent":"self1","order":7,"name":"selfParent","status":"complete"},
+    {"trace":"t_cycles","session":"s1","id":"k2","parent":"k1","order":10,"name":"ringB","status":"complete"},
+    {"trace":"t_cycles","session":"s1","id":"k3","parent":"k2","order":11,"name":"ringC","status":"complete"},
+    {"trace":"t_cycles","session":"s2","id":"k1","parent":"k3","order":0,"name":"ringA","status":"complete"}
+  ]
+}

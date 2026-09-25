@@ -4,3 +4,6 @@ package-lock.json
 test/fixtures/cross-source
 docs/superpowers/specs/evidence
 docs/superpowers/plans
+test/fixtures/hostile
+test/fixtures/kosmo-trace
+test/fixtures/frameworks

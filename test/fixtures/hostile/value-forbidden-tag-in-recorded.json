@@ -1,0 +1,8 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_hostile"},
+  "spans": [
+    {"trace":"t","session":"s1","id":"a","parent":null,"order":0,"name":"call","status":"complete","args":{"state":"recorded","value":[1,{"$type":"more","count":3}]}}
+  ]
+}

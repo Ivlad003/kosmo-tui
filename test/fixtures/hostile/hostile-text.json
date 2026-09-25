@@ -1,0 +1,11 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_hostile"},
+  "traces": [
+    {"id":"t","name":"trace \u001b[1mbold\u001b[0m"}
+  ],
+  "spans": [
+    {"trace":"t","session":"s1","id":"a","parent":null,"order":0,"name":"evil\u001b[2J\u001b]52;c;aGVsbG8=\u0007\u009b31m\u202eeman","status":"unknown","kind":"x.\u001b[31mkind","statusReason":"\u001b]8;;file:///etc/passwd\u0007click","location":{"file":"src/a.ts","line":1,"snippet":"const s = \"\u001b[31m\";"},"area":{"module":"src/\u009b31m","feature":"\u202eevil"},"attrs":{"x.text":"\u001b[2Jwipe","x.bidi":"\u202eevil"},"args":{"state":"recorded","value":["\u001b]0;title\u0007","\u009b2J",{"\u202ekey":"\u2066v\u2069"}]},"error":{"state":"recorded","value":{"name":"Error","message":"\u001b[31mred\u001b[0m\r\nforged line"}}}
+  ]
+}
