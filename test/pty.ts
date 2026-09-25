@@ -8,7 +8,8 @@
  * terminal would show, so assertions read the current frame rather than the byte log.
  */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,8 +39,16 @@ export function spawnInPty(command: string, size: { rows: number; cols: number }
   return spawn("sh", ["-c", `cat | ${script}`], {
     stdio: ["pipe", "pipe", "pipe"],
     detached: true,
-    env: { ...process.env, TERM: "xterm-256color" }
+    // A private config dir: the viewer records every opened file in recent.json, and a test
+    // must never write into the developer's real ~/.config/kosmo-tui.
+    env: { ...process.env, TERM: "xterm-256color", XDG_CONFIG_HOME: ptyConfigHome() }
   });
+}
+
+let configHome: string | undefined;
+function ptyConfigHome(): string {
+  configHome ??= mkdtempSync(path.join(os.tmpdir(), "kosmo-pty-config-"));
+  return configHome;
 }
 
 export type PtySession = {
