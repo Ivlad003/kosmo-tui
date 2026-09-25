@@ -421,6 +421,38 @@ describe("dataset lifecycle", () => {
     expect(same.values.get(JSON.stringify(["t1", "s1", "r"]))).toEqual(VALUES);
     expect(same.cacheBytes).toBe(first.cacheBytes);
   });
+
+  it("a late reply for the previous trace, or one nobody asked for, is not stored", () => {
+    const one = model([span({ id: "r", order: 0, location: { file: "src/r.ts", line: 1 } })]);
+    const two = model([span({ id: "q", trace: "t2", order: 0, location: { file: "src/q.ts", line: 1 } })]);
+    const snippet: Snippet = { state: "ok", file: "src/r.ts", lines: [{ n: 1, text: "r" }], target: 1 };
+    const asked = run(listedFromStart(), { type: "traceLoaded", model: one }).state;
+    expect(asked.values.get(JSON.stringify(["t1", "s1", "r"]))).toBe("loading");
+    const switched = run(asked, { type: "openTrace", id: "t2" }, { type: "traceLoaded", model: two }).state;
+    const late = run(
+      switched,
+      { type: "valuesLoaded", ref: ref("r"), values: VALUES },
+      { type: "valuesFailed", ref: ref("r"), reason: "gone" },
+      { type: "snippetLoaded", ref: ref("r"), snippet }
+    ).state;
+    expect(late).toBe(switched);
+    expect([...late.values.keys()]).toEqual([JSON.stringify(["t2", "s1", "q"])]);
+    expect([...late.snippets.keys()]).toEqual([JSON.stringify(["t2", "s1", "q"])]);
+    expect(late.cacheBytes).toBe(0);
+    // In the current trace too: only a key in flight takes an answer, and only once.
+    const unasked = update(switched, { type: "valuesLoaded", ref: ref("x", "s1", "t2"), values: VALUES })[0];
+    expect(unasked).toBe(switched);
+    const answered = run(
+      switched,
+      { type: "valuesLoaded", ref: ref("q", "s1", "t2"), values: VALUES },
+      { type: "snippetLoaded", ref: ref("q", "s1", "t2"), snippet }
+    ).state;
+    expect(answered.values.get(JSON.stringify(["t2", "s1", "q"]))).toEqual(VALUES);
+    expect(answered.snippets.get(JSON.stringify(["t2", "s1", "q"]))).toEqual(snippet);
+    expect(answered.cacheBytes).toBe(jsonBytes(VALUES) + jsonBytes(snippet));
+    const twice = update(answered, { type: "valuesFailed", ref: ref("q", "s1", "t2"), reason: "late" })[0];
+    expect(twice).toBe(answered);
+  });
 });
 
 describe("reload", () => {
@@ -584,7 +616,11 @@ describe("prompt, commands, banner", () => {
   });
 
   it("a failed lazy read shows read-error instead of a value", () => {
-    const state = run(onTrace(multiSession()), { type: "valuesFailed", ref: ref("a"), reason: "disk I/O error" }).state;
+    // The answer to a request in flight: the selected span of a lazy (SQLite) trace.
+    const lazy = model([span({ id: "a", order: 0 })]);
+    const asked = onTrace(lazy);
+    expect(asked.values.get(JSON.stringify(["t1", "s1", "a"]))).toBe("loading");
+    const state = run(asked, { type: "valuesFailed", ref: ref("a"), reason: "disk I/O error" }).state;
     expect(state.values.get(JSON.stringify(["t1", "s1", "a"]))).toEqual({
       args: { state: "not-recorded", reason: "read-error: disk I/O error" },
       return: { state: "not-recorded", reason: "read-error: disk I/O error" },

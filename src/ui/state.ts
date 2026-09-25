@@ -614,13 +614,18 @@ export function update(current: ViewState, action: Action): Result {
         ),
         NO_EFFECTS
       ];
+    // A reply is taken only for a key still in flight: a late answer for a trace the user left (its
+    // entries went in `cacheOfTrace`), after Esc or a reload (fresh maps), or a second answer is dropped.
     case "valuesLoaded":
+      if (!inFlight(state.values, action.ref)) return [state, NO_EFFECTS];
       return [cacheValues(state, action.ref, action.values), NO_EFFECTS];
     case "valuesFailed": {
+      if (!inFlight(state.values, action.ref)) return [state, NO_EFFECTS];
       const failed = { state: "not-recorded", reason: `read-error: ${action.reason}` } as const;
       return [cacheValues(state, action.ref, { args: failed, return: failed, error: failed }), NO_EFFECTS];
     }
     case "snippetLoaded":
+      if (!inFlight(state.snippets, action.ref)) return [state, NO_EFFECTS];
       return [cacheSnippet(state, action.ref, action.snippet), NO_EFFECTS];
     case "readingProgress":
       return [{ ...state, reading: action.spans }, NO_EFFECTS];
@@ -685,6 +690,11 @@ function mapBytes(map: ReadonlyMap<string, SpanValues | Snippet | "loading">): n
   let total = 0;
   for (const entry of map.values()) total += entryBytes(entry);
   return total;
+}
+
+/** `select` put "loading" under this key and no answer has settled it yet. */
+function inFlight(map: ReadonlyMap<string, unknown>, ref: SpanRef): boolean {
+  return map.get(spanKey(ref)) === "loading";
 }
 
 function cacheValues(state: ViewState, ref: SpanRef, values: SpanValues): ViewState {
