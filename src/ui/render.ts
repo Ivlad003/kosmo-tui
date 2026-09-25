@@ -44,7 +44,7 @@ export function renderFrame(state: ViewState, size: { cols: number; rows: number
     return small;
   }
   const bodyHeight = rows - 2;
-  const header = headerLine(headerTitle(state, env.color), `${keyHints(state)} `, cols);
+  const header = headerLine(headerTitle(state, env.color, cols), `${keyHints(state)} `, cols);
   const body =
     state.screen === "start"
       ? startBody(state, cols, bodyHeight, env.color)

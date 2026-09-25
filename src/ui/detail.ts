@@ -15,13 +15,13 @@
  *    costs the same whatever the file holds.
  */
 
-import { ELLIPSIS, truncateVisible, visibleWidth } from "../ansi.js";
+import { ELLIPSIS, clipPrefix, measureLimit, truncateVisible, visibleWidth } from "../ansi.js";
 import { THEME, paint, sourceLink, type ColorEnv, type ColorLevel } from "../color.js";
 import { expandCodeTabs, windowLines, type Snippet } from "../code/snippet.js";
 import { maskAttrs } from "../format/kinds.js";
 import type { TraceModel } from "../format/model.js";
 import type { Json, Location, SpanRef, SpanRow, SpanValues, Value } from "../format/types.js";
-import { utf8Bytes } from "../format/validate.js";
+import { utf8Bytes, utf8Prefix } from "../format/bytes.js";
 import { compactJson, maskValue, tagOf } from "../format/value.js";
 import { escapeTerminalControls, isSafeOsc8Uri, toFileUri } from "../sanitize.js";
 import { wrapVisible } from "../wrap.js";
@@ -53,29 +53,29 @@ const LABEL_WIDTH = 8;
 /** Without focus the code window keeps at least `▶` and two lines of context on each side, when they exist. */
 const CODE_MIN_ROWS = 5;
 
+/**
+ * With focus a block wraps over at most this many rows of its width: room for the header of a span with
+ * a 1024 B name or a 4096 B value, while text of hostile length is cut (with `…`) before `wrapVisible`.
+ */
+const WRAP_MAX_ROWS = 64;
+
 /** Cut plain, already escaped text to `width` columns without measuring more than a bounded prefix. */
 export function clipText(text: string, width: number): string {
   if (width <= 0) return "";
-  const limit = Math.max(64, width * 8);
-  if (text.length <= limit) return truncateVisible(text, width);
-  let head = text.slice(0, limit);
-  const last = head.charCodeAt(head.length - 1);
-  if (last >= 0xd800 && last <= 0xdbff) head = head.slice(0, -1);
-  return truncateVisible(head + ELLIPSIS, width);
+  return truncateVisible(clipPrefix(text, measureLimit(width)), width);
 }
 
+/** Wrap plain, already escaped text to `width` columns; only a bounded prefix is wrapped (spec 4.9, 8). */
+function wrapText(text: string, width: number): string[] {
+  return wrapVisible(clipPrefix(text, measureLimit(width) * WRAP_MAX_ROWS), width);
+}
+
+/** `text` cut to at most `max` UTF-8 bytes, `…` included; only a bounded prefix is ever scanned. */
 function capBytes(text: string, max: number): string {
-  if (utf8Bytes(text) <= max) return text;
-  let out = "";
-  let used = 0;
-  const budget = max - utf8Bytes(ELLIPSIS);
-  for (const char of text) {
-    const size = utf8Bytes(char);
-    if (used + size > budget) break;
-    out += char;
-    used += size;
-  }
-  return out + ELLIPSIS;
+  if (text.length * 3 <= max) return text;
+  const head = utf8Prefix(text, max);
+  if (head.length === text.length) return text;
+  return utf8Prefix(head, max - utf8Bytes(ELLIPSIS)) + ELLIPSIS;
 }
 
 function jsonText(value: Json): string {
@@ -97,8 +97,13 @@ function errorText(value: Json): string | null {
   return escapeTerminalControls(capBytes(`${inner.name}: ${inner.message}`, DETAIL_VALUE_MAX_BYTES));
 }
 
+/** Free text of a value (reason, invalid-value position and message): capped like the JSON, then escaped. */
+function freeText(text: string): string {
+  return escapeTerminalControls(capBytes(text, DETAIL_VALUE_MAX_BYTES));
+}
+
 function reasonSuffix(reason: string | undefined): string {
-  return reason === undefined ? "" : ` (${escapeTerminalControls(reason)})`;
+  return reason === undefined ? "" : ` (${freeText(reason)})`;
 }
 
 /**
@@ -128,7 +133,7 @@ export function valueText(value: Value | "loading" | undefined, role: "args" | "
         ((role === "error" ? errorText(masked.value) : null) ?? jsonText(masked.value)) + unknownTagMark(masked.value)
       );
     case "truncated":
-      return `truncated${masked.reason === undefined ? "" : `(${escapeTerminalControls(masked.reason)})`} ${jsonText(masked.value)}${unknownTagMark(masked.value)}`;
+      return `truncated${masked.reason === undefined ? "" : `(${freeText(masked.reason)})`} ${jsonText(masked.value)}${unknownTagMark(masked.value)}`;
     case "masked":
       return `masked${reasonSuffix(masked.reason)}`;
     case "not-recorded":
@@ -136,9 +141,9 @@ export function valueText(value: Value | "loading" | undefined, role: "args" | "
     case "live":
       return `live ${jsonText(masked.value)}${unknownTagMark(masked.value)}`;
     case "invalid-value":
-      return `invalid-value(${escapeTerminalControls(masked.position)}: ${escapeTerminalControls(masked.what)})`;
+      return `invalid-value(${freeText(masked.position)}: ${freeText(masked.what)})`;
     case "unknown-state":
-      return `not-recorded (${escapeTerminalControls(masked.raw)}) · unknown-state`;
+      return `not-recorded (${freeText(masked.raw)}) · unknown-state`;
   }
 }
 
@@ -263,7 +268,7 @@ function valueLines(values: SpanValues | "loading" | undefined, width: number, w
 
 function labelled(label: string, text: string, width: number, wrap: boolean): string[] {
   const room = Math.max(1, width - LABEL_WIDTH);
-  const pieces = wrap ? wrapVisible(text, room) : [clipText(text, room)];
+  const pieces = wrap ? wrapText(text, room) : [clipText(text, room)];
   return pieces.map((piece, index) => `${index === 0 ? label.padEnd(LABEL_WIDTH) : " ".repeat(LABEL_WIDTH)}${piece}`);
 }
 
@@ -328,7 +333,7 @@ export function detailLines(input: DetailInput, options: DetailOptions): string[
   const span = input.model.get(input.ref);
   if (span === undefined) return fitAll(["span not in this trace"], width, height);
   // Focused: the whole header wraps, so a long name is shown in full; each line is painted on its own.
-  const headers = (options.focused ? wrapVisible(headerText(span), width) : [clipText(headerText(span), width)]).map(
+  const headers = (options.focused ? wrapText(headerText(span), width) : [clipText(headerText(span), width)]).map(
     (line) => paint(line, { bold: true }, color)
   );
   const header = headers[0]!;

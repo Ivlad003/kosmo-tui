@@ -12,6 +12,7 @@
     {"file":"link-bad-ref.json","parity":"schema-expressible","validator":"fatal","code":"invalid","why":"link end without session"},
     {"file":"id-too-long-cyrillic.json","parity":"validator-only","validator":"fatal","code":"invalid","why":"id of 129 chars is 258 UTF-8 bytes > 256"},
     {"file":"name-too-long-cyrillic.json","parity":"validator-only","validator":"fatal","code":"invalid","why":"name of 513 chars is 1026 UTF-8 bytes > 1024"},
+    {"file":"title-too-long-cyrillic.json","parity":"validator-only","validator":"fatal","code":"invalid","why":"dataset.title of 513 chars is 1026 UTF-8 bytes > 1024"},
     {"file":"duplicate-span.json","parity":"validator-only","validator":"fatal","code":"invalid","why":"duplicate (trace, session, id)"},
     {"file":"duplicate-order.json","parity":"validator-only","validator":"fatal","code":"invalid","why":"duplicate (trace, session, order)"},
     {"file":"duplicate-trace.json","parity":"validator-only","validator":"fatal","code":"invalid","why":"duplicate trace id"},

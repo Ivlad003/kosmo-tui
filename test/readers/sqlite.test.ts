@@ -10,7 +10,7 @@ import { LIMITS } from "../../src/format/validate.js";
 import { nodeReaderFs } from "../../src/readers/node-fs.js";
 import { openTarget } from "../../src/readers/open.js";
 import { SQLITE_MAGIC } from "../../src/readers/sniff.js";
-import { immutableUri, openSqliteFile } from "../../src/readers/sqlite.js";
+import { immutableUri, openSqliteFile, sqlitePosition } from "../../src/readers/sqlite.js";
 import { loadSqliteModule } from "../../src/readers/sqlite-loader.js";
 import type { OpenedDataset, ReaderDeps, SqliteModule } from "../../src/readers/types.js";
 import { RECIPES } from "../fixture-recipes.js";
@@ -351,6 +351,25 @@ describe.skipIf(!NODE_SQLITE_AVAILABLE)("sqlite reader: degraded rows", () => {
     const loaded = await (await open(file)).loadTrace("t_cart", signal());
     expect(loaded.ok === false && loaded.error.code).toBe("invalid");
     expect(loaded.ok === false && loaded.error.message.startsWith("invalid(kosmo_spans(t_cart,s1,sp_4)")).toBe(true);
+  });
+
+  it("a multi-MB id column yields a bounded position (each key part clipped with …)", async () => {
+    const file = store();
+    sqliteExec(file, `UPDATE kosmo_spans SET id = replace(hex(zeroblob(2000000)), '00', 'x') WHERE id = 'sp_4'`);
+    const loaded = await (await open(file)).loadTrace("t_cart", signal());
+    if (loaded.ok) throw new Error("expected a fatal row");
+    expect(loaded.error.code).toBe("invalid");
+    expect(loaded.error.message.length).toBeLessThan(1024);
+    expect(loaded.error.message).toContain(`kosmo_spans(t_cart,s1,${"x".repeat(LIMITS.idBytes)}…)`);
+  });
+});
+
+describe("sqlitePosition", () => {
+  it("keeps a key part up to 256 B and clips a longer one, even a non-string, with …", () => {
+    const id = "я".repeat(128);
+    expect(sqlitePosition("t", "s", id)).toBe(`kosmo_spans(t,s,${id})`);
+    expect(sqlitePosition("t".repeat(3_000_000), "s", `${id}a`)).toBe(`kosmo_spans(${"t".repeat(256)}…,s,${id}…)`);
+    expect(sqlitePosition(new Uint8Array(1_000_000), 1, null).length).toBeLessThan(300);
   });
 });
 

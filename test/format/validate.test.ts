@@ -139,6 +139,40 @@ describe("validateHeader (spec 4.1, 4.9)", () => {
       what: "must be a string"
     });
   });
+
+  it("caps title, createdAt and producer strings at 1024 B and root at 4096 B, fatal like an oversize name", () => {
+    const header = (dataset: Record<string, unknown>) =>
+      validateHeader({ format: "kosmo-trace", version: 1, dataset: { id: "d", ...dataset } }, "$");
+    for (const key of ["title", "createdAt"]) {
+      expect(header({ [key]: TEXT_1024 }).ok).toBe(true);
+      expect(header({ [key]: TEXT_1025 })).toEqual({
+        ok: false,
+        code: "invalid",
+        position: `$.dataset.${key}`,
+        what: "exceeds 1024 bytes"
+      });
+    }
+    expect(header({ producer: { name: TEXT_1024, version: TEXT_1024 } }).ok).toBe(true);
+    expect(header({ producer: { name: TEXT_1025 } })).toMatchObject({
+      code: "invalid",
+      position: "$.dataset.producer.name",
+      what: "exceeds 1024 bytes"
+    });
+    expect(header({ producer: { name: "p", version: TEXT_1025 } })).toMatchObject({
+      code: "invalid",
+      position: "$.dataset.producer.version",
+      what: "exceeds 1024 bytes"
+    });
+    const root4096 = `/${"я".repeat(2047)}a`;
+    expect(utf8Bytes(root4096)).toBe(4096);
+    expect(header({ root: root4096 }).ok).toBe(true);
+    expect(header({ root: `${root4096}a` })).toMatchObject({
+      code: "invalid",
+      position: "$.dataset.root",
+      what: "exceeds 4096 bytes"
+    });
+    expect(header({ title: "x".repeat(1_048_576) })).toMatchObject({ what: "exceeds 1024 bytes" });
+  });
 });
 
 describe("validateTraceDecl", () => {

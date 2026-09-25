@@ -254,6 +254,28 @@ export function expandTabs(input: string, startColumn = 0): string {
 export const ELLIPSIS = "\u2026";
 
 /**
+ * How many UTF-16 units of text are enough to fill `width` columns and still show a cut: 8 per column
+ * (an escaped control is 6 columns in 6 units, a cluster rarely takes more), at least 64.
+ */
+export function measureLimit(width: number): number {
+  return Math.max(64, Math.floor(width) * 8);
+}
+
+/**
+ * The first `limit` UTF-16 units of `text` and `…` when it is longer; a surrogate pair is never split.
+ * It bounds the work of escaping, measuring and wrapping data of hostile length (spec 4.9, 8), so call
+ * it on plain text before `escapeTerminalControls` / `visibleWidth` / `wrapVisible`, never on text that
+ * carries escape sequences past `limit`.
+ */
+export function clipPrefix(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  let end = Math.max(0, Math.floor(limit));
+  const last = text.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return text.slice(0, end) + ELLIPSIS;
+}
+
+/**
  * Cut `input` so its visible width is at most `width` columns.
  *
  * Never splits a grapheme cluster or an escape sequence: a wide cluster that would

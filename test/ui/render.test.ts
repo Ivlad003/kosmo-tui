@@ -589,6 +589,38 @@ describe("header and footer", () => {
     expect(plain(renderFrame(tracesState(), { cols: 80, rows: 24 }, PLAIN))[23]).toBe(" 2 unknown lines skipped");
   });
 
+  it("1 MB of data-derived text in the header, banner, prompt and notices renders fast and fits (spec 4.9, 8)", () => {
+    const huge = `${"界".repeat(500_000)}\u001b[2J${"x".repeat(100)}`;
+    const base = tracesState();
+    const titled: ViewState = {
+      ...base,
+      dataset: {
+        ...base.dataset!,
+        info: { id: "ds_02", title: huge },
+        notices: [{ kind: "stream-stopped", line: 3, reason: huge }]
+      }
+    };
+    const traceNamed = apply(cartState(), { type: "traceLoaded", model: model([span({ id: "a" })], [], huge) });
+    const frames: Array<[string, ViewState]> = [
+      ["title and notice", titled],
+      ["trace name", traceNamed],
+      ["banner", apply(cartState(), { type: "showBanner", level: "error", text: huge })],
+      ["prompt", apply(cartState(), { type: "openPrompt", kind: "command" }, { type: "promptInput", text: huge })]
+    ];
+    for (const [what, state] of frames) {
+      renderFrame(state, { cols: 80, rows: 24 }, PLAIN);
+      const started = performance.now();
+      const frame = renderFrame(state, { cols: 80, rows: 24 }, { color: COLOR_16, links: false });
+      const elapsed = performance.now() - started;
+      expect(elapsed, what).toBeLessThan(200);
+      expect(frame, what).toHaveLength(24);
+      for (const line of frame) {
+        expect(visibleWidth(line), what).toBeLessThanOrEqual(80);
+        expect(line, what).not.toContain("\u001b[2J");
+      }
+    }
+  });
+
   it("`r reload` is advertised only when the source can be re-read", () => {
     const stdin = apply(initialState({ root: "/", readOnly: false }), {
       type: "datasetOpened",

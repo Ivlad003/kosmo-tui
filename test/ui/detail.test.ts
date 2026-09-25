@@ -96,6 +96,26 @@ describe("the name is never shortened", () => {
     expect(header).toContain(name);
     expect(lines.every((line) => visibleWidth(line) <= 60)).toBe(true);
   });
+
+  it("with focus, 1 MB of text in the header or a value is clipped before it is wrapped", () => {
+    const huge = "界".repeat(1_000_000);
+    const hostile: SpanRow = {
+      ...EXAMPLE,
+      name: huge,
+      values: {
+        args: { state: "invalid-value", position: huge, what: huge },
+        return: { state: "not-recorded", reason: huge },
+        error: { state: "not-recorded" }
+      }
+    };
+    render(hostile, { width: 60, height: 20 }, {}, { focused: true });
+    const started = performance.now();
+    const lines = plain(render(hostile, { width: 60, height: 20 }, {}, { focused: true, scroll: 1_000_000 }));
+    expect(performance.now() - started).toBeLessThan(200);
+    expect(lines).toHaveLength(20);
+    expect(lines.every((line) => visibleWidth(line) <= 60)).toBe(true);
+    expect(lines.join("")).toContain("…");
+  });
 });
 
 describe("the ▶ line is always visible (review focus 3)", () => {

@@ -8,7 +8,7 @@
  * 200 000 rows costs only the rows on screen.
  */
 
-import { padVisible, truncateVisible, visibleWidth } from "../ansi.js";
+import { clipPrefix, measureLimit, padVisible, truncateVisible, visibleWidth } from "../ansi.js";
 import { THEME, paint, type ColorLevel } from "../color.js";
 import type { TraceModel } from "../format/model.js";
 import { spanKey } from "../format/types.js";
@@ -55,8 +55,13 @@ export function formatDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-/** Left title and right-aligned key hints in one line; the title may take up to 60% of the width. */
-export function headerLine(left: string, right: string, width: number): string {
+/**
+ * Left title and right-aligned key hints in one line; the title may take up to 60% of the width. Both are
+ * cut to a bounded prefix first, so a title of hostile length is never measured whole (spec 4.9, 8).
+ */
+export function headerLine(fullLeft: string, fullRight: string, width: number): string {
+  const left = clipPrefix(fullLeft, measureLimit(width));
+  const right = clipPrefix(fullRight, measureLimit(width));
   const titleWidth = Math.min(visibleWidth(left), Math.max(Math.floor(width * 0.6), width - visibleWidth(right) - 1));
   const title = truncateVisible(left, titleWidth);
   const hints = truncateVisible(right, Math.max(0, width - visibleWidth(title) - 1));
@@ -70,16 +75,18 @@ function fit(lines: readonly string[], width: number, height: number): string[] 
   return out;
 }
 
-export function headerTitle(state: ViewState, color: ColorLevel): string {
+/** The header title; data in it is cut to what `width` columns can show before it is escaped. */
+export function headerTitle(state: ViewState, color: ColorLevel, width = Number.POSITIVE_INFINITY): string {
   const name = paint("kosmo-tui", { bold: true }, color);
+  const data = (text: string): string => escapeTerminalControls(clipPrefix(text, measureLimit(width)));
   if (state.screen === "trace" && state.trace !== null) {
     const trace = state.trace.trace;
-    return ` ${name} · ${escapeTerminalControls(trace.name ?? trace.id)} · ${state.trace.size} spans · ${trace.status ?? "-"}`;
+    return ` ${name} · ${data(trace.name ?? trace.id)} · ${state.trace.size} spans · ${trace.status ?? "-"}`;
   }
   if (state.screen === "traces" && state.dataset !== null) {
     const info = state.dataset.info;
     const count = `${state.dataset.traces.length}${state.dataset.hasMore ? "+" : ""} traces`;
-    return ` ${name} · ${escapeTerminalControls(info.title ?? info.id)} · ${count}`;
+    return ` ${name} · ${data(info.title ?? info.id)} · ${count}`;
   }
   return ` ${name}`;
 }
@@ -145,14 +152,19 @@ function filterText(state: ViewState): string[] {
   return parts;
 }
 
-/** Footer: the open prompt, else the banner, else the status line. */
+/**
+ * Footer: the open prompt, else the banner, else the status line. Text from data or input is cut to what
+ * `width` columns can show before it is escaped and measured (spec 4.9, 8).
+ */
 export function footerLine(state: ViewState, width: number, color: ColorLevel): string {
+  const limit = measureLimit(width);
   if (state.prompt !== null) {
     const sigil = state.prompt.kind === "command" ? ":" : "/";
-    return truncateVisible(` ${sigil}${escapeTerminalControls(state.prompt.text)}_`, width);
+    return truncateVisible(` ${sigil}${escapeTerminalControls(clipPrefix(state.prompt.text, limit))}_`, width);
   }
   if (state.banner !== null) {
-    const text = ` ${state.banner.level === "error" ? "! " : ""}${escapeTerminalControls(state.banner.text)}`;
+    const message = escapeTerminalControls(clipPrefix(state.banner.text, limit));
+    const text = ` ${state.banner.level === "error" ? "! " : ""}${message}`;
     return truncateVisible(state.banner.level === "error" ? paint(text, { fg: THEME.error }, color) : text, width);
   }
   const parts: string[] = [];
@@ -163,7 +175,7 @@ export function footerLine(state: ViewState, width: number, color: ColorLevel): 
     if (state.selected !== null && rowIndex(state, state.selected) === -1) parts.push("selection hidden by the filter");
   }
   if (parts.length === 0) return "";
-  return truncateVisible(paint(` ${parts.join(" · ")}`, { fg: THEME.muted }, color), width);
+  return truncateVisible(paint(clipPrefix(` ${parts.join(" · ")}`, limit), { fg: THEME.muted }, color), width);
 }
 
 /* ---------------------------------------------------------------- start and traces */

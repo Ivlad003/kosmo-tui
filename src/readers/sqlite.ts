@@ -18,6 +18,7 @@
  *  - loadValues: lazy per span; a field that fails becomes invalid-value(<table/pk>: <what>)
  *    and the trace stays open.
  */
+import { clipBytes } from "../format/bytes.js";
 import { validateAttrs } from "../format/kinds.js";
 import { buildTraceModel, requestSummaryOf } from "../format/model.js";
 import {
@@ -149,9 +150,17 @@ function sqliteErrcode(error: unknown): number | undefined {
   return SQLITE_MESSAGES.find(([pattern]) => pattern.test(text))?.[1];
 }
 
-/** Spec 4.9 position for SQLite: table and primary key. */
+/**
+ * One primary-key part of a position. The columns are read before validation, so each part is clipped to
+ * the id limit (256 B, then `…`): a hostile row never puts megabytes into an error message.
+ */
+function keyPart(value: unknown): string {
+  return clipBytes(String(value), LIMITS.idBytes);
+}
+
+/** Spec 4.9 position for SQLite: table and primary key, each part bounded by `keyPart`. */
 export function sqlitePosition(trace: unknown, session: unknown, id: unknown): string {
-  return `kosmo_spans(${String(trace)},${String(session)},${String(id)})`;
+  return `kosmo_spans(${keyPart(trace)},${keyPart(session)},${keyPart(id)})`;
 }
 
 /** `file:` URI with immutable=1: read without -shm/-wal (a read-only directory, Review focus 5). */
@@ -295,14 +304,14 @@ function checkStore(db: SqliteDatabase): { ok: true; info: DatasetInfo } | Failu
   if (orphan !== undefined)
     return {
       ok: false,
-      error: fatalAt("invalid", `kosmo_spans(${String(orphan.trace)})`, "trace has no row in kosmo_traces")
+      error: fatalAt("invalid", `kosmo_spans(${keyPart(orphan.trace)})`, "trace has no row in kosmo_traces")
     };
   return { ok: true, info: header.dataset };
 }
 
 function traceDeclFromRow(row: Row): { ok: true; trace: TraceDecl } | Failure {
   const raw = row.name == null ? { id: row.id } : { id: row.id, name: row.name };
-  const decl = validateTraceDecl(raw, `kosmo_traces(${String(row.id)})`);
+  const decl = validateTraceDecl(raw, `kosmo_traces(${keyPart(row.id)})`);
   return decl.ok ? decl : { ok: false, error: fatalError(decl) };
 }
 
@@ -395,7 +404,7 @@ function loadTraceFrom(db: SqliteDatabase, id: string): Awaited<ReturnType<Opene
       id
     );
     for (const row of links) {
-      const position = `kosmo_links(${String(row.from_trace)},${String(row.from_session)},${String(row.from_id)})`;
+      const position = `kosmo_links(${keyPart(row.from_trace)},${keyPart(row.from_session)},${keyPart(row.from_id)})`;
       const link = validateLink(
         {
           from: { trace: row.from_trace, session: row.from_session, id: row.from_id },

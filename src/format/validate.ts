@@ -2,7 +2,8 @@
  * Hand-written validator of `kosmo-trace/v1` (spec 4.1, 4.3, 4.4, 4.8, 4.9, 4.11, 4.12). No dependencies.
  *
  * Outcomes follow the 4.9 table exactly. Fatal: wrong/missing required field or JSON type, id-like string
- * > 256 B, text > 1024 B, `order` not an integer 0…2^53−1, `parentSession` with `parent: null`, duplicates.
+ * > 256 B, text > 1024 B (dataset `title`, `createdAt` and `producer.*` included), dataset `root` > 4096 B,
+ * `order` not an integer 0…2^53−1, `parentSession` with `parent: null`, duplicates.
  * Degrading (the span stays, a mark is added): every `location` problem → `invalid-location` (location
  * dropped); a bad `snippet`/`snippetCut` → `invalid-snippet` (location kept); `durationMs` < 0 or not finite
  * → dropped, `invalid-duration`; `attrs` not an object or bad entries → `invalid-attrs`; a bad Value →
@@ -202,14 +203,19 @@ export function validateHeader(raw: unknown, position: Position): { ok: true; da
     const producerAt = atPath(base, "producer");
     const producer = dataset.producer;
     if (!isRecord(producer)) return invalid(producerAt, "must be an object");
-    const name = requiredString(producer, "name", producerAt);
+    const name = requiredString(producer, "name", producerAt, LIMITS.textBytes);
     if (isFatal(name)) return name;
-    const version = optionalString(producer, "version", producerAt);
+    const version = optionalString(producer, "version", producerAt, LIMITS.textBytes);
     if (isFatal(version)) return version;
     info.producer = version === undefined ? { name } : { name, version };
   }
-  for (const key of ["createdAt", "root", "title"] as const) {
-    const value = optionalString(dataset, key, base);
+  // `root` is an absolute path on the producing host, so it gets the path limit; the others are text.
+  for (const [key, maxBytes] of [
+    ["createdAt", LIMITS.textBytes],
+    ["root", LIMITS.fileBytesPath],
+    ["title", LIMITS.textBytes]
+  ] as const) {
+    const value = optionalString(dataset, key, base, maxBytes);
     if (isFatal(value)) return value;
     if (value !== undefined) info[key] = value;
   }

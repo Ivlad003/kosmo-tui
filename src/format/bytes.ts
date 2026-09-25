@@ -66,3 +66,13 @@ export function utf8Prefix(text: string, maxBytes: number): string {
   }
   return text.slice(0, index);
 }
+
+/**
+ * `text` when its UTF-8 encoding fits in `maxBytes`, else the longest prefix that fits followed by `…`
+ * (so the result is at most `maxBytes + 3` bytes). Bounds data-derived parts of positions and messages.
+ */
+export function clipBytes(text: string, maxBytes: number): string {
+  // Every UTF-16 unit is at least one byte and at most three, so the full count is needed only in between.
+  if (text.length * 3 <= maxBytes || (text.length <= maxBytes && utf8Bytes(text) <= maxBytes)) return text;
+  return `${utf8Prefix(text, maxBytes)}…`;
+}

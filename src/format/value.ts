@@ -20,7 +20,7 @@
  * `compactJson` is the one serialisation used for sizes and for printing: keys sorted byte-wise, no
  * whitespace, and DEL, C1 and bidi controls escaped as `\uXXXX` on top of JSON's own C0 escapes.
  */
-import { compareBytes, utf8Bytes } from "./bytes.js";
+import { compareBytes, utf8Bytes, utf8Prefix } from "./bytes.js";
 import { NOT_RECORDED, type Json, type Position, type Value } from "./types.js";
 
 export const VALUE_MAX_DEPTH = 64;
@@ -90,8 +90,18 @@ function isCount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-/** One JSON-path segment; a non-identifier key is quoted with `quote`, so a position never carries a control character. */
+/** A key longer than this many UTF-8 bytes is clipped in a position (the id limit of spec 4.9). */
+const POSITION_KEY_BYTES = 256;
+
+/**
+ * One JSON-path segment; a non-identifier key is quoted with `quote`, so a position never carries a control
+ * character. A key over POSITION_KEY_BYTES keeps only its prefix, quoted, then `…`: `["aaa"…]` is
+ * never mistaken for a real key, and a hostile key never puts megabytes into a position.
+ */
 function segment(key: string): string {
+  if (key.length * 3 > POSITION_KEY_BYTES && utf8Bytes(key) > POSITION_KEY_BYTES) {
+    return `[${quote(utf8Prefix(key, POSITION_KEY_BYTES))}…]`;
+  }
   return IDENTIFIER.test(key) ? `.${key}` : `[${quote(key)}]`;
 }
 

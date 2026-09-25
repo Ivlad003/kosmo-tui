@@ -32,14 +32,15 @@
         "producer": {
           "type": "object",
           "required": ["name"],
-          "properties": { "name": { "type": "string" }, "version": { "type": "string" } }
+          "properties": { "name": { "$ref": "#/$defs/text" }, "version": { "$ref": "#/$defs/text" } }
         },
-        "createdAt": { "description": "ISO 8601 timestamp.", "type": "string" },
+        "createdAt": { "description": "ISO 8601 timestamp.", "$ref": "#/$defs/text" },
         "root": {
-          "description": "Absolute project root on the producing host; optional (private data).",
-          "type": "string"
+          "description": "Absolute project root on the producing host; optional (private data). At most 4096 UTF-8 bytes (checked by the viewer).",
+          "type": "string",
+          "maxLength": 4096
         },
-        "title": { "type": "string" }
+        "title": { "$ref": "#/$defs/text" }
       }
     },
     "header": {

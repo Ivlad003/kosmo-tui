@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareBytes, utf8Bytes, utf8Prefix } from "../../src/format/bytes.js";
+import { clipBytes, compareBytes, utf8Bytes, utf8Prefix } from "../../src/format/bytes.js";
 
 /** Deterministic PRNG (mulberry32) so the property checks are reproducible. */
 function prng(seed: number): () => number {
@@ -71,5 +71,16 @@ describe("utf8Prefix", () => {
     expect(utf8Prefix("a😀b", 5)).toBe("a😀");
     expect(utf8Prefix("abc", 0)).toBe("");
     expect(utf8Prefix("abc", 100)).toBe("abc");
+  });
+});
+
+describe("clipBytes", () => {
+  it("keeps text that fits and cuts longer text at a code point boundary with …", () => {
+    expect(clipBytes("abc", 3)).toBe("abc");
+    expect(clipBytes("abcd", 3)).toBe("abc…");
+    expect(clipBytes("яяя", 6)).toBe("яяя");
+    expect(clipBytes("яяя", 5)).toBe("яя…");
+    expect(clipBytes("a😀b", 4)).toBe("a…");
+    expect(clipBytes("x".repeat(5_000_000), 256)).toBe(`${"x".repeat(256)}…`);
   });
 });

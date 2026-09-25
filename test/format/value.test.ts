@@ -211,6 +211,23 @@ describe("parseValue: tags (spec 4.2, 4.9)", () => {
     });
   });
 
+  it("a huge object key is clipped to 256 B in the position, with … after the quoted prefix", () => {
+    const key = "k".repeat(2_000_000);
+    const result = parseValue({ state: "recorded", value: { [key]: { $type: "deeper" } } }, AT);
+    expect(result).toEqual({
+      state: "invalid-value",
+      position: `${AT}.value["${"k".repeat(256)}"…]`,
+      what: "tag deeper is not allowed in a recorded value"
+    });
+    const bidi = "\u202e".repeat(1_000_000);
+    const other = parseValue({ state: "recorded", value: { [bidi]: { $type: "deeper" } } }, AT);
+    expect(other.state === "invalid-value" && other.position.length).toBeLessThan(2048);
+    const short = "я".repeat(128);
+    expect(parseValue({ state: "recorded", value: { [short]: { $type: "deeper" } } }, AT)).toMatchObject({
+      position: `${AT}.value["${short}"]`
+    });
+  });
+
   it("object escapes a real object with a $type key: entries keys are literal, entries values are values", () => {
     const value = { $type: "object", entries: { $type: "deeper", x: { $type: "undefined" } } };
     expect(parseValue({ state: "recorded", value }, AT)).toEqual({ state: "recorded", value });

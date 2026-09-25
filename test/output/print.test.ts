@@ -153,6 +153,14 @@ describe("failures (spec 6.8)", () => {
     const run = await print({ target: "a\u001b]0;x\u0007.json", format: "json", detail: 1 }, { fs: memoryFs() });
     expect(run.err).toBe("kosmo-tui: file-not-found: a\\u001b]0;x\\u0007.json\n");
   });
+
+  it("stderr is one bounded line even when the message carries megabytes (describeError, 2 000 chars)", async () => {
+    const run = await print({ target: `${"a".repeat(3_000_000)}.json`, format: "json", detail: 1 }, { fs: memoryFs() });
+    expect(run.code).not.toBe(EXIT_OK);
+    expect(run.err.startsWith("kosmo-tui: file-not-found: aaaa")).toBe(true);
+    expect(run.err.endsWith("\n")).toBe(true);
+    expect(run.err.length).toBeLessThanOrEqual("kosmo-tui: ".length + 2_000 + 1);
+  });
 });
 
 describe.skipIf(!NODE_SQLITE_AVAILABLE)("--print over SQLite: lazy values", () => {

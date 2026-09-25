@@ -48,7 +48,8 @@ const NO_VALUES: ValuesLookup = () => undefined;
 export async function runPrint(input: PrintInput, deps: PrintDeps = {}): Promise<number> {
   const { args, proc, signal } = input;
   const fail = (code: number, text: string): number => {
-    proc.stderr.write(`kosmo-tui: ${escapeTerminalControls(text)}\n`);
+    // One line of at most 2 000 characters (describeError) before escaping: a message may carry data.
+    proc.stderr.write(`kosmo-tui: ${escapeTerminalControls(describeError(text))}\n`);
     return code;
   };
   const reader: ReaderDeps = deps.reader ?? {
