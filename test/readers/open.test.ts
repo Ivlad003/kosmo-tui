@@ -3,9 +3,14 @@
  * sniff rule, a JSON document collected up to 64 MiB, no SQLite over a stream).
  */
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { openTarget, reopen } from "../../src/readers/open.js";
-import { SQLITE_MAGIC } from "../../src/readers/sniff.js";
+import { SQLITE_MAGIC, sniffContainer } from "../../src/readers/sniff.js";
+
+vi.mock("../../src/readers/sniff.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../src/readers/sniff.js")>();
+  return { ...original, sniffContainer: vi.fn(original.sniffContainer) };
+});
 import { fixtureFile } from "../fixture-recipes.js";
 import { chunks, memoryFs, neverEnding, signal } from "./reader-fakes.js";
 
@@ -95,6 +100,27 @@ describe("openTarget: stdin", () => {
       error: { code: "read-error", message: "read-error: a SQLite store cannot be read from a stream; pass its path" }
     });
     expect(stdin.returned).toBe(true);
+  });
+
+  it("SQLite magic split over chunks and no newline is refused at the magic length", async () => {
+    const magic = String.fromCharCode(...SQLITE_MAGIC);
+    const stdin = neverEnding([magic.slice(0, 5), magic.slice(5), "page bytes without a line end"]);
+    const result = await openTarget("stdin", { fs: memoryFs(), stdin }, signal());
+    expect(result.ok === false && result.error.code).toBe("read-error");
+    expect(stdin.returned).toBe(true);
+  });
+
+  it("sniffs once the accumulated head holds the first line, even if its newline came earlier", async () => {
+    const sniff = vi.mocked(sniffContainer);
+    sniff.mockClear();
+    const result = await openTarget(
+      "stdin",
+      { fs: memoryFs(), stdin: chunks(["{}", "\n", "  ", "0123456789abcdefghij"]) },
+      signal()
+    );
+    expect(result.ok).toBe(false);
+    expect(sniff).toHaveBeenCalledTimes(1);
+    expect(new TextDecoder().decode(sniff.mock.calls[0]?.[0])).toBe("{}\n");
   });
 
   it("aborting while stdin is silent returns at once (Review focus 5)", async () => {

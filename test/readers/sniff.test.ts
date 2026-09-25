@@ -4,7 +4,13 @@
  * json; the extension decides only ambiguous cases. The same rule for stdin (no path).
  */
 import { describe, expect, it } from "vitest";
-import { SNIFF_HEAD_BYTES, SQLITE_MAGIC, firstLineComplete, sniffContainer } from "../../src/readers/sniff.js";
+import {
+  SNIFF_HEAD_BYTES,
+  SQLITE_MAGIC,
+  firstLineComplete,
+  sniffContainer,
+  sniffReady
+} from "../../src/readers/sniff.js";
 import { bytes } from "./reader-fakes.js";
 
 const header = '{"type":"header","format":"kosmo-trace","version":1,"dataset":{"id":"ds"}}';
@@ -53,5 +59,13 @@ describe("sniffContainer (spec 6.8)", () => {
     expect(firstLineComplete(bytes(header))).toBe(false);
     expect(firstLineComplete(bytes(`\uFEFF\n\n${header}\n`))).toBe(true);
     expect(firstLineComplete(bytes("\n\n"))).toBe(false);
+  });
+
+  it("sniffReady: the SQLite magic or a finished first line, judged on the whole head", () => {
+    expect(sniffReady(SQLITE_MAGIC)).toBe(true);
+    expect(sniffReady(SQLITE_MAGIC.subarray(0, 15))).toBe(false);
+    expect(sniffReady(bytes("{}\n"))).toBe(true);
+    expect(sniffReady(bytes("{}\n  0123456789abcdef"))).toBe(true);
+    expect(sniffReady(bytes('\n\n{"type"'))).toBe(false);
   });
 });

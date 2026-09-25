@@ -53,6 +53,15 @@ export function firstLineComplete(head: Uint8Array): boolean {
   return firstNonEmptyLine(head)?.complete === true;
 }
 
+/**
+ * Whether an accumulated stream head already decides the sniff: it holds the SQLite magic, or its
+ * first non-empty line has ended. A head that is only a SQLite-magic prefix has no newline, so the
+ * line rule never fires early on it.
+ */
+export function sniffReady(head: Uint8Array): boolean {
+  return hasSqliteMagic(head) || firstLineComplete(head);
+}
+
 function parseObject(line: Uint8Array): Record<string, unknown> | undefined {
   try {
     const value: unknown = JSON.parse(decoder.decode(line));

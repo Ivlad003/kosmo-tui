@@ -10,7 +10,7 @@ import { LIMITS } from "../format/validate.js";
 import { ABORTED, concatBytes, errorText, fatalAt, nextChunk, readerError, releaseIterator } from "./common.js";
 import { openJsonFile, parseJsonDocument } from "./json.js";
 import { openNdjson } from "./ndjson.js";
-import { SNIFF_HEAD_BYTES, SQLITE_MAGIC, firstLineComplete, sniffContainer } from "./sniff.js";
+import { SNIFF_HEAD_BYTES, SQLITE_MAGIC, sniffContainer, sniffReady } from "./sniff.js";
 import { openSqliteFile } from "./sqlite.js";
 import type { OpenResult, OpenedDataset, Origin, ReaderDeps } from "./types.js";
 
@@ -99,9 +99,13 @@ async function openStream(
       done = true;
       break;
     }
+    const before = total;
     parts.push(next.value);
     total += next.value.length;
-    if (total >= SQLITE_MAGIC.length && next.value.includes(0x0a)) ready = firstLineComplete(concatBytes(parts, total));
+    // The answer can only change when a newline arrives or the head first reaches the magic length;
+    // the check itself always looks at the whole accumulated head.
+    const reachedMagic = before < SQLITE_MAGIC.length && total >= SQLITE_MAGIC.length;
+    if (reachedMagic || next.value.includes(0x0a)) ready = sniffReady(concatBytes(parts, total));
   }
   const head = concatBytes(parts, total);
   const kind = sniffContainer(head, origin === "stdin" ? undefined : origin.path);
