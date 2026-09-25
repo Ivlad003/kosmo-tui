@@ -40,7 +40,7 @@ import {
 } from "../terminal.js";
 import { PRINT_HINT, openKeyboardInput, type KeyboardDeps, type KeyboardResult } from "../terminal-input.js";
 import { nodeRootFs, nodeSnippetFs, nodeStartFs } from "./node-ports.js";
-import { paintGuardFromEnv } from "./paint-guard.js";
+import { paintGuardFromEnv } from "../paint-guard.js";
 import { runSession, type SessionClipboard, type SessionDeps, type SessionTimers } from "./session.js";
 
 /** Second raw-mode reclaim after data EOF, for a producer whose exit trails its EOF. */

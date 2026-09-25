@@ -128,6 +128,20 @@ describe("criterion 1: the old sibling project is gone", () => {
   });
 });
 
+describe("module layers", () => {
+  it("the terminal layer (terminal, paint-guard, sanitize, ansi, color) never imports src/ui", () => {
+    const specifier = /(?:^|\n)\s*(?:import|export)\s[^;]*?\sfrom\s+["']([^"']+)["']/g;
+    for (const name of ["terminal", "paint-guard", "sanitize", "ansi", "color"]) {
+      const file = path.join("src", `${name}.ts`);
+      expect(existsSync(path.join(root, file)), file).toBe(true);
+      for (const match of readFileSync(path.join(root, file), "utf8").matchAll(specifier)) {
+        expect(match[1]!, `${file}: ${match[1]}`).not.toMatch(/(^|\/)ui\//);
+      }
+    }
+    expect(existsSync(path.join(root, "src", "ui", "paint-guard.ts"))).toBe(false);
+  });
+});
+
 describe("bin launcher", () => {
   const bin = (args: string[]) =>
     spawnSync(process.execPath, [path.join(root, "bin", "kosmo-tui.js"), ...args], { encoding: "utf8", cwd: root });

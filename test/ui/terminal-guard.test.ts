@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { visibleWidth } from "../../src/ansi.js";
 import { COLOR_NONE, COLOR_TRUECOLOR } from "../../src/color.js";
 import { DEFAULT_PAINT_GUARD, createTerminal } from "../../src/terminal.js";
-import { createPaintGuard } from "../../src/ui/paint-guard.js";
+import { createPaintGuard } from "../../src/paint-guard.js";
 import { replayScreen } from "../pty.js";
 import { fakeTerminalIo } from "../terminal-fakes.js";
 

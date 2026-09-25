@@ -544,6 +544,8 @@ src/code/
   snippet.ts            читання файлу з кореня, вікно рядків, перевірка snippet'а, кеш
   params.ts             імена параметрів функції з тексту (для capture, етап 2)
 src/sanitize.ts         escapeTerminalControls, валідація OSC 8 URI
+src/paint-guard.ts      другий шар у terminal.paint (8.2); поруч із sanitize.ts і ansi.ts, бо його
+                        імпортує terminal.ts (змінено 2026-09-25 після рев'ю етапу 1; раніше src/ui/)
 src/print.ts            kosmo-text/v1, --format json|tab (розділ 7)
 src/app.ts              екрани: start | traces | trace | targets; відкриття/закриття dataset'у під час роботи
 src/start.ts            пошук трейсів, recent.json

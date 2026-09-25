@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { COLOR_16, COLOR_NONE, COLOR_TRUECOLOR } from "../../src/color.js";
-import { createPaintGuard, guardRow, paintGuardFromEnv, type PaintGuardOptions } from "../../src/ui/paint-guard.js";
+import { COLOR_16, COLOR_NONE, COLOR_TRUECOLOR } from "../src/color.js";
+import { createPaintGuard, guardRow, paintGuardFromEnv, type PaintGuardOptions } from "../src/paint-guard.js";
 
 const ESC = "\u001b";
 const ROOT = "/repo";

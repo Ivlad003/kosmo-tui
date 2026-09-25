@@ -13,9 +13,9 @@
  * left set at the end of the row is closed there, because each row is painted on its own.
  * Colors are lowered last with `adaptSgr` to the level from `detectColorLevel`.
  */
-import { CSI, OSC, ST, SGR_RESET, tokenize } from "../ansi.js";
-import { adaptSgr, detectColorLevel, linksEnabled, type ColorEnv, type ColorLevel } from "../color.js";
-import { escapeTerminalControls, isSafeOsc8Uri } from "../sanitize.js";
+import { CSI, OSC, ST, SGR_RESET, tokenize } from "./ansi.js";
+import { adaptSgr, detectColorLevel, linksEnabled, type ColorEnv, type ColorLevel } from "./color.js";
+import { escapeTerminalControls, isSafeOsc8Uri } from "./sanitize.js";
 
 export type PaintGuardOptions = {
   /** Project root that OSC 8 URIs must stay inside; null → no link passes. */

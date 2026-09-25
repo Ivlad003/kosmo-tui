@@ -17,7 +17,7 @@
 
 import { CURSOR, truncateVisible } from "./ansi.js";
 import { COLOR_TRUECOLOR } from "./color.js";
-import { createPaintGuard, type PaintGuard } from "./ui/paint-guard.js";
+import { createPaintGuard, type PaintGuard } from "./paint-guard.js";
 
 /** One string per screen row, already fitted to the viewport width. */
 export type Frame = readonly string[];
