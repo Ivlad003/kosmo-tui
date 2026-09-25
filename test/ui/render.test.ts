@@ -9,10 +9,12 @@ import { describe, expect, it } from "vitest";
 import { stripAnsi, visibleWidth } from "../../src/ansi.js";
 import { COLOR_16, COLOR_NONE } from "../../src/color.js";
 import type { Snippet } from "../../src/code/snippet.js";
-import { buildTraceModel } from "../../src/format/model.js";
+import { buildTraceModel, type TraceModel } from "../../src/format/model.js";
+import type { SpanRef } from "../../src/format/types.js";
 import { validateDocument } from "../../src/format/validate.js";
 import { renderKosmoText } from "../../src/output/kosmo-text.js";
 import { tooSmallFrame } from "../../src/terminal.js";
+import { resultsPane, stackPane } from "../../src/ui/panes.js";
 import { renderFrame, type RenderEnv } from "../../src/ui/render.js";
 import { initialState, update, visibleRows, type Action, type StartRow, type ViewState } from "../../src/ui/state.js";
 import { fixtureFile } from "../fixture-recipes.js";
@@ -565,6 +567,52 @@ describe("views and panes", () => {
       " callers of calculateLineTotal at src/cart.ts:12: 1 call(s), 1 caller(s) · Enter go · Esc close"
     );
     expect(frame).toContain(" ▸ 1×  POST /cart  src/server.ts:8");
+  });
+
+  it("aux panes build only the items on screen: 200 000 find results, a 50 000-deep stack", () => {
+    let labels = 0;
+    const counting = (trace: TraceModel): TraceModel =>
+      new Proxy(trace, {
+        get(target, key) {
+          const value: unknown = Reflect.get(target, key, target);
+          if (key === "get") {
+            return (at: SpanRef) => {
+              labels += 1;
+              return target.get(at);
+            };
+          }
+          return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+        }
+      });
+    const base = cartState();
+    const refs = Array.from({ length: 200_000 }, (_, index) => ref(`f${index}`));
+    const found: ViewState = {
+      ...base,
+      trace: counting(base.trace!),
+      pane: "results",
+      paneCursor: 123_456,
+      results: refs,
+      resultsInfo: { kind: "find", title: "find /./: 200000 span(s)", labels: [], footer: "more below" }
+    };
+    const shown = plain(resultsPane(found, 80, 20, COLOR_NONE));
+    expect(labels).toBeLessThanOrEqual(18);
+    expect(shown).toHaveLength(20);
+    expect(shown).toContain(" ▸ s1:f123456 (not in this trace)");
+    expect(shown[19]).toBe("   more below");
+
+    const deep = model(chain(50_000));
+    const stacked = apply(
+      { ...base, trace: null },
+      { type: "traceLoaded", model: deep },
+      { type: "moveTo", edge: "last" },
+      { type: "openPane", pane: "stack" },
+      { type: "paneMove", delta: 25_000 }
+    );
+    labels = 0;
+    const stack = plain(stackPane({ ...stacked, trace: counting(deep) }, 80, 20, COLOR_NONE));
+    expect(labels).toBeLessThanOrEqual(18);
+    expect(stack).toContain(" ▸ #25000 ✓ c24999  (no location)");
+    expect(stack[19]).toBe("   root reached");
   });
 });
 

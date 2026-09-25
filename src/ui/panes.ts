@@ -344,17 +344,24 @@ export function treeBody(state: ViewState, width: number, height: number, color:
 
 /* ---------------------------------------------------------------- aux panes */
 
+/**
+ * Title, the window of `count` items around `cursor`, then the trailer. Only the items in the window
+ * are built (`item(index)`), so a pane of 200 000 results or a 50 000-deep stack costs the rows on screen.
+ */
 function titled(
   title: string,
-  items: readonly string[],
+  count: number,
+  item: (index: number) => string,
   cursor: number,
   width: number,
   height: number,
   trailer: string | null
 ): string[] {
   const room = Math.max(0, height - 1 - (trailer === null ? 0 : 1));
-  const start = windowStart(items.length, cursor, room);
-  const lines = [title, ...items.slice(start, start + room)];
+  const start = windowStart(count, cursor, room);
+  const end = Math.min(count, start + room);
+  const lines = [title];
+  for (let index = start; index < end; index += 1) lines.push(item(index));
   if (trailer !== null) lines.push(trailer);
   return fit(lines, width, height);
 }
@@ -372,15 +379,16 @@ function spanLabel(model: TraceModel, ref: Parameters<TraceModel["get"]>[0]): st
 export function areasPane(state: ViewState, width: number, height: number, color: ColorLevel): string[] {
   const rows = state.trace?.areas() ?? [];
   const nameWidth = Math.max(10, Math.floor(width * 0.5));
-  const items = rows.map(
-    (row, index) =>
-      ` ${pointer(index, state.paneCursor)} ${padVisible(areaText(row), nameWidth)} ${String(row.spans).padStart(6)} spans  ${
-        row.errors > 0 ? paint(`${row.errors} errors`, { fg: THEME.error }, color) : "0 errors"
-      }`
-  );
+  const item = (index: number): string => {
+    const row = rows[index]!;
+    return ` ${pointer(index, state.paneCursor)} ${padVisible(areaText(row), nameWidth)} ${String(row.spans).padStart(6)} spans  ${
+      row.errors > 0 ? paint(`${row.errors} errors`, { fg: THEME.error }, color) : "0 errors"
+    }`;
+  };
   return titled(
     paint(` areas (${rows.length}) · Enter filter · Esc close`, { bold: true }, color),
-    items,
+    rows.length,
+    item,
     state.paneCursor,
     width,
     height,
@@ -391,11 +399,12 @@ export function areasPane(state: ViewState, width: number, height: number, color
 export function stackPane(state: ViewState, width: number, height: number, color: ColorLevel): string[] {
   const model = state.trace;
   const title = paint(" stack · recorded ancestors, not a live JS stack", { bold: true }, color);
-  if (model === null || state.selected === null) return titled(title, ["   nothing selected"], 0, width, height, null);
+  if (model === null || state.selected === null) {
+    return titled(title, 1, () => "   nothing selected", 0, width, height, null);
+  }
   const walk = ancestorsOf(model, state.selected);
-  const items = walk.frames.map(
-    (ref, index) => ` ${pointer(index, state.paneCursor)} #${index} ${spanLabel(model, ref)}`
-  );
+  const item = (index: number): string =>
+    ` ${pointer(index, state.paneCursor)} #${index} ${spanLabel(model, walk.frames[index]!)}`;
   const stop =
     walk.stop.kind === "root"
       ? "   root reached"
@@ -404,18 +413,29 @@ export function stackPane(state: ViewState, width: number, height: number, color
         : walk.stop.kind === "cycle"
           ? "   cycle: parent edge dropped"
           : "   walk stopped";
-  return titled(title, items, state.paneCursor, width, height, paint(stop, { fg: THEME.muted }, color));
+  return titled(
+    title,
+    walk.frames.length,
+    item,
+    state.paneCursor,
+    width,
+    height,
+    paint(stop, { fg: THEME.muted }, color)
+  );
 }
 
 export function bookmarksPane(state: ViewState, width: number, height: number, color: ColorLevel): string[] {
   const current = state.trace?.trace.id ?? null;
-  const items = state.bookmarks.map((bookmark, index) => {
+  const bookmarks = state.bookmarks;
+  const item = (index: number): string => {
+    const bookmark = bookmarks[index]!;
     const where = bookmark.ref.trace === current ? "" : `  (trace ${escapeTerminalControls(bookmark.ref.trace)})`;
     return ` ${pointer(index, state.paneCursor)} ${index + 1}. ${escapeTerminalControls(bookmark.name)}  ${escapeTerminalControls(formatSpanRef(bookmark.ref))}${where}`;
-  });
+  };
   return titled(
-    paint(` bookmarks (${items.length}) · Enter jump · Esc close`, { bold: true }, color),
-    items,
+    paint(` bookmarks (${bookmarks.length}) · Enter jump · Esc close`, { bold: true }, color),
+    bookmarks.length,
+    item,
     state.paneCursor,
     width,
     height,
@@ -428,12 +448,13 @@ export function resultsPane(state: ViewState, width: number, height: number, col
   const info = state.resultsInfo;
   const refs = state.results ?? [];
   if (model === null || info === null) return fit([], width, height);
-  const items = refs.map((ref, index) => {
+  const item = (index: number): string => {
     const label = info.labels[index] ?? null;
-    return ` ${pointer(index, state.paneCursor)} ${label === null ? spanLabel(model, ref) : escapeTerminalControls(label)}`;
-  });
+    const text = label === null ? spanLabel(model, refs[index]!) : escapeTerminalControls(label);
+    return ` ${pointer(index, state.paneCursor)} ${text}`;
+  };
   const title = paint(` ${escapeTerminalControls(info.title)} · Enter go · Esc close`, { bold: true }, color);
   const trailer =
     info.footer === null ? null : paint(`   ${escapeTerminalControls(info.footer)}`, { fg: THEME.muted }, color);
-  return titled(title, items, state.paneCursor, width, height, trailer);
+  return titled(title, refs.length, item, state.paneCursor, width, height, trailer);
 }
