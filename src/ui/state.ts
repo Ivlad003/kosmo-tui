@@ -197,7 +197,9 @@ export type Action =
   | { readonly type: "valuesFailed"; readonly ref: SpanRef; readonly reason: string }
   | { readonly type: "snippetLoaded"; readonly ref: SpanRef; readonly snippet: Snippet }
   | { readonly type: "readingProgress"; readonly spans: number | null }
-  | { readonly type: "rootChanged"; readonly root: string | null; readonly unset?: WideRootRejection };
+  | { readonly type: "rootChanged"; readonly root: string | null; readonly unset?: WideRootRejection }
+  /** After `closeDataset`: back to the root before any dataset (`--root`/`:root`, or none), no banner. */
+  | { readonly type: "rootReset"; readonly root: string | null };
 
 export type TreeRow = {
   readonly ref: SpanRef;
@@ -491,6 +493,7 @@ const SESSION_ACTIONS = new Set<Action["type"]>([
   "snippetLoaded",
   "readingProgress",
   "rootChanged",
+  "rootReset",
   "showBanner"
 ]);
 
@@ -686,6 +689,12 @@ export function update(current: ViewState, action: Action): Result {
       const [next, effects] = select(cleared, cleared.selected);
       return [{ ...next, detailScroll: state.detailScroll }, effects];
     }
+    case "rootReset":
+      // Spec 4.8: the closed dataset's root and its reason must not outlive it (`:root` on the start screen).
+      return [
+        { ...state, root: action.root, rootUnset: null, snippets: new Map(), cacheBytes: mapBytes(state.values) },
+        NO_EFFECTS
+      ];
     default:
       // Unreachable for typed callers; a stray action from JS must not crash the session.
       return [state, NO_EFFECTS];

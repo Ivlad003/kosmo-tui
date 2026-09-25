@@ -124,6 +124,12 @@ describe("parseCommandLine: general", () => {
       level: "info",
       text: "code root not set: cwd is the filesystem root; use :root or --root"
     });
+    // Before any dataset is open (spec 4.8): nothing failed, the root is chosen when a trace opens.
+    expect(parseCommandLine({ ...state, root: null, rootUnset: null }, ":root")).toEqual({
+      type: "showBanner",
+      level: "info",
+      text: "code root: chosen when a trace opens; set one with :root or --root"
+    });
     expect(parseCommandLine(state, ":root ../app")).toEqual({ type: "setRoot", dir: "../app" });
     // Spec 6.6: a leading `/` marks a regex only in :find, :filter name and :area, so an absolute
     // path is a plain argument here (the shared tokenizer alone would fail on `/abs/app`).

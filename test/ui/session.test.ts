@@ -338,6 +338,149 @@ describe("reload, root and copy", () => {
     expect(await session).toBe(EXIT_OK);
   });
 
+  it("a marker directory that is a symlink to home leaves no code root: nothing is read, the notice says why", async () => {
+    const terminal = fakeTerminal();
+    const trace = "/tmp/app/t.kosmo-trace.json";
+    const snippetFs = memorySnippetFs({
+      "/tmp/app/src/cart.ts": "SECRET\n".repeat(40),
+      "/home/me/src/cart.ts": "SECRET\n".repeat(40)
+    });
+    const deps = sessionDeps(terminal, {
+      cwd: "/home/me",
+      origin: { path: trace },
+      reader: { fs: memoryFs({ [trace]: BASIC }) },
+      rootFs: memoryRootFs({
+        dirs: ["/home/me", "/tmp/app"],
+        files: ["/tmp/app/package.json"],
+        links: { "/tmp/app": "/home/me" }
+      }),
+      snippetFs
+    });
+    const roots: Array<string | null> = [];
+    const session = runSession({ ...deps, onRootChange: (root) => roots.push(root) });
+    await until(() => terminal.screen().includes("4 spans"), "trace screen");
+    terminal.key("jj");
+    await until(() => terminal.screen().includes("no code root"), "code window without a root");
+    expect(terminal.screen()).toContain(
+      "code root not set: cwd is the home directory or above it; use :root or --root"
+    );
+    expect(terminal.screen()).not.toContain("SECRET");
+    expect(snippetFs.reads).toEqual([]);
+    expect(roots).toEqual([null]);
+    terminal.key("q");
+    expect(await session).toBe(EXIT_OK);
+  });
+
+  it("the root directory swapped for a symlink to home after opening: the next read is refused (root-changed)", async () => {
+    const terminal = fakeTerminal();
+    const files: Record<string, string> = {
+      "/w/src/cart.ts": CART,
+      "/w/src/pricing.ts": "export const price = 1;\n".repeat(10),
+      "/home/me/src/pricing.ts": "SECRET\n".repeat(10)
+    };
+    const base = memorySnippetFs(files);
+    let swapped = false;
+    const snippetFs = {
+      ...base,
+      realpath: async (p: string) =>
+        swapped && (p === "/w" || p.startsWith("/w/")) ? `/home/me${p.slice(2)}` : base.realpath(p)
+    };
+    const deps = sessionDeps(terminal, {
+      origin: { path: TRACE_FILE },
+      reader: { fs: memoryFs({ [TRACE_FILE]: BASIC }) },
+      rootFs: memoryRootFs({ files: ["/w/package.json"] }),
+      snippetFs
+    });
+    const session = runSession(deps);
+    await until(() => terminal.screen().includes("4 spans"), "trace screen");
+    terminal.key("jj");
+    await until(() => terminal.screen().includes("│▶ 12  export async function calculateLineTotal"), "snippet");
+    const before = base.reads.length;
+    swapped = true;
+    terminal.key("j");
+    await until(() => terminal.screen().includes("src/pricing.ts · root-changed"), "refused read");
+    expect(terminal.screen()).toContain("no code: root-changed");
+    expect(terminal.screen()).not.toContain("SECRET");
+    expect(base.reads.length).toBe(before);
+    terminal.key("q");
+    expect(await session).toBe(EXIT_OK);
+  });
+
+  it("--root and :root are stored as their realpath, so reads through them are confined the same way", async () => {
+    const terminal = fakeTerminal();
+    const deps = sessionDeps(terminal, {
+      rootFlag: "lnk",
+      origin: { path: TRACE_FILE },
+      reader: { fs: memoryFs({ [TRACE_FILE]: BASIC }) },
+      rootFs: memoryRootFs({ dirs: ["/w/lnk", "/w/lnk2"], links: { "/w/lnk": "/w", "/w/lnk2": "/other" } }),
+      snippetFs: memorySnippetFs({
+        "/w/src/cart.ts": CART,
+        "/other/src/cart.ts": CART.replace("calculateLineTotal", "fromOther")
+      })
+    });
+    const roots: Array<string | null> = [];
+    const session = runSession({ ...deps, onRootChange: (root) => roots.push(root) });
+    await until(() => terminal.screen().includes("4 spans"), "trace screen");
+    terminal.key("jj");
+    await until(
+      () => terminal.screen().includes("│▶ 12  export async function calculateLineTotal"),
+      "snippet via --root"
+    );
+    expect(roots.at(-1)).toBe("/w");
+    for (const key of [":", ..."root lnk2", "\r"]) terminal.key(key);
+    await until(() => terminal.screen().includes("fromOther"), "snippet via :root");
+    expect(roots.at(-1)).toBe("/other");
+    terminal.key("q");
+    expect(await session).toBe(EXIT_OK);
+  });
+
+  it("Esc back to the start screen drops the dataset's root; the next dataset recomputes root and notice (spec 4.8)", async () => {
+    const terminal = fakeTerminal();
+    const startFs = memoryStartFs({
+      "/home/me/proj/b.kosmo-trace.json": { text: "{}", mtimeMs: 2 },
+      "/home/me/evil/a.kosmo-trace.json": { text: "{}", mtimeMs: 1 }
+    });
+    const deps = sessionDeps(terminal, {
+      cwd: "/home/me",
+      startFs,
+      reader: { fs: memoryFs({ "proj/b.kosmo-trace.json": BASIC, "evil/a.kosmo-trace.json": BASIC }) },
+      rootFs: memoryRootFs({ dirs: ["/home/me"], files: ["/home/me/proj/package.json"] }),
+      snippetFs: memorySnippetFs({ "/home/me/proj/src/cart.ts": CART })
+    });
+    const roots: Array<string | null> = [];
+    const session = runSession({ ...deps, onRootChange: (root) => roots.push(root) });
+    const command = (text: string): void => {
+      for (const key of [":", ...text, "\r"]) terminal.key(key);
+    };
+    const NO_DATASET = "code root: chosen when a trace opens; set one with :root or --root";
+    await until(() => terminal.screen().includes("b.kosmo-trace.json"), "start rows");
+    command("root");
+    expect(terminal.screen()).toContain(NO_DATASET);
+    terminal.key("\r");
+    await until(() => terminal.screen().includes("4 spans"), "b opened");
+    expect(roots).toEqual([null, "/home/me/proj"]);
+    terminal.key("T");
+    terminal.key("\u001b");
+    await until(() => terminal.screen().includes("a.kosmo-trace.json"), "back on the start screen");
+    expect(roots).toEqual([null, "/home/me/proj", null]);
+    command("root");
+    expect(terminal.screen()).toContain(NO_DATASET);
+    // a: no marker, cwd is home → no root, with the notice.
+    terminal.key("j\r");
+    await until(() => terminal.screen().includes("4 spans"), "a opened");
+    expect(terminal.screen()).toContain(
+      "code root not set: cwd is the home directory or above it; use :root or --root"
+    );
+    terminal.key("T");
+    terminal.key("\u001b");
+    await until(() => terminal.screen().includes("b.kosmo-trace.json"), "back again");
+    command("root");
+    expect(terminal.screen()).toContain(NO_DATASET);
+    expect(terminal.screen()).not.toContain("cwd is the home directory");
+    terminal.key("q");
+    expect(await session).toBe(EXIT_OK);
+  });
+
   it("y copies kosmo-text/v1 of the selected subtree; without a clipboard it is printed after the terminal is restored", async () => {
     const terminal = fakeTerminal();
     const clipboard = fakeClipboard(

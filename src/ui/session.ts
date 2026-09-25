@@ -196,6 +196,8 @@ export async function runSession(deps: SessionDeps): Promise<number> {
   const lifetime = new AbortController();
 
   // Spec 4.8 rule 1 before any dataset is open; rules 2–4 are applied per dataset (no root until then).
+  // Every stored root is a realpath: loadSnippet refuses a root whose realpath is no longer itself.
+  // `--root` is resolved once below (settleFlag); until then no dataset is open, so nothing is read.
   let rootOverride = deps.rootFlag !== undefined && deps.rootFlag !== "" ? path.resolve(deps.cwd, deps.rootFlag) : null;
   let state: ViewState = initialState({ root: rootOverride, readOnly: deps.readOnly });
   let dataset: OpenedDataset | null = null;
@@ -270,6 +272,28 @@ export async function runSession(deps: SessionDeps): Promise<number> {
     loadingMoreFor = null;
     clearProgress();
     if (previous !== null) retire(previous);
+    // Spec 4.8: the closed dataset's root goes with it; dispatch tells the paint guard.
+    dispatch({ type: "rootReset", root: rootOverride });
+  }
+
+  /** The realpath of a directory the user chose; the resolved path when it cannot be resolved. */
+  async function realDir(dir: string): Promise<string> {
+    try {
+      const real = await deps.rootFs.realpath(dir);
+      return path.isAbsolute(real) ? path.resolve(real) : dir;
+    } catch {
+      return dir;
+    }
+  }
+
+  /** `--root` as its realpath, once per session; opened() waits for it before resolving the root. */
+  async function settleFlag(given: string): Promise<void> {
+    const real = await realDir(given);
+    // A :root chosen in the meantime wins.
+    if (rootOverride !== given || real === given) return;
+    rootOverride = real;
+    if (closed || dataset !== null || state.root !== given) return;
+    guarded(() => dispatch({ type: "rootReset", root: real }));
   }
 
   /** Close a dataset nobody shows any more; close() awaits it. Close errors are ignored, as everywhere. */
@@ -419,6 +443,7 @@ export async function runSession(deps: SessionDeps): Promise<number> {
         deps.startFs
       );
     }
+    await flagSettled;
     const resolution = await resolveRoot(
       {
         cwd: deps.cwd,
@@ -571,8 +596,10 @@ export async function runSession(deps: SessionDeps): Promise<number> {
       paint();
       return;
     }
-    rootOverride = resolved;
-    dispatch({ type: "rootChanged", root: resolved });
+    const real = await realDir(resolved);
+    if (closed) return;
+    rootOverride = real;
+    dispatch({ type: "rootChanged", root: real });
     paint();
   }
 
@@ -628,6 +655,7 @@ export async function runSession(deps: SessionDeps): Promise<number> {
   });
   terminal.onResize(() => paint());
   deps.onRootChange?.(state.root);
+  const flagSettled = rootOverride === null ? Promise.resolve() : settleFlag(rootOverride);
   if (deps.signal?.aborted === true) onAbort();
   else deps.signal?.addEventListener("abort", onAbort, { once: true });
   if (outcome === null) {

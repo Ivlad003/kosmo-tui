@@ -71,8 +71,9 @@ it, with the code window read from the project root. The `▶` line is always vi
 ```
 
 The code window names its state when the file does not match the trace: `file-missing`, `outside-root` (a symlink
-leaves the root), `too-large` (over 2 MiB), `unreadable`, `not-text`, `changed-since-trace`, or `moved to line N`
-(the recorded snippet was found within 40 lines). The root is `--root` or `:root` (taken as given), else
+leaves the root), `root-changed` (the root directory now resolves elsewhere, say it was swapped for a symlink),
+`too-large` (over 2 MiB), `unreadable`, `not-text`, `changed-since-trace`, or `moved to line N` (the recorded
+snippet was found within 40 lines). The root is `--root` or `:root` (taken as given, stored as its real path), else
 `dataset.root` when it is an absolute path to a directory that (by real path) is or contains the current directory
 or the trace file's directory, else the nearest directory with `.git` or `package.json` above the trace file, else
 the current directory. None of these automatic choices may be `/`, your home directory or a directory above it: a

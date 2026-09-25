@@ -436,6 +436,22 @@ describe("dataset lifecycle", () => {
     expect(run(back.state, { type: "escape" }).effects).toEqual([]);
   });
 
+  it("rootReset (the session after closeDataset): the dataset's root and its reason go, silently", () => {
+    const listed = listedFromStart();
+    const unset = run(listed, { type: "rootChanged", root: null, unset: "home" }).state;
+    const back = run(unset, { type: "escape" }).state;
+    const reset = run(back, { type: "rootReset", root: null });
+    expect(reset.state.root).toBeNull();
+    expect(reset.state.rootUnset).toBeNull();
+    expect(reset.state.banner).toBe(back.banner);
+    expect(reset.effects).toEqual([]);
+    const flagged = run(run(listed, { type: "rootChanged", root: "/p" }).state, { type: "escape" }).state;
+    const toFlag = run(flagged, { type: "rootReset", root: "/flag" }).state;
+    expect(toFlag.root).toBe("/flag");
+    expect(toFlag.rootUnset).toBeNull();
+    expect(toFlag.snippets.size).toBe(0);
+  });
+
   it("a traceLoaded without a dataset is a no-op", () => {
     const back = run(listedFromStart(), { type: "escape" }).state;
     const late = update(back, { type: "traceLoaded", model: multiSession() });

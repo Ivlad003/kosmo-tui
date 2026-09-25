@@ -37,7 +37,10 @@ export function statusText(span: SpanRow): string {
   }
 }
 
-/** Why no code root was chosen (spec 4.8 rule 4 rejected): the current directory is too wide. */
+/**
+ * Why there is no code root. A reason: spec 4.8 rule 4 was rejected, the current directory is too
+ * wide. null: no dataset is open yet, so nothing failed; the root is chosen when a trace opens.
+ */
 export function rootUnsetText(reason: WideRootRejection | null): string {
   switch (reason) {
     case "filesystem-root":
@@ -45,7 +48,7 @@ export function rootUnsetText(reason: WideRootRejection | null): string {
     case "home":
       return "code root not set: cwd is the home directory or above it; use :root or --root";
     case null:
-      return "code root not set; use :root or --root";
+      return "code root: chosen when a trace opens; set one with :root or --root";
   }
 }
 
