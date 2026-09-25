@@ -9,6 +9,8 @@
  *
  *  - stdin is read to EOF without a deadline (SIGINT/SIGTERM still stop it through `signal`);
  *  - a stopped stream prints nothing: stderr names the line and the reason, exit 2;
+ *  - stopped by our own SIGINT/SIGTERM/SIGHUP (`signal`): nothing on stdout or stderr, and
+ *    the signal's code (130/143/129);
  *  - everything is computed before the first byte and written once; text and tab keep the
  *    51 200 B cap of their renderers;
  *  - SQLite values are read lazily: text reads them only for the spans that can fit under
@@ -19,7 +21,15 @@
  */
 import type { TraceModel } from "../format/model.js";
 import { spanKey, type LinkRow, type SpanValues, type TraceSummary } from "../format/types.js";
-import { EXIT_OK, EXIT_SOURCE, describeError, exitCodeForReaderError, type Proc, type Writable } from "../proc.js";
+import {
+  EXIT_OK,
+  EXIT_SOURCE,
+  describeError,
+  exitCodeForReaderError,
+  exitCodeForSignal,
+  type Proc,
+  type Writable
+} from "../proc.js";
 import { nodeReaderFs } from "../readers/node-fs.js";
 import { openTarget } from "../readers/open.js";
 import { loadSqliteModule } from "../readers/sqlite-loader.js";
@@ -48,6 +58,8 @@ const NO_VALUES: ValuesLookup = () => undefined;
 export async function runPrint(input: PrintInput, deps: PrintDeps = {}): Promise<number> {
   const { args, proc, signal } = input;
   const fail = (code: number, text: string): number => {
+    // Stopped by our own SIGINT/SIGTERM/SIGHUP: whatever broke is the cancellation, so stay silent.
+    if (signal.aborted) return exitCodeForSignal(signal.reason);
     // One line of at most 2 000 characters (describeError) before escaping: a message may carry data.
     proc.stderr.write(`kosmo-tui: ${escapeTerminalControls(describeError(text))}\n`);
     return code;
@@ -70,6 +82,8 @@ export async function runPrint(input: PrintInput, deps: PrintDeps = {}): Promise
     }
     const built = await build(args, dataset, signal);
     if (!built.ok) return fail(exitCodeForReaderError(built.error), built.error.message);
+    // A signal during build may have cut the trace list or the values short: write nothing.
+    if (signal.aborted) return exitCodeForSignal(signal.reason);
     const failed = await writeOnce(proc.stdout, built.text);
     if (failed !== null) return fail(EXIT_SOURCE, `output ended early (${describeWriteError(failed)})`);
     return EXIT_OK;
@@ -150,7 +164,8 @@ async function preloadValues(
 
 /**
  * The links of one trace for `--format json --trace` (spec 4.12): every outgoing link of
- * its spans, plus incoming links from spans outside it (inside ones are already outgoing).
+ * its spans, incoming links from spans outside it (inside ones are already outgoing), then
+ * the links of the trace with no span at either end, in document order.
  */
 export function linksOfModel(model: TraceModel): LinkRow[] {
   const links: LinkRow[] = [];
@@ -161,34 +176,43 @@ export function linksOfModel(model: TraceModel): LinkRow[] {
       if (model.get(link.other) === undefined) links.push({ from: link.other, to: ref, kind: link.kind });
     }
   }
+  for (const link of model.linkRows()) {
+    if (model.get(link.from) === undefined && model.get(link.to) === undefined) links.push(link);
+  }
   return links;
 }
 
 /**
- * Write once. A real stream (it has `writable`) is awaited through its write callback, and an
- * error listener stays attached so a late EPIPE never crashes the process.
+ * Write once. A real stream (it has `writable`) is awaited until its write callback or its
+ * `error` event, whichever comes first; the promise settles exactly once. Node calls the
+ * callback with the error and emits `error` on a later tick, so the listener is removed one
+ * macrotask after settling (on every path): that late EPIPE is absorbed, never a crash.
  */
 async function writeOnce(stdout: Writable, text: string): Promise<Error | null> {
   let failed: Error | null = null;
-  stdout.on?.("error", ((error: Error) => {
+  let done: () => void = () => undefined;
+  const settled = new Promise<void>((resolve) => (done = resolve));
+  const onError = ((error: Error) => {
     failed ??= error;
-  }) as (...args: never[]) => void);
-  await new Promise<void>((resolve) => {
-    try {
-      if (typeof stdout.writable === "boolean") {
-        stdout.write(text, (error) => {
-          if (error) failed ??= error;
-          resolve();
-        });
-      } else {
-        stdout.write(text);
-        resolve();
-      }
-    } catch (error) {
-      failed ??= error instanceof Error ? error : new Error(String(error));
-      resolve();
+    done();
+  }) as (...args: never[]) => void;
+  stdout.on?.("error", onError);
+  try {
+    if (typeof stdout.writable === "boolean") {
+      stdout.write(text, (error) => {
+        if (error) failed ??= error;
+        done();
+      });
+    } else {
+      stdout.write(text);
+      done();
     }
-  });
+  } catch (error) {
+    failed ??= error instanceof Error ? error : new Error(String(error));
+    done();
+  }
+  await settled;
+  setImmediate(() => stdout.off?.("error", onError));
   return failed;
 }
 

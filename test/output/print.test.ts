@@ -1,4 +1,5 @@
 /** Task 23: `--print` and the table of spec 7.1, with the exit codes of spec 6.8. */
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,7 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import type { PrintArgs } from "../../src/args.js";
 import { validateDocument } from "../../src/format/validate.js";
 import { TEXT_VALUE_SPANS, runPrint } from "../../src/output/print.js";
-import { EXIT_OK, EXIT_SOURCE, EXIT_USAGE } from "../../src/proc.js";
+import { EXIT_OK, EXIT_SIGINT, EXIT_SIGTERM, EXIT_SOURCE, EXIT_USAGE } from "../../src/proc.js";
 import { nodeReaderFs } from "../../src/readers/node-fs.js";
 import { loadSqliteModule } from "../../src/readers/sqlite-loader.js";
 import type { ReaderDeps } from "../../src/readers/types.js";
@@ -14,7 +15,7 @@ import { RECIPES, fixtureFile } from "../fixture-recipes.js";
 import { chunks, memoryFs } from "../readers/reader-fakes.js";
 import { dataset, recorded } from "../trace-builder.js";
 import { NODE_SQLITE_AVAILABLE, cleanupTempDirs, toNdjsonLines, writeAllContainers } from "../trace-writers.js";
-import { fakeProc } from "../ui/proc-fakes.js";
+import { fakeProc, type FakeProc } from "../ui/proc-fakes.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BASIC = readFileSync(fixtureFile("kosmo-trace/basic"), "utf8");
@@ -196,5 +197,164 @@ describe.skipIf(!NODE_SQLITE_AVAILABLE)("--print over SQLite: lazy values", () =
     expect(fromJson.out).not.toContain("not-recorded");
     const fromSqlite = await print({ target: written.sqlite, format: "text", trace: "t_cap", detail: 1 }, reader);
     expect(fromSqlite).toEqual(fromJson);
+  });
+});
+
+describe("--print --format json: dangling links (spec 4.12)", () => {
+  // L2 and L4 have no span at either end; the validator checks only the SpanRef shape.
+  const ghost = (trace: string, id: string) => ({ trace, session: "s1", id });
+  const DANGLING = dataset("ds_dangling")
+    .trace("t", "t")
+    .span("a", "a")
+    .span("b", "b")
+    .trace("u", "u")
+    .span("c", "c")
+    .link({ trace: "t", id: "a" }, { trace: "t", id: "b" }, "follows-from")
+    .link(ghost("t", "g1"), ghost("t", "g2"), "caused-by")
+    .link({ id: "c" }, { trace: "t", id: "a" }, "caused-by")
+    .link(ghost("u", "g3"), ghost("t", "g4"), "follows-from")
+    .link(ghost("t", "g5"), { trace: "t", id: "a" }, "caused-by")
+    .build();
+  const key = (link: { from: { trace: string; id: string }; to: { trace: string; id: string } }) =>
+    `${link.from.trace}:${link.from.id}>${link.to.trace}:${link.to.id}`;
+  const ALL = ["t:a>t:b", "t:g1>t:g2", "u:c>t:a", "u:g3>t:g4", "t:g5>t:a"];
+  type Doc = { links: Array<Parameters<typeof key>[0]> };
+
+  it("the dataset keeps every link exactly once, dangling ones in document order, and validates again", async () => {
+    const run = await print(
+      { target: "x.kosmo-trace.json", format: "json", detail: 1 },
+      file(JSON.stringify(DANGLING))
+    );
+    expect(run.code).toBe(EXIT_OK);
+    const keys = (JSON.parse(run.out) as Doc).links.map(key);
+    expect([...keys].sort()).toEqual([...ALL].sort());
+    expect(keys.filter((k) => k.includes(":g1") || k.includes(":g3"))).toEqual(["t:g1>t:g2", "u:g3>t:g4"]);
+    const again = validateDocument(JSON.parse(run.out));
+    expect(again.ok).toBe(true);
+  });
+
+  it("--trace keeps every link with an end in the trace, dangling ones included", async () => {
+    const reader = file(JSON.stringify(DANGLING));
+    const t = await print({ target: "x.kosmo-trace.json", format: "json", trace: "t", detail: 1 }, reader);
+    expect([...(JSON.parse(t.out) as Doc).links.map(key)].sort()).toEqual([...ALL].sort());
+    const u = await print({ target: "x.kosmo-trace.json", format: "json", trace: "u", detail: 1 }, reader);
+    expect([...(JSON.parse(u.out) as Doc).links.map(key)].sort()).toEqual(["u:c>t:a", "u:g3>t:g4"]);
+    expect(validateDocument(JSON.parse(u.out)).ok).toBe(true);
+  });
+
+  it.skipIf(!NODE_SQLITE_AVAILABLE)("every container, SQLite included, gives the same links", async () => {
+    const written = writeAllContainers(DANGLING, "dangling");
+    const reader: ReaderDeps = { fs: nodeReaderFs, loadSqlite: () => loadSqliteModule() };
+    const outs = [];
+    for (const target of [written.json, written.ndjson, written.sqlite]) {
+      const run = await print({ target, format: "json", detail: 1 }, reader);
+      expect(run.code, target).toBe(EXIT_OK);
+      outs.push(run.out);
+      expect((JSON.parse(run.out) as Doc).links, target).toHaveLength(ALL.length);
+    }
+    expect(outs[1]).toBe(outs[0]);
+    expect(outs[2]).toBe(outs[0]);
+  });
+});
+
+describe("--print stopped by our own signal (spec 6.8)", () => {
+  const stalled = (): AsyncIterable<Uint8Array> =>
+    (async function* () {
+      yield new TextEncoder().encode(NDJSON[0]!);
+      await new Promise(() => undefined);
+    })();
+
+  for (const [reason, code] of [
+    ["SIGINT", EXIT_SIGINT],
+    ["SIGTERM", EXIT_SIGTERM]
+  ] as const) {
+    it(`${reason} while stdin is read prints nothing and is ${code}`, async () => {
+      const proc = fakeProc([]);
+      const controller = new AbortController();
+      const pending = runPrint(
+        { args: { command: "print", target: "-", format: "tab", detail: 1 }, proc, signal: controller.signal },
+        { reader: { fs: memoryFs(), stdin: stalled() } }
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      controller.abort(reason);
+      expect(await pending).toBe(code);
+      expect(proc.out).toBe("");
+      expect(proc.err).toBe("");
+    });
+  }
+
+  it("a signal that lands after reading writes no partial output", async () => {
+    const proc = fakeProc([]);
+    const controller = new AbortController();
+    controller.abort("SIGINT");
+    const code = await runPrint(
+      {
+        args: { command: "print", target: "x.kosmo-trace.json", format: "tab", detail: 1 },
+        proc,
+        signal: controller.signal
+      },
+      { reader: file(BASIC) }
+    );
+    expect(code).toBe(EXIT_SIGINT);
+    expect(proc.out).toBe("");
+    expect(proc.err).toBe("");
+  });
+});
+
+describe("writeOnce settles on every path and leaves no listener", () => {
+  /** A stream like process.stdout: an EventEmitter, so an `error` without a listener throws. */
+  function emitterStdout(write: (emitter: EventEmitter, callback?: (error?: Error | null) => void) => void) {
+    const emitter = new EventEmitter();
+    const stdout = {
+      writable: true,
+      write: (_chunk: string, callback?: (error?: Error | null) => void) => {
+        write(emitter, callback);
+        return false;
+      },
+      on: (event: string, listener: (...args: never[]) => void) =>
+        emitter.on(event, listener as (...args: unknown[]) => void),
+      off: (event: string, listener: (...args: never[]) => void) =>
+        emitter.off(event, listener as (...args: unknown[]) => void)
+    };
+    return { emitter, stdout };
+  }
+  const tab = async (stdout: FakeProc["stdout"]) => {
+    const proc = fakeProc([]);
+    proc.stdout = stdout;
+    const code = await runPrint(
+      {
+        args: { command: "print", target: "x.kosmo-trace.json", format: "tab", detail: 1 },
+        proc,
+        signal: new AbortController().signal
+      },
+      { reader: file(BASIC) }
+    );
+    return { code, err: proc.err };
+  };
+  const epipe = () => Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+  it("an error event without the write callback settles as EPIPE, exit 2", async () => {
+    const { emitter, stdout } = emitterStdout((emitter) => setTimeout(() => emitter.emit("error", epipe()), 5));
+    expect(await tab(stdout)).toEqual({ code: EXIT_SOURCE, err: "kosmo-tui: output ended early (EPIPE)\n" });
+    await settle();
+    expect(emitter.listenerCount("error")).toBe(0);
+  });
+
+  it("the callback error followed by the stream's own error event (as Node does) settles once and never throws", async () => {
+    const { emitter, stdout } = emitterStdout((emitter, callback) => {
+      callback?.(epipe());
+      process.nextTick(() => emitter.emit("error", epipe()));
+    });
+    expect(await tab(stdout)).toEqual({ code: EXIT_SOURCE, err: "kosmo-tui: output ended early (EPIPE)\n" });
+    await settle();
+    expect(emitter.listenerCount("error")).toBe(0);
+  });
+
+  it("a successful write removes its listener too", async () => {
+    const { emitter, stdout } = emitterStdout((_emitter, callback) => callback?.(null));
+    expect(await tab(stdout)).toEqual({ code: EXIT_OK, err: "" });
+    await settle();
+    expect(emitter.listenerCount("error")).toBe(0);
   });
 });

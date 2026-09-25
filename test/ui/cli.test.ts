@@ -6,7 +6,7 @@ import { EXIT_OK, EXIT_SIGHUP, EXIT_SIGINT, EXIT_SIGTERM, EXIT_SOURCE, EXIT_USAG
 import type { PrintInput } from "../../src/output/print.js";
 import type { OpenTuiInput } from "../../src/ui/open.js";
 import { fixtureFile } from "../fixture-recipes.js";
-import { fakeProc } from "./proc-fakes.js";
+import { fakeProc, fakeStdin } from "./proc-fakes.js";
 
 describe("run(proc, deps)", () => {
   it("keeps the exit codes of spec 6.8 and exports no other", () => {
@@ -89,6 +89,22 @@ describe("run(proc, deps)", () => {
     });
     expect(code).toBe(EXIT_SOURCE);
     expect(proc.err).toBe("kosmo-tui: boom\\u001b]0;x\\u0007 second\n");
+  });
+
+  it("Ctrl+C while --print - reads stdin is 130 with nothing on stderr", async () => {
+    const stdin = fakeStdin(
+      (async function* () {
+        yield new TextEncoder().encode('{"type":"header","format":"kosmo-trace","version":1,"dataset":{"id":"d"}}\n');
+        await new Promise(() => undefined);
+      })()
+    );
+    const proc = fakeProc(["-", "--print", "tab"], { stdin });
+    const pending = run(proc);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    proc.emit("SIGINT");
+    expect(await pending).toBe(EXIT_SIGINT);
+    expect(proc.err).toBe("");
+    expect(proc.out).toBe("");
   });
 
   it("the default runPrint prints a real fixture file", async () => {

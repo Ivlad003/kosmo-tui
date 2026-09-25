@@ -177,8 +177,10 @@ function linkJson(link: LinkRow): JsonOut {
 }
 
 /**
- * Every link of the dataset from the models: outgoing links of each span, plus incoming
- * links whose `from` span exists in no model (so a link is never written twice).
+ * Every link of the dataset from the models, each exactly once: outgoing links of each span,
+ * incoming links whose `from` span exists in no model, then the links with no span at either
+ * end (spec 4.12: the validator checks only the SpanRef shape) in document order, written by
+ * the model of `from.trace` when it is loaded, else by the model of `to.trace`.
  */
 function collectLinks(models: readonly TraceModel[]): JsonOut[] {
   const byTrace = new Map(models.map((model) => [model.trace.id, model] as const));
@@ -191,6 +193,14 @@ function collectLinks(models: readonly TraceModel[]): JsonOut[] {
       for (const view of views.in) {
         if (!known(view.other)) links.push(linkJson({ from: view.other, to: ref, kind: view.kind }));
       }
+    }
+  }
+  for (const model of models) {
+    const id = model.trace.id;
+    for (const link of model.linkRows()) {
+      if (known(link.from) || known(link.to)) continue;
+      const owner = byTrace.has(link.from.trace) ? link.from.trace : link.to.trace;
+      if (owner === id) links.push(linkJson(link));
     }
   }
   return links;

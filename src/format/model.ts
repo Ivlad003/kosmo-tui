@@ -48,6 +48,8 @@ export interface TraceModel {
   areas(): readonly AreaRow[];
   spansInArea(key: AreaKey): readonly SpanRef[];
   links(ref: SpanRef): { readonly out: readonly LinkView[]; readonly in: readonly LinkView[] };
+  /** Every link with an end in this trace (by trace id), in input order, even when no end has a span. */
+  linkRows(): readonly LinkRow[];
   dfs(): readonly SpanRef[];
   depthOf(ref: SpanRef): number;
 }
@@ -312,11 +314,13 @@ export function buildTraceModel(trace: TraceDecl, spans: readonly SpanRow[], lin
   // Links: views keyed by the span they belong to, sorted by the other end, then kind.
   const outgoing = new Map<string, LinkView[]>();
   const incoming = new Map<string, LinkView[]>();
+  const linkRows: LinkRow[] = [];
   const nameOf = (ref: SpanRef): string | null => {
     const index = ref.trace === trace.id ? indexOfKey.get(spanKey(ref)) : undefined;
     return index === undefined ? null : (rows[index] as SpanRow).name;
   };
   for (const link of links) {
+    if (link.from.trace === trace.id || link.to.trace === trace.id) linkRows.push(link);
     if (link.from.trace === trace.id) {
       pushTo(outgoing, spanKey(link.from), { kind: link.kind, other: link.to, otherName: nameOf(link.to) });
     }
@@ -324,6 +328,7 @@ export function buildTraceModel(trace: TraceDecl, spans: readonly SpanRow[], lin
       pushTo(incoming, spanKey(link.to), { kind: link.kind, other: link.from, otherName: nameOf(link.from) });
     }
   }
+  const frozenLinks: readonly LinkRow[] = Object.freeze(linkRows);
   const compareViews = (a: LinkView, b: LinkView): number =>
     compareBytes(spanKey(a.other), spanKey(b.other)) || compareBytes(a.kind, b.kind);
   for (const list of outgoing.values()) list.sort(compareViews);
@@ -373,6 +378,7 @@ export function buildTraceModel(trace: TraceDecl, spans: readonly SpanRow[], lin
       const key = spanKey(ref);
       return { out: outgoing.get(key) ?? NO_LINKS, in: incoming.get(key) ?? NO_LINKS };
     },
+    linkRows: () => frozenLinks,
     dfs: () => dfsRefs,
     depthOf: (ref) => {
       const index = find(ref);
