@@ -196,4 +196,19 @@ describe("an uncaught error (spec 13.2)", () => {
     expect(s.terminal.closes).toBe(1);
     expect(s.closedPorts).toEqual(["tty"]);
   });
+
+  it("a homedir throw happens before the keyboard or terminal is taken", async () => {
+    const s = setup();
+    const deps: OpenTuiDeps = {
+      ...s.deps,
+      homedir: () => {
+        throw new Error("homedir broke");
+      },
+      keyboard: () => {
+        throw new Error("keyboard opened");
+      }
+    };
+    await expect(run(tui(), fakeProc([]), deps)).rejects.toThrow("homedir broke");
+    expect(s.created).toHaveLength(0);
+  });
 });

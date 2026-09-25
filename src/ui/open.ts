@@ -106,6 +106,7 @@ export async function openTui(input: OpenTuiInput, deps: OpenTuiDeps = {}): Prom
       `no-controlling-terminal: interactive terminal required: stdout is not a TTY. ${PRINT_HINT}`
     );
   }
+  const home = (deps.homedir ?? os.homedir)();
   const keyboard = (deps.keyboard ?? openKeyboardInput)({
     platform,
     stdin: proc.stdin as unknown as TerminalInput,
@@ -144,7 +145,7 @@ export async function openTui(input: OpenTuiInput, deps: OpenTuiDeps = {}): Prom
     },
     render: { color: detectColorLevel(proc.env, true, platform), links: linksEnabled(proc.env) },
     cwd,
-    home: (deps.homedir ?? os.homedir)(),
+    home,
     env: proc.env,
     readOnly: args.readOnly,
     ...(args.root === undefined ? {} : { rootFlag: args.root }),
