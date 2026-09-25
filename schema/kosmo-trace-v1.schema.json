@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/@ivlad003/kosmo-tui/schema/kosmo-trace-v1.schema.json",
+  "title": "kosmo-trace/v1 document",
+  "description": "Documentation for producers. kosmo-tui validates with its own hand-written validator; this schema is never stricter than that validator on fields with soft consequences (spec 4.10). Byte limits, nesting, uniqueness and file/line sizes are checked only by the viewer. $defs header/trace/span/link also describe NDJSON lines (spec 4.5): an NDJSON line carries its record fields flat next to \"type\".",
+  "type": "object",
+  "required": ["format", "version", "dataset", "spans"],
+  "properties": {
+    "format": { "const": "kosmo-trace" },
+    "version": { "const": 1 },
+    "dataset": { "$ref": "#/$defs/dataset" },
+    "traces": { "type": "array", "items": { "$ref": "#/$defs/trace" } },
+    "spans": { "type": "array", "items": { "$ref": "#/$defs/span" } },
+    "links": { "type": "array", "items": { "$ref": "#/$defs/link" } }
+  },
+  "$defs": {
+    "id": {
+      "description": "At most 256 UTF-8 bytes (checked by the viewer); maxLength counts characters, so it is never stricter.",
+      "type": "string",
+      "maxLength": 256
+    },
+    "text": {
+      "description": "At most 1024 UTF-8 bytes (checked by the viewer).",
+      "type": "string",
+      "maxLength": 1024
+    },
+    "dataset": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "producer": {
+          "type": "object",
+          "required": ["name"],
+          "properties": { "name": { "type": "string" }, "version": { "type": "string" } }
+        },
+        "createdAt": { "description": "ISO 8601 timestamp.", "type": "string" },
+        "root": {
+          "description": "Absolute project root on the producing host; optional (private data).",
+          "type": "string"
+        },
+        "title": { "type": "string" }
+      }
+    },
+    "header": {
+      "description": "The first non-empty NDJSON line.",
+      "type": "object",
+      "required": ["type", "format", "version", "dataset"],
+      "properties": {
+        "type": { "const": "header" },
+        "format": { "const": "kosmo-trace" },
+        "version": { "const": 1 },
+        "dataset": { "$ref": "#/$defs/dataset" }
+      }
+    },
+    "trace": {
+      "description": "A trace declaration; as an NDJSON line it also has \"type\": \"trace\".",
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "type": { "const": "trace" },
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/text" }
+      }
+    },
+    "spanRef": {
+      "type": "object",
+      "required": ["trace", "session", "id"],
+      "properties": {
+        "trace": { "$ref": "#/$defs/id" },
+        "session": { "$ref": "#/$defs/id" },
+        "id": { "$ref": "#/$defs/id" }
+      }
+    },
+    "span": {
+      "description": "A span; as an NDJSON line it also has \"type\": \"span\". parentSession is forbidden when parent is null.",
+      "type": "object",
+      "required": ["trace", "session", "id", "parent", "order", "name", "status"],
+      "properties": {
+        "type": { "const": "span" },
+        "trace": { "$ref": "#/$defs/id" },
+        "session": { "$ref": "#/$defs/id" },
+        "id": { "$ref": "#/$defs/id" },
+        "parent": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "parentSession": { "$ref": "#/$defs/id" },
+        "order": {
+          "description": "Enter order inside (trace, session); unique there.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "name": { "$ref": "#/$defs/text" },
+        "kind": {
+          "description": "Dotted <framework>.<role>; not a closed enum (spec 4.13). Missing means function.",
+          "$ref": "#/$defs/text",
+          "examples": [
+            "function",
+            "http.server",
+            "http.client",
+            "express.router",
+            "express.middleware",
+            "express.handler",
+            "express.error-handler",
+            "nest.middleware",
+            "nest.guard",
+            "nest.interceptor",
+            "nest.pipe",
+            "nest.handler",
+            "nest.filter",
+            "react.render",
+            "react.effect",
+            "next.middleware",
+            "next.route-handler",
+            "next.server-action",
+            "next.render"
+          ]
+        },
+        "status": { "enum": ["complete", "errored", "running", "suspended", "unknown"] },
+        "statusReason": { "$ref": "#/$defs/text" },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "runtime": {
+          "description": "Where the code actually ran. Unknown values are read as other, so any string is accepted.",
+          "type": "string",
+          "examples": ["node", "browser", "edge", "other"]
+        },
+        "location": { "$ref": "#/$defs/location" },
+        "area": { "$ref": "#/$defs/area" },
+        "attrs": { "$ref": "#/$defs/attrs" },
+        "args": { "$ref": "#/$defs/value" },
+        "return": { "$ref": "#/$defs/value" },
+        "error": { "$ref": "#/$defs/value" }
+      },
+      "if": { "properties": { "parent": { "type": "null" } } },
+      "then": { "properties": { "parentSession": false } }
+    },
+    "link": {
+      "description": "A link; as an NDJSON line it also has \"type\": \"link\".",
+      "type": "object",
+      "required": ["from", "to", "kind"],
+      "properties": {
+        "type": { "const": "link" },
+        "from": { "$ref": "#/$defs/spanRef" },
+        "to": { "$ref": "#/$defs/spanRef" },
+        "kind": { "$ref": "#/$defs/text", "examples": ["caused-by", "follows-from"] }
+      }
+    },
+    "location": {
+      "description": "file: relative POSIX path, no leading /, no .. segment, no scheme, no control or bidi characters, at most 4096 UTF-8 bytes. snippet: at most 512 UTF-8 bytes. endLine >= line is checked by the viewer.",
+      "type": "object",
+      "required": ["file", "line"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "maxLength": 4096,
+          "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*:)(?!(?:.*/)?\\.\\.(?:/|$))[^\\u0000-\\u001f\\u007f-\\u009f\\u202a-\\u202e\\u2066-\\u2069]*$"
+        },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "snippet": { "type": "string", "maxLength": 512 },
+        "snippetCut": { "type": "boolean" }
+      }
+    },
+    "area": {
+      "type": "object",
+      "properties": { "module": { "$ref": "#/$defs/text" }, "feature": { "$ref": "#/$defs/text" } }
+    },
+    "attrs": {
+      "description": "Framework metadata (spec 4.13): at most 32 keys, key at most 128 bytes, string at most 512 UTF-8 bytes, serialized object at most 8 KiB.",
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)*$", "maxLength": 128 },
+      "additionalProperties": {
+        "anyOf": [{ "type": "string", "maxLength": 512 }, { "type": "number" }, { "type": "boolean" }]
+      }
+    },
+    "value": {
+      "description": "A recorded value (spec 4.2). Tagged objects inside \"value\" are checked by the viewer only: unknown $type is never rejected.",
+      "type": "object",
+      "required": ["state"],
+      "oneOf": [
+        {
+          "properties": { "state": { "const": "recorded" }, "value": true },
+          "required": ["value"]
+        },
+        {
+          "properties": { "state": { "const": "truncated" }, "value": true, "reason": { "type": "string" } },
+          "required": ["value"]
+        },
+        { "properties": { "state": { "const": "masked" }, "reason": { "type": "string" } } },
+        { "properties": { "state": { "const": "not-recorded" }, "reason": { "type": "string" } } }
+      ]
+    }
+  }
+}
