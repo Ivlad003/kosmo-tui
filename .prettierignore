@@ -9,3 +9,4 @@ test/fixtures/frameworks
 test/fixtures/project
 test/golden
 test/apps
+examples/demo.kosmo-trace.json

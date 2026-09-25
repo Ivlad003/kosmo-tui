@@ -1,0 +1,16 @@
+{
+  "format": "kosmo-trace",
+  "version": 1,
+  "dataset": {"id":"ds_demo","producer":{"name":"kosmo-tui-demo","version":"1.0.0"},"createdAt":"2026-09-24T10:00:00Z","title":"checkout bug demo"},
+  "traces": [
+    {"id":"t_cart","name":"GET /cart"},
+    {"id":"t_health","name":"GET /health"}
+  ],
+  "spans": [
+    {"trace":"t_cart","session":"s1","id":"req","parent":null,"order":0,"name":"GET /cart","kind":"http.server","status":"errored","durationMs":14.2,"runtime":"node","location":{"file":"examples/demo/src/server.ts","line":4,"snippet":"export const server = createServer(async (request, response) => {"},"area":{"module":"server","feature":"cart"},"attrs":{"http.request.method":"GET","http.route":"/cart","http.response.status_code":500},"args":{"state":"recorded","value":[{"method":"GET","url":"/cart?session_id=s3cr3t","headers":{"accept":"application/json","authorization":"Bearer demo-token"}}]}},
+    {"trace":"t_cart","session":"s1","id":"load","parent":"req","order":1,"name":"loadCart","status":"errored","durationMs":3.9,"runtime":"node","location":{"file":"examples/demo/src/cart.ts","line":5,"endLine":9,"snippet":"export async function loadCart(userId: string) {"},"area":{"module":"cart","feature":"cart"},"args":{"state":"recorded","value":["u_42"]},"return":{"state":"not-recorded","reason":"threw"},"error":{"state":"recorded","value":{"name":"RangeError","message":"discount > 100%"}}},
+    {"trace":"t_cart","session":"s1","id":"line","parent":"load","order":2,"name":"calculateLineTotal","status":"errored","durationMs":1.8,"runtime":"node","location":{"file":"examples/demo/src/cart.ts","line":12,"column":1,"endLine":18,"snippet":"export async function calculateLineTotal(item: Item, qty: number) {"},"area":{"module":"cart","feature":"cart"},"attrs":{"code.function":"calculateLineTotal"},"args":{"state":"recorded","value":[{"id":7,"discount":120},2]},"return":{"state":"not-recorded","reason":"threw"},"error":{"state":"recorded","value":{"name":"RangeError","message":"discount > 100%"}}},
+    {"trace":"t_cart","session":"s1","id":"price","parent":"line","order":3,"name":"price","status":"complete","durationMs":0.4,"runtime":"node","location":{"file":"examples/demo/src/pricing.ts","line":3,"endLine":5,"snippet":"export async function price(id: number): Promise<number> {"},"area":{"module":"pricing","feature":"cart"},"args":{"state":"recorded","value":[7]},"return":{"state":"recorded","value":12.5}},
+    {"trace":"t_health","session":"s1","id":"health","parent":null,"order":0,"name":"GET /health","kind":"http.server","status":"complete","durationMs":0.3,"runtime":"node","location":{"file":"examples/demo/src/server.ts","line":4,"snippet":"export const server = createServer(async (request, response) => {"},"area":{"module":"server","feature":"health"},"attrs":{"http.request.method":"GET","http.route":"/health","http.response.status_code":200}}
+  ]
+}

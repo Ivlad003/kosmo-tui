@@ -5,6 +5,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed: standalone kosmo-tui on `kosmo-trace/v1` (breaking)
+
+kosmo-tui no longer depends on kosmo-callflow and reads its own trace format.
+
+- **Removed:** the live daemon source, replay, compare, review (findings, todos, `R`), eval (`kosmo-tui eval`, `:js`),
+  SQL (`kosmo-tui sql`, `:sql`, `docs/sql-recipes.md`), depth mappings, and every kosmo-callflow format (canonical
+  projections, the portable export, the NDJSON connect stream v1/v2, the callflow SQLite store). The
+  `@kosmo-callflow/*` dependencies, the `deps:tarballs` script and the optional `better-sqlite3` peer are gone: there
+  are no runtime dependencies.
+- **Added:** `kosmo-trace/v1` as JSON, NDJSON (file or stdin) and SQLite, with a JSON Schema exported as
+  `@ivlad003/kosmo-tui/schema/kosmo-trace-v1.schema.json`; the start screen with found and recent traces; the traces
+  screen; Areas (module/feature, derived `~` areas); code snippets from disk in the detail pane with named states;
+  framework kinds and `attrs` for Node, Express, NestJS, Next.js and React; `kosmo-text/v1` for `--print`, `d` and
+  `y`; `examples/demo.kosmo-trace.json`.
+- **Changed:** `--print` takes `text|json|tab` (was `lisp|tab|json`) and `--detail 0|1`; span refs are
+  `<id>`, `<session>:<id>` and `<trace>:<session>:<id>`; `engines.node` is `>=22.13.0` (was `>=18.19.0`); SIGHUP
+  restores the terminal and exits 129; the only file written is `recent.json` (`-r` turns it off).
+
 ### Release candidate 2026-09-23 (local, unpublished)
 
 Local release candidate for task 8.5 of kosmo-callflow `extract-tui-trace-debugger`. Nothing was
