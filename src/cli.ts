@@ -60,6 +60,8 @@ function defaultReadVersion(): string {
 }
 
 export async function run(proc: Proc, deps: RunDeps = {}): Promise<number> {
+  // `kosmo-tui … 2>&1 | true`: an EPIPE on stderr must not turn an error message into a crash.
+  absorbStreamErrors(proc.stderr);
   const parsed = parseArgv(proc.argv.slice(2));
   if (!parsed.ok) {
     proc.stderr.write(`kosmo-tui: ${escapeTerminalControls(parsed.message)}\nRun kosmo-tui --help for usage.\n`);

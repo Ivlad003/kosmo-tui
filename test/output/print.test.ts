@@ -359,9 +359,9 @@ describe("writeOnce settles on every path; one permanent no-op error listener st
     expect(emitter.listenerCount("error")).toBe(1);
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(() => emitter.emit("error", epipe())).not.toThrow();
-    // Once per runPrint: a second run adds one more, never one per write.
+    // Once per stream: a second run on the same stream adds none, and never one per write.
     expect(await tab(stdout)).toEqual({ code: EXIT_OK, err: "" });
-    expect(emitter.listenerCount("error")).toBe(2);
+    expect(emitter.listenerCount("error")).toBe(1);
   });
 
   it("the listener is on before the first write", async () => {

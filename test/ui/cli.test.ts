@@ -62,6 +62,23 @@ describe("run(proc, deps)", () => {
     }
   });
 
+  it("the real binary: a usage error with a closed stderr exits 1 without a crash", async () => {
+    const child = spawn(process.execPath, [BIN, "--bogus"], { stdio: ["ignore", "ignore", "pipe"] });
+    child.stderr.destroy();
+    const code = await new Promise<number | null>((resolve) => child.on("close", (status) => resolve(status)));
+    expect(code).toBe(EXIT_USAGE);
+  });
+
+  it("absorbs stderr errors once, however often run() is called", async () => {
+    const proc = fakeProc(["--help"]);
+    const emitter = new EventEmitter();
+    proc.stderr = Object.assign(emitter, { write: () => true }) as unknown as typeof proc.stderr;
+    await run(proc);
+    await run(proc);
+    expect(emitter.listenerCount("error")).toBe(1);
+    expect(() => emitter.emit("error", Object.assign(new Error("write EPIPE"), { code: "EPIPE" }))).not.toThrow();
+  });
+
   it("--help, --version and usage errors need no terminal and touch nothing", async () => {
     const help = fakeProc(["--help"], { stdoutTty: false });
     expect(await run(help)).toBe(EXIT_OK);

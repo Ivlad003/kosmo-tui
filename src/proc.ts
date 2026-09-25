@@ -52,8 +52,12 @@ export type Proc = {
  * failure still see it through the write callback or their own listener.
  */
 export function absorbStreamErrors(stream: Writable): void {
+  if (absorbed.has(stream)) return;
+  absorbed.add(stream);
   stream.on?.("error", ignoreStreamError);
 }
+
+const absorbed = new WeakSet<Writable>();
 
 const ignoreStreamError = (() => undefined) as (...args: never[]) => void;
 
