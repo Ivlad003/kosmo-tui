@@ -304,13 +304,17 @@ export function ancestorsOf(model: TraceModel, ref: SpanRef): AncestorWalk {
 }
 
 type RowsCache = {
-  model: TraceModel;
-  collapsed: ReadonlySet<string>;
-  filter: TreeFilter;
-  rows: readonly TreeRow[];
-  index: ReadonlyMap<string, number>;
+  readonly collapsed: ReadonlySet<string>;
+  readonly filter: TreeFilter;
+  readonly rows: readonly TreeRow[];
+  readonly index: ReadonlyMap<string, number>;
 };
-let rowsCache: RowsCache | null = null;
+/**
+ * The last rows of each model, for the (collapsed, filter) they were built from. A pure memo: the
+ * answer depends only on its inputs, and an entry goes with its model.
+ */
+const rowsCache = new WeakMap<TraceModel, RowsCache>();
+const NO_ROWS: Pick<RowsCache, "rows" | "index"> = { rows: [], index: new Map() };
 
 /**
  * Tree rows in spec 4.3 DFS order (never re-sorted). Filters keep matches plus their ancestors as
@@ -329,16 +333,15 @@ export function rowIndex(state: ViewState, ref: SpanRef | null): number {
 
 function rowsOf(state: ViewState): { rows: readonly TreeRow[]; index: ReadonlyMap<string, number> } {
   const model = state.trace;
-  if (model === null) return { rows: [], index: new Map() };
-  const cache = rowsCache;
-  if (cache !== null && cache.model === model && cache.collapsed === state.collapsed && cache.filter === state.filter) {
-    return cache;
-  }
+  if (model === null) return NO_ROWS;
+  const cached = rowsCache.get(model);
+  if (cached !== undefined && cached.collapsed === state.collapsed && cached.filter === state.filter) return cached;
   const rows = computeRows(model, state.collapsed, state.filter);
   const index = new Map<string, number>();
   rows.forEach((row, position) => index.set(spanKey(row.ref), position));
-  rowsCache = { model, collapsed: state.collapsed, filter: state.filter, rows, index };
-  return rowsCache;
+  const entry: RowsCache = { collapsed: state.collapsed, filter: state.filter, rows, index };
+  rowsCache.set(model, entry);
+  return entry;
 }
 
 function matcher(model: TraceModel, filter: TreeFilter): ((span: SpanRow) => boolean) | null {

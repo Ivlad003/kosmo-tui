@@ -273,32 +273,31 @@ function treeWindow(rows: readonly TreeRow[], selected: number, height: number):
   return [from, to];
 }
 
-type TextCache = { model: TraceModel; lines: readonly string[]; index: ReadonlyMap<string, number> };
-let textCache: TextCache | null = null;
+type TextLines = { readonly lines: readonly string[]; readonly index: ReadonlyMap<string, number> };
+/** Per model: the text depends on nothing else (below), and an entry goes with its model. */
+const textCache = new WeakMap<TraceModel, TextLines>();
 
-/** kosmo-text/v1 of the whole trace with `--detail 0` (spec 7.2), one line per span after the header. */
-function kosmoTextLines(state: ViewState, model: TraceModel): TextCache {
-  if (textCache !== null && textCache.model === model) return textCache;
-  const text = renderKosmoText(model, {
-    detail: 0,
-    values: (ref) => {
-      const found = valuesOf(state, ref);
-      return found === "loading" ? undefined : found;
-    }
-  });
-  const lines = text.split("\n");
+/**
+ * kosmo-text/v1 of the whole trace with `--detail 0` (spec 7.2), one line per span after the header.
+ * `--detail 0` has no values line, so the text is a function of the model alone; `values` is never asked.
+ */
+function kosmoTextLines(model: TraceModel): TextLines {
+  const cached = textCache.get(model);
+  if (cached !== undefined) return cached;
+  const lines = renderKosmoText(model, { detail: 0, values: () => undefined }).split("\n");
   if (lines[lines.length - 1] === "") lines.pop();
   const index = new Map<string, number>();
   model.dfs().forEach((ref, position) => index.set(spanKey(ref), position + 1));
-  textCache = { model, lines, index };
-  return textCache;
+  const entry: TextLines = { lines, index };
+  textCache.set(model, entry);
+  return entry;
 }
 
 export function treeBody(state: ViewState, width: number, height: number, color: ColorLevel): string[] {
   const model = state.trace;
   if (model === null || height <= 0) return fit([], width, height);
   if (state.view === "text") {
-    const { lines, index } = kosmoTextLines(state, model);
+    const { lines, index } = kosmoTextLines(model);
     const selected = state.selected === null ? -1 : (index.get(spanKey(state.selected)) ?? -1);
     const cursor = selected >= 0 && selected < lines.length ? selected : lines.length - 1;
     const start = windowStart(lines.length, cursor, height);

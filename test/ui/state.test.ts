@@ -172,6 +172,21 @@ describe("visibleRows", () => {
     expect(last.selected).toEqual(ref("c49999"));
     expect(rowIndex(last, last.selected)).toBe(49_999);
   });
+
+  it("memoises rows per model: two traces rendered in turn keep their own rows", () => {
+    const one = onTrace(multiSession());
+    const two = onTrace(model(chain(3)));
+    const rowsOne = visibleRows(one);
+    const rowsTwo = visibleRows(two);
+    expect(visibleRows(one)).toBe(rowsOne);
+    expect(visibleRows(two)).toBe(rowsTwo);
+    // Moving the selection keeps the rows; a new filter or collapse set is a new answer, not a stale one.
+    const moved = run(one, { type: "move", delta: 1 }).state;
+    expect(visibleRows(moved)).toBe(rowsOne);
+    const filtered = run(one, { type: "toggleErrors" }).state;
+    expect(keys(visibleRows(filtered))).toEqual(["s1:req (context)", "  s1:a"]);
+    expect(keys(visibleRows(one))).toEqual(keys(rowsOne));
+  });
 });
 
 describe("tree navigation and selection", () => {
