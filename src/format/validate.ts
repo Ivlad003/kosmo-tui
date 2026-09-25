@@ -170,8 +170,8 @@ function parseArea(raw: unknown, position: Position): Area | undefined | Fatal {
   return area;
 }
 
-function parseSpanRef(raw: unknown, position: Position): SpanRef | Fatal {
-  if (!isRecord(raw)) return invalid(position, "must be an object");
+/** The required `trace`, `session` and `id` of a span or of a link end, each an id-like string. */
+function refFields(raw: Record_, position: Position): SpanRef | Fatal {
   const trace = requiredString(raw, "trace", position, LIMITS.idBytes);
   if (isFatal(trace)) return trace;
   const session = requiredString(raw, "session", position, LIMITS.idBytes);
@@ -179,6 +179,15 @@ function parseSpanRef(raw: unknown, position: Position): SpanRef | Fatal {
   const id = requiredString(raw, "id", position, LIMITS.idBytes);
   if (isFatal(id)) return id;
   return { trace, session, id };
+}
+
+/** A required SpanRef-shaped field (a link's `from` / `to`). */
+function requiredSpanRef(record: Record_, key: string, base: Position): SpanRef | Fatal {
+  const position = atPath(base, key);
+  if (!present(record, key)) return invalid(position, "is required");
+  const raw = record[key];
+  if (!isRecord(raw)) return invalid(position, "must be an object");
+  return refFields(raw, position);
 }
 
 /** Header fields (`format`, `version`, `dataset`) of a JSON document, an NDJSON header line or SQLite meta. */
@@ -242,20 +251,17 @@ export function validateSpan(
   opts: { values?: boolean } = {}
 ): { ok: true; span: SpanRow } | Fatal {
   if (!isRecord(raw)) return invalid(position, "must be an object");
-  const trace = requiredString(raw, "trace", position, LIMITS.idBytes);
-  if (isFatal(trace)) return trace;
-  const session = requiredString(raw, "session", position, LIMITS.idBytes);
-  if (isFatal(session)) return session;
-  const id = requiredString(raw, "id", position, LIMITS.idBytes);
-  if (isFatal(id)) return id;
+  const ref = refFields(raw, position);
+  if (isFatal(ref)) return ref;
 
   if (!Object.hasOwn(raw, "parent") || raw.parent === undefined)
     return invalid(atPath(position, "parent"), "is required");
   const parent = raw.parent;
   if (parent !== null && typeof parent !== "string")
     return invalid(atPath(position, "parent"), "must be a string or null");
-  if (parent !== null && utf8Bytes(parent) > LIMITS.idBytes) {
-    return invalid(atPath(position, "parent"), `exceeds ${LIMITS.idBytes} bytes`);
+  if (parent !== null) {
+    const capped = checkedString(parent, atPath(position, "parent"), LIMITS.idBytes);
+    if (isFatal(capped)) return capped;
   }
   const parentSession = optionalString(raw, "parentSession", position, LIMITS.idBytes);
   if (isFatal(parentSession)) return parentSession;
@@ -314,7 +320,7 @@ export function validateSpan(
   if (!knownStatus) marks.push("unknown-status");
 
   const span: Mutable<SpanRow> = {
-    ref: { trace, session, id },
+    ref,
     parent,
     order,
     name,
@@ -343,11 +349,9 @@ export function validateSpan(
 /** One link (spec 4.12): only the SpanRef shapes and the kind are checked, never that the spans exist. */
 export function validateLink(raw: unknown, position: Position): { ok: true; link: LinkRow } | Fatal {
   if (!isRecord(raw)) return invalid(position, "must be an object");
-  if (!present(raw, "from")) return invalid(atPath(position, "from"), "is required");
-  const from = parseSpanRef(raw.from, atPath(position, "from"));
+  const from = requiredSpanRef(raw, "from", position);
   if (isFatal(from)) return from;
-  if (!present(raw, "to")) return invalid(atPath(position, "to"), "is required");
-  const to = parseSpanRef(raw.to, atPath(position, "to"));
+  const to = requiredSpanRef(raw, "to", position);
   if (isFatal(to)) return to;
   const kind = requiredString(raw, "kind", position, LIMITS.textBytes);
   if (isFatal(kind)) return kind;
