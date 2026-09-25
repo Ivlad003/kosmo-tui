@@ -198,9 +198,10 @@ export function parseArgv(argv: readonly string[]): ParseResult {
   // Spec 7.1: text without --trace is a usage error, decided before anything is read.
   if (format === "text" && trace === undefined) {
     if (formatAsTarget) {
+      const hint = target === "text" ? "" : `; to print a file as ${target}, name it first: <file> --print ${target}`;
       return fail(
-        `--print ${target}: ${target} was read as the trace file, and --print text shows one trace: pass --trace <id>, ` +
-          `or name the file first to print ${target} (<file> --print ${target})`
+        `${target} was read as the trace file (no other file was given), so the output format is text, which needs ` +
+          `--trace <id>${hint}`
       );
     }
     return fail("--print text shows one trace: pass --trace <id> (or --format json|tab for the whole dataset)");

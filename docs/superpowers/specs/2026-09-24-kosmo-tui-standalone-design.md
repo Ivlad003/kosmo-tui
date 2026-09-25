@@ -873,10 +873,25 @@ wildcard-портами, 9.2) / Enter / Esc, підтвердження `y`/`n`/
 kosmo-tui [-r] [--root <dir>]                          стартовий екран
 kosmo-tui <file|-> [-r] [--root <dir>]                 відкрити трейс
 kosmo-tui <file|-> --print [--trace <id>] [--format text|json|tab] [--detail 0|1]
+kosmo-tui <file|-> --print text|json|tab [--trace <id>] [--detail 0|1]
+kosmo-tui <file|-> --print=text|json|tab [--trace <id>] [--detail 0|1]
 kosmo-tui --help | --version
 ```
 
 - `-r` / `--read-only`: не пише `recent.json`, вимикає все з ефектом `debug` (етапи 2–3).
+- **Формат `--print`** задається трьома способами: `--format <fmt>`, `--print=<fmt>` або словом одразу
+  після `--print` (`<file> --print json`). `--print=<fmt>` — завжди формат: інше значення → помилка
+  використання `--print must be text, json or tab`. Слово після `--print` — формат, лише якщо це
+  `text`, `json` або `tab`; інакше воно звичайний позиційний аргумент. Два різні формати
+  (`--print json --format tab`) → помилка `--print json conflicts with --format tab`. Без жодного
+  способу формат — `text`.
+- **`--print <слово>` без іншого позиційного аргументу:** слово читається як файл трейсу, а не як
+  формат (файл може так називатися): `kosmo-tui --print json --format tab` друкує файл `json` у
+  форматі `tab`. Формат тоді береться з `--format`, інакше `text`. Якщо це `text` без `--trace`,
+  помилка каже саме це: `json was read as the trace file (no other file was given), so the output
+format is text, which needs --trace <id>; to print a file as json, name it first: <file> --print
+json` (для слова `text` — без останньої частини). З іншим позиційним аргументом, з будь-якого
+  боку, слово лишається форматом (`json --print tab` друкує файл `json` у форматі `tab`).
 - **Визначення контейнера:**
   1. SQLite magic → sqlite;
   2. інакше читається перший непорожній рядок (≤ 1 MiB, без BOM): повний JSON-об'єкт з

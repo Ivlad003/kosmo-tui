@@ -90,8 +90,13 @@ describe("parseArgv: --print (spec 7.1)", () => {
     });
     expect(ok(["--print", "text", "--format", "tab"])).toMatchObject({ target: "text", format: "tab" });
     expect(error(["--print", "json"])).toBe(
-      "--print json: json was read as the trace file, and --print text shows one trace: pass --trace <id>, " +
-        "or name the file first to print json (<file> --print json)"
+      "json was read as the trace file (no other file was given), so the output format is text, which needs " +
+        "--trace <id>; to print a file as json, name it first: <file> --print json"
+    );
+    expect(error(["--print", "tab"])).toContain("tab was read as the trace file");
+    expect(error(["--print", "tab"])).toContain("<file> --print tab");
+    expect(error(["--print", "text"])).toBe(
+      "text was read as the trace file (no other file was given), so the output format is text, which needs --trace <id>"
     );
     // With a positional the word stays the format, on either side.
     expect(ok(["--print", "json", "x"])).toMatchObject({ target: "x", format: "json" });
