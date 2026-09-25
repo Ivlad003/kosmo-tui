@@ -194,13 +194,15 @@ const STATE_TITLE: Readonly<Record<Snippet["state"], string>> = {
   moved: "moved"
 };
 
+/** `target`: index in `lines` of the line that is never dropped (the ▶ line), or -1. */
 type CodeBody = { readonly lines: readonly string[]; readonly target: number; readonly last: number | null };
 type CodeBox = { readonly top: string; body(rows: number): CodeBody; bottom(last: number | null): string };
 
 /**
  * The code window: `┌ file · state ──`, gutter `│▶ 12  text`, `└──`. With a readable file the
- * lines come from disk through `windowLines` (the `▶` line always included); otherwise the
- * recorded `location.snippet` is the `▶` line and the title names the state.
+ * lines come from disk through `windowLines` (the `▶` line always included); otherwise, or when the
+ * disk lines do not hold the `▶` line, the recorded `location.snippet` is the `▶` line and the title
+ * names the state. The gutter is as wide as the largest line number shown.
  */
 function codeBox(input: DetailInput, location: Location, width: number, color: ColorLevel): CodeBox {
   const snippet = input.snippet === "loading" ? undefined : input.snippet;
@@ -210,11 +212,14 @@ function codeBox(input: DetailInput, location: Location, width: number, color: C
     const head = clipText(prefix, Math.max(1, width - 1));
     return `${head} ${"─".repeat(Math.max(0, width - visibleWidth(head) - 1))}`;
   };
+  // `│▶ 12  `: bar, marker, space, the number right-aligned to `digits`, two spaces.
   const gutter = (target: boolean, n: number, digits: number): string =>
     `│${target ? marker : " "} ${String(n).padStart(digits)}  `;
-  const room = (digits: number): number => Math.max(1, width - digits - 4);
-  const fromDisk = snippet !== undefined && snippet.lines.length > 0;
+  const room = (digits: number): number => Math.max(1, width - digits - 5);
   const recorded = location.snippet === undefined ? null : escapeTerminalControls(expandCodeTabs(location.snippet));
+  // Disk lines are drawn when they hold the ▶ line, or when no recorded line can be the ▶ line instead.
+  const hasTarget = snippet !== undefined && snippet.lines.some((line) => line.n === snippet.target);
+  const fromDisk = snippet !== undefined && snippet.lines.length > 0 && (hasTarget || recorded === null);
   let title = loading
     ? "loading…"
     : snippet!.state === "moved"
@@ -232,10 +237,8 @@ function codeBox(input: DetailInput, location: Location, width: number, color: C
       );
       return {
         lines,
-        target: Math.max(
-          0,
-          shown.findIndex((line) => line.target)
-        ),
+        // -1 without a ▶ line: then no context line is kept in its place.
+        target: shown.findIndex((line) => line.target),
         last: shown.length === 0 ? null : shown[shown.length - 1]!.n
       };
     }

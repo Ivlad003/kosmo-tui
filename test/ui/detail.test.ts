@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { stripAnsi, visibleWidth } from "../../src/ansi.js";
-import { COLOR_NONE } from "../../src/color.js";
+import { COLOR_16, COLOR_NONE } from "../../src/color.js";
 import type { Snippet } from "../../src/code/snippet.js";
 import type { LinkRow, SpanRow, SpanValues } from "../../src/format/types.js";
 import { detailLines, valueText, type DetailInput, type DetailOptions } from "../../src/ui/detail.js";
@@ -181,6 +181,74 @@ describe("the ▶ line is always visible (review focus 3)", () => {
         `width ${width}`
       ).toBe(true);
     }
+  });
+});
+
+describe("the line-number gutter", () => {
+  const numbered = (from: number, to: number): Snippet["lines"] =>
+    Array.from({ length: to - from + 1 }, (_, index) => ({ n: from + index, text: `line ${from + index}` }));
+
+  it("is as wide as the largest number shown: 98..102 with ▶ at 99 keeps one column", () => {
+    const target = span({ id: "g", location: { file: "src/g.ts", line: 99 } });
+    const snippet: Snippet = { state: "ok", file: "src/g.ts", lines: numbered(98, 102), target: 99 };
+    expect(plain(render(target, { width: 40, height: 9 }, { snippet })).slice(2, 9)).toEqual([
+      "┌ src/g.ts ─────────────────────────────",
+      "│   98  line 98",
+      "│▶  99  line 99",
+      "│  100  line 100",
+      "│  101  line 101",
+      "│  102  line 102",
+      "└───────────────────────────────────────"
+    ]);
+  });
+
+  it("the code text gets exactly the columns the gutter leaves", () => {
+    // `│▶ 100  ` is digits + 5 columns: a line of width - 8 columns fits whole, one more is cut with `…`.
+    const target = span({ id: "g", location: { file: "src/g.ts", line: 100 } });
+    const fits = "x".repeat(32);
+    for (const [text, shown] of [
+      [fits, fits],
+      [`${fits}yz`, `${"x".repeat(31)}…`]
+    ] as const) {
+      const snippet: Snippet = { state: "ok", file: "src/g.ts", lines: [{ n: 100, text }], target: 100 };
+      const lines = render(target, { width: 40, height: 5 }, { snippet }, { color: COLOR_16 });
+      const code = plain(lines).find((line) => line.startsWith("│▶"));
+      expect(code).toBe(`│▶ 100  ${shown}`);
+      expect(lines.every((line) => visibleWidth(line) <= 40)).toBe(true);
+    }
+  });
+
+  it("disk lines without the ▶ line: the recorded snippet is the ▶ line", () => {
+    const target = span({ id: "g", location: { file: "src/g.ts", line: 99, snippet: "recorded()" } });
+    const stale: Snippet = { state: "ok", file: "src/g.ts", lines: numbered(1, 5), target: 99 };
+    const lines = plain(render(target, { width: 40, height: 6 }, { snippet: stale }));
+    expect(lines.slice(2, 5)).toEqual([
+      "┌ src/g.ts · recorded snippet ──────────",
+      "│▶ 99  recorded()",
+      "└───────────────────────────────────────"
+    ]);
+  });
+
+  it("disk lines without the ▶ line and nothing recorded: no line is marked or kept in its place", () => {
+    const target = span({ id: "g", location: { file: "src/g.ts", line: 99 } });
+    const stale: Snippet = { state: "ok", file: "src/g.ts", lines: numbered(1, 5), target: 99 };
+    const lines = plain(render(target, { width: 40, height: 9 }, { snippet: stale }));
+    expect(lines.slice(2, 9)).toEqual([
+      "┌ src/g.ts ─────────────────────────────",
+      "│  1  line 1",
+      "│  2  line 2",
+      "│  3  line 3",
+      "│  4  line 4",
+      "│  5  line 5",
+      "└───────────────────────────────────────"
+    ]);
+    expect(lines.some((line) => line.includes("▶"))).toBe(false);
+    // Short of rows, line 1 is context like any other: it is not kept as if it were the ▶ line.
+    expect(plain(render(target, { width: 40, height: 3 }, { snippet: stale }))).toEqual([
+      "g · function · complete · s1",
+      "src/g.ts:99  area ~src",
+      "┌ src/g.ts ─────────────────────────────"
+    ]);
   });
 });
 
