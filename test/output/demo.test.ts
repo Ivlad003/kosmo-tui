@@ -57,7 +57,7 @@ describe("examples/demo.kosmo-trace.json", () => {
     expect(codeRoot).toBe(root);
     for (const trace of parsed.acc.traceSummaries()) {
       for (const span of parsed.acc.spansOf(trace.id)) {
-        const snippet = await loadSnippet(codeRoot, span.location!, nodeSnippetFs);
+        const snippet = await loadSnippet(codeRoot!, span.location!, nodeSnippetFs);
         expect(snippet.state, `${span.ref.id} ${span.location!.file}:${span.location!.line}`).toBe("ok");
       }
     }

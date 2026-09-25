@@ -72,10 +72,14 @@ it, with the code window read from the project root. The `▶` line is always vi
 
 The code window names its state when the file does not match the trace: `file-missing`, `outside-root` (a symlink
 leaves the root), `too-large` (over 2 MiB), `unreadable`, `not-text`, `changed-since-trace`, or `moved to line N`
-(the recorded snippet was found within 40 lines). The root is `--root` or `:root`, else `dataset.root` when that
-directory exists and (by real path) is or contains the current directory or the trace file's directory, else the
-nearest directory with `.git` or `package.json` above the trace file, else the current directory. A `dataset.root`
-of `/`, your home directory or anything unrelated is ignored, and the status line says `dataset.root ignored (…)`.
+(the recorded snippet was found within 40 lines). The root is `--root` or `:root` (taken as given), else
+`dataset.root` when it is an absolute path to a directory that (by real path) is or contains the current directory
+or the trace file's directory, else the nearest directory with `.git` or `package.json` above the trace file, else
+the current directory. None of these automatic choices may be `/`, your home directory or a directory above it: a
+`dataset.root` that fails is ignored and the status line says `dataset.root ignored (…)`; a marker directory that
+fails passes to the current directory; and when the current directory fails too (say `cd ~` first) there is no root.
+Then no code is read from disk, file links are off, the code window says `no code root`, and the status line says
+`code root not set: …; use :root or --root`.
 
 A child whose session or runtime differs from its parent's gets a separator row: `┄┄ browser → node · n1 ┄┄`.
 **Areas** (`a`) lists `module · feature` with span and error counts; derived areas (from the file's directory, or the

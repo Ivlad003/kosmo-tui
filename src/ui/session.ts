@@ -84,7 +84,7 @@ export type SessionDeps = {
   readonly cwd: string;
   /**
    * The user's home directory; null when it is unknown (os.homedir() failed or was empty). Then
-   * recent.json works only under `$XDG_CONFIG_HOME`, and dataset.root has no home check (spec 4.8).
+   * recent.json works only under `$XDG_CONFIG_HOME`, and the automatic code root has no home check (spec 4.8).
    */
   readonly home: string | null;
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -102,8 +102,11 @@ export type SessionDeps = {
   readonly refreshMs?: number;
   /** Suffix of recent.json's temp file (the time and a random part in production, ui/open.ts). */
   readonly tmpToken?: string;
-  /** Called with the project root whenever it changes (the paint guard validates OSC 8 against it). */
-  readonly onRootChange?: (root: string) => void;
+  /**
+   * Called with the project root whenever it changes (the paint guard validates OSC 8 against it);
+   * null: no root (none yet, or spec 4.8 left none), so no link passes.
+   */
+  readonly onRootChange?: (root: string | null) => void;
   /** Injection points for tests; default to the readers' `openTarget` / `reopen`. */
   readonly open?: (origin: Origin, deps: ReaderDeps, signal: AbortSignal) => Promise<OpenResult>;
   readonly reopen?: (dataset: OpenedDataset, deps: ReaderDeps, signal: AbortSignal) => Promise<OpenResult> | null;
@@ -155,18 +158,18 @@ function readError(error: unknown): ReaderError {
   return { code: "read-error", message: `read-error: ${describeError(error)}` };
 }
 
-function datasetView(dataset: OpenedDataset, ignored: RootResolution["ignored"]): DatasetView {
-  const rootNotice: ViewNotice[] =
-    ignored === undefined
-      ? []
-      : [
-          {
-            kind: "dataset-root-ignored",
-            datasetRoot: ignored.datasetRoot,
-            reason: ignored.reason,
-            stdin: dataset.origin === "stdin"
-          }
-        ];
+function datasetView(dataset: OpenedDataset, resolution: RootResolution): DatasetView {
+  const { ignored, unset } = resolution;
+  const rootNotice: ViewNotice[] = [];
+  if (unset !== undefined) rootNotice.push({ kind: "code-root-unset", reason: unset.reason });
+  if (ignored !== undefined) {
+    rootNotice.push({
+      kind: "dataset-root-ignored",
+      datasetRoot: ignored.datasetRoot,
+      reason: ignored.reason,
+      stdin: dataset.origin === "stdin"
+    });
+  }
   return {
     info: dataset.info,
     kind: dataset.kind,
@@ -192,9 +195,9 @@ export async function runSession(deps: SessionDeps): Promise<number> {
   const terminal = deps.terminal;
   const lifetime = new AbortController();
 
-  // Spec 4.8 rules 1 and 4 before any dataset is open; rules 2–3 are applied per dataset.
+  // Spec 4.8 rule 1 before any dataset is open; rules 2–4 are applied per dataset (no root until then).
   let rootOverride = deps.rootFlag !== undefined && deps.rootFlag !== "" ? path.resolve(deps.cwd, deps.rootFlag) : null;
-  let state: ViewState = initialState({ root: rootOverride ?? path.resolve(deps.cwd), readOnly: deps.readOnly });
+  let state: ViewState = initialState({ root: rootOverride, readOnly: deps.readOnly });
   let dataset: OpenedDataset | null = null;
   let closed = false;
   let outcome: Outcome | null = null;
@@ -416,7 +419,7 @@ export async function runSession(deps: SessionDeps): Promise<number> {
         deps.startFs
       );
     }
-    const { root, ignored } = await resolveRoot(
+    const resolution = await resolveRoot(
       {
         cwd: deps.cwd,
         home: deps.home,
@@ -435,8 +438,11 @@ export async function runSession(deps: SessionDeps): Promise<number> {
     const previous = dataset;
     dataset = result.dataset;
     if (previous !== null && previous !== result.dataset) void retire(previous);
-    if (root !== state.root) dispatch({ type: "rootChanged", root });
-    dispatch({ type: "datasetOpened", dataset: datasetView(result.dataset, ignored) });
+    const { root, unset } = resolution;
+    if (root !== state.root || (unset?.reason ?? null) !== state.rootUnset) {
+      dispatch({ type: "rootChanged", root, ...(unset === undefined ? {} : { unset: unset.reason }) });
+    }
+    dispatch({ type: "datasetOpened", dataset: datasetView(result.dataset, resolution) });
     paint();
   }
 
@@ -519,6 +525,8 @@ export async function runSession(deps: SessionDeps): Promise<number> {
 
   async function loadSnippetFor(ref: SpanRef, location: Location): Promise<void> {
     const root = state.root;
+    // update never asks without a root; a stray request is not read anywhere.
+    if (root === null) return;
     const current = dataset;
     const snippet: Snippet = await loadSnippet(root, location, deps.snippetFs).catch(() => ({
       state: "unreadable" as const,

@@ -14,7 +14,7 @@ import type { SpanRef } from "../../src/format/types.js";
 import { validateDocument } from "../../src/format/validate.js";
 import { renderKosmoText } from "../../src/output/kosmo-text.js";
 import { tooSmallFrame } from "../../src/terminal.js";
-import { resultsPane, stackPane } from "../../src/ui/panes.js";
+import { noticeText, resultsPane, stackPane } from "../../src/ui/panes.js";
 import { renderFrame, type RenderEnv } from "../../src/ui/render.js";
 import { initialState, update, visibleRows, type Action, type StartRow, type ViewState } from "../../src/ui/state.js";
 import { fixtureFile } from "../fixture-recipes.js";
@@ -653,6 +653,21 @@ describe("views and panes", () => {
 });
 
 describe("header and footer", () => {
+  it("the spec 4.8 notices name the rule that failed, with the path escaped", () => {
+    expect(noticeText({ kind: "code-root-unset", reason: "home" })).toBe(
+      "code root not set: cwd is the home directory or above it; use :root or --root"
+    );
+    expect(noticeText({ kind: "code-root-unset", reason: "filesystem-root" })).toBe(
+      "code root not set: cwd is the filesystem root; use :root or --root"
+    );
+    expect(
+      noticeText({ kind: "dataset-root-ignored", datasetRoot: "a\u001b[2J", reason: "not-absolute", stdin: false })
+    ).toBe("dataset.root ignored (not an absolute path): a\\u001b[2J");
+    expect(noticeText({ kind: "dataset-root-ignored", datasetRoot: "/x", reason: "unrelated", stdin: true })).toBe(
+      "dataset.root ignored (does not contain the current directory): /x"
+    );
+  });
+
   it("prompt, banner, reading progress and notices", () => {
     const prompt = apply(
       cartState(),

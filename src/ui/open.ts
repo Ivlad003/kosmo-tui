@@ -64,7 +64,7 @@ export type OpenTuiDeps = {
 
 /**
  * The home directory, or null when it cannot be known. Never throws: without a home the TUI
- * still runs (recent.json only under `$XDG_CONFIG_HOME`, no home check for dataset.root).
+ * still runs (recent.json only under `$XDG_CONFIG_HOME`, no home check for the automatic code root).
  */
 export function resolveHome(homedir: () => string): string | null {
   let home: unknown;

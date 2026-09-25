@@ -70,6 +70,7 @@ function detailFor(state: ViewState, width: number, height: number, env: RenderE
       model,
       ref: state.selected,
       root: state.root,
+      rootUnset: state.rootUnset,
       values: valuesOf(state, state.selected),
       snippet: state.snippets.get(key)
     },

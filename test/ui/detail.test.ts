@@ -253,6 +253,30 @@ describe("the line-number gutter", () => {
 });
 
 describe("snippet states", () => {
+  it("without a code root nothing from disk is shown: the recorded line, or the reason", () => {
+    // Even a stale snippet in the input is not drawn once the root is gone.
+    const lines = plain(render(EXAMPLE, { width: 70, height: 8 }, { root: null, rootUnset: "home" }));
+    expect(lines[2]).toBe("┌ src/cart.ts · no code root · recorded snippet ──────────────────────");
+    expect(lines[3]).toBe("│▶ 12  export async function calculateLineTotal(item, qty) {");
+    expect(lines.join("\n")).not.toContain("const p = await price");
+    const evil = span({ id: "e", location: { file: ".ssh/id_rsa\u001b[2J", line: 1 } });
+    expect(
+      plain(render(evil, { width: 100, height: 6 }, { root: null, rootUnset: "home", snippet: undefined })).slice(2, 4)
+    ).toEqual([
+      "┌ .ssh/id_rsa\\u001b[2J · no code root " + "─".repeat(100 - 38),
+      "│  code root not set: cwd is the home directory or above it; use :root or --root"
+    ]);
+    const slash = plain(render(evil, { width: 100, height: 6 }, { root: null, rootUnset: "filesystem-root" }));
+    expect(slash[3]).toBe("│  code root not set: cwd is the filesystem root; use :root or --root");
+  });
+
+  it("without a code root there is no OSC 8 link, even with links on", () => {
+    const target = span({ id: "x", location: { file: "src/cart.ts", line: 12 } });
+    const lines = render(target, { width: 80, height: 6 }, { root: null }, { links: true });
+    expect(lines.join("")).not.toContain("\u001b]8;");
+    expect(lines[1]).toContain("src/cart.ts:12");
+  });
+
   it("a missing file shows the recorded snippet as the ▶ line and names the state", () => {
     const missing: Snippet = { state: "file-missing", file: "src/cart.ts", lines: [], target: 12 };
     const lines = plain(render(EXAMPLE, { width: 70, height: 8 }, { snippet: missing }));

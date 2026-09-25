@@ -9,6 +9,7 @@
  */
 
 import { maskAttrs } from "../format/kinds.js";
+import type { WideRootRejection } from "../code/root.js";
 import type { AreaKey, ParentOf } from "../format/model.js";
 import type { Attrs, SpanRow, SpanStatus, SpanValues } from "../format/types.js";
 import { escapeTerminalControls } from "../sanitize.js";
@@ -33,6 +34,18 @@ export function statusText(span: SpanRow): string {
       return `unknown(${escapeTerminalControls(span.statusReason ?? "unspecified")})`;
     default:
       return span.status;
+  }
+}
+
+/** Why no code root was chosen (spec 4.8 rule 4 rejected): the current directory is too wide. */
+export function rootUnsetText(reason: WideRootRejection | null): string {
+  switch (reason) {
+    case "filesystem-root":
+      return "code root not set: cwd is the filesystem root; use :root or --root";
+    case "home":
+      return "code root not set: cwd is the home directory or above it; use :root or --root";
+    case null:
+      return "code root not set; use :root or --root";
   }
 }
 

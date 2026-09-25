@@ -48,7 +48,8 @@ export const USAGE = `Usage:
 Options:
   -r, --read-only        never write recent.json
   --root <dir>           project root for code snippets (default: dataset.root, else the nearest
-                         directory with .git or package.json above the trace file, else cwd)
+                         directory with .git or package.json above the trace file, else cwd;
+                         never / or your home directory or above it: then none, use :root)
   --print [format]       print instead of opening the viewer:
                            text  kosmo-text/v1 of one trace, needs --trace <id> (the default)
                            json  normalized kosmo-trace/v1: the dataset, or one trace with --trace

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { COLOR_NONE } from "../../src/color.js";
 import { buildTraceModel, type TraceModel } from "../../src/format/model.js";
 import { validateDocument } from "../../src/format/validate.js";
 import { renderKosmoText } from "../../src/output/kosmo-text.js";
@@ -256,7 +257,7 @@ describe("reload, root and copy", () => {
       rootFs: memoryRootFs({ dirs: ["/other"], files: ["/w/package.json"] }),
       snippetFs: memorySnippetFs({ "/w/src/cart.ts": CART, "/other/src/cart.ts": other })
     });
-    const roots: string[] = [];
+    const roots: Array<string | null> = [];
     const session = runSession({ ...deps, onRootChange: (root) => roots.push(root) });
     await until(() => terminal.screen().includes("4 spans"), "trace screen");
     terminal.key("jj");
@@ -265,7 +266,7 @@ describe("reload, root and copy", () => {
     await until(() => terminal.screen().includes("! root: not a directory: /nowhere"), "refusal");
     for (const key of [":", ..."root /other", "\r"]) terminal.key(key);
     await until(() => terminal.screen().includes("function   calculateLineTotal"), "snippet from /other");
-    expect(roots).toEqual(["/w", "/other"]);
+    expect(roots).toEqual([null, "/w", "/other"]);
     terminal.key("q");
     expect(await session).toBe(EXIT_OK);
   });
@@ -281,6 +282,7 @@ describe("reload, root and copy", () => {
       ["/", "/w", "dataset.root ignored (the filesystem root): /"],
       ["/home/me", "/w", "dataset.root ignored (the home directory or above it): /home/me"],
       ["/other", "/w", "dataset.root ignored (contains neither cwd nor the trace directory): /other"],
+      ["w", "/w", "dataset.root ignored (not an absolute path): w"],
       ["/w", "/w", null]
     ];
     for (const [datasetRoot, expected, notice] of cases) {
@@ -291,7 +293,7 @@ describe("reload, root and copy", () => {
         rootFs: memoryRootFs({ dirs: ["/", "/home/me", "/other", "/w"], files: ["/w/package.json"] }),
         snippetFs: memorySnippetFs({ "/w/src/cart.ts": CART, "/other/src/cart.ts": hostile, "/src/cart.ts": hostile })
       });
-      const roots: string[] = [];
+      const roots: Array<string | null> = [];
       const session = runSession({ ...deps, onRootChange: (root) => roots.push(root) });
       await until(() => terminal.screen().includes("4 spans"), `trace screen (${datasetRoot})`);
       terminal.key("jj");
@@ -302,6 +304,38 @@ describe("reload, root and copy", () => {
       terminal.key("q");
       expect(await session).toBe(EXIT_OK);
     }
+  });
+
+  it("a dotfiles repo at home or cwd at home leaves no code root: nothing is read, a notice and the detail say why", async () => {
+    const terminal = fakeTerminal();
+    const evil = "/home/me/Downloads/evil.json";
+    const reads: string[] = [];
+    const snippetFs = memorySnippetFs({ "/home/me/src/cart.ts": "SECRET\n".repeat(40) });
+    const deps = sessionDeps(terminal, {
+      cwd: "/home/me",
+      origin: { path: evil },
+      reader: { fs: memoryFs({ [evil]: BASIC }) },
+      rootFs: memoryRootFs({ dirs: ["/home/me", "/home/me/.git"] }),
+      snippetFs: { ...snippetFs, readFile: async (file) => (reads.push(file), snippetFs.readFile(file)) },
+      render: { color: COLOR_NONE, links: true }
+    });
+    const roots: Array<string | null> = [];
+    const session = runSession({ ...deps, onRootChange: (root) => roots.push(root) });
+    await until(() => terminal.screen().includes("4 spans"), "trace screen");
+    terminal.key("jj");
+    await until(() => terminal.screen().includes("no code root"), "code window without a root");
+    const screen = terminal.screen();
+    expect(screen).toContain("code root not set: cwd is the home directory or above it; use :root or --root");
+    expect(screen).not.toContain("SECRET");
+    expect(screen).not.toContain("\u001b]8;");
+    expect(reads).toEqual([]);
+    expect(roots).toEqual([null]);
+    // :root is the user's choice and is not constrained.
+    for (const key of [":", ..."root /home/me", "\r"]) terminal.key(key);
+    await until(() => terminal.screen().includes("SECRET"), "snippet after :root");
+    expect(roots).toEqual([null, "/home/me"]);
+    terminal.key("q");
+    expect(await session).toBe(EXIT_OK);
   });
 
   it("y copies kosmo-text/v1 of the selected subtree; without a clipboard it is printed after the terminal is restored", async () => {

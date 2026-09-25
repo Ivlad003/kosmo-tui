@@ -119,6 +119,11 @@ describe("parseCommandLine: general", () => {
     expect(parseCommandLine(state, "trace t_9f")).toEqual({ type: "openTrace", id: "t_9f" });
     expect(parseCommandLine(state, ":trace")).toEqual({ error: "usage: :trace <trace>" });
     expect(parseCommandLine(state, ":root")).toEqual({ type: "showBanner", level: "info", text: "root: /work" });
+    expect(parseCommandLine({ ...state, root: null, rootUnset: "filesystem-root" }, ":root")).toEqual({
+      type: "showBanner",
+      level: "info",
+      text: "code root not set: cwd is the filesystem root; use :root or --root"
+    });
     expect(parseCommandLine(state, ":root ../app")).toEqual({ type: "setRoot", dir: "../app" });
     // Spec 6.6: a leading `/` marks a regex only in :find, :filter name and :area, so an absolute
     // path is a plain argument here (the shared tokenizer alone would fail on `/abs/app`).

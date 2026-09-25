@@ -65,10 +65,19 @@ describe("resolveRoot (spec 4.8)", () => {
     expect(await resolveRoot({ datasetRoot: "/repo/app", traceFile, cwd: "/repo/app", home: HOME }, fs)).toEqual({
       root: "/repo/app"
     });
-    // A relative dataset.root resolves against cwd: "." is cwd.
+  });
+
+  it("2. a relative dataset.root is never resolved: it is ignored as not-absolute (the spec defines no base)", async () => {
+    const fs = fakeRootFs(["/repo", "/repo/app"], ["/elsewhere/package.json"]);
+    const traceFile = "/elsewhere/t.json";
     expect(await resolveRoot({ datasetRoot: ".", traceFile, cwd: "/repo/app", home: HOME }, fs)).toEqual({
-      root: "/repo/app"
+      root: "/elsewhere",
+      ignored: { datasetRoot: ".", reason: "not-absolute" }
     });
+    expect((await resolveRoot({ datasetRoot: "app", cwd: "/repo", home: HOME }, fs)).ignored?.reason).toBe(
+      "not-absolute"
+    );
+    expect(fs.probes).not.toContain("dir /repo/app");
   });
 
   it("2. an existing dataset.root unrelated to cwd and the trace falls through to rule 3 and is reported", async () => {
@@ -194,8 +203,71 @@ describe("resolveRoot (spec 4.8)", () => {
 
   it("walks a very deep path without recursion", async () => {
     const deep = "/" + Array.from({ length: 500 }, (_, i) => `d${i}`).join("/");
-    const fs = fakeRootFs([], ["/package.json"]);
-    expect(await root({ traceFile: `${deep}/t.json`, cwd: "/w", home: HOME }, fs)).toBe("/");
+    const fs = fakeRootFs([], ["/d0/package.json"]);
+    expect(await root({ traceFile: `${deep}/t.json`, cwd: "/w", home: HOME }, fs)).toBe("/d0");
+  });
+
+  it("3. a marker at / or at home (a dotfiles repo) is never the root: rule 4 decides", async () => {
+    const fs = fakeRootFs(["/home/me/.git"], ["/package.json"]);
+    const traceFile = "/home/me/Downloads/evil.json";
+    expect(await resolveRoot({ traceFile, cwd: "/work", home: HOME }, fs)).toEqual({ root: "/work" });
+    expect(await resolveRoot({ traceFile: "/tmp/x/evil.json", cwd: "/work", home: HOME }, fs)).toEqual({
+      root: "/work"
+    });
+    // An ancestor of home, and home through a symlink, count the same.
+    const above = fakeRootFs(["/home/.git"]);
+    expect(await root({ traceFile, cwd: "/work", home: HOME }, above)).toBe("/work");
+    const linked = fakeRootFs(["/Users/me/.git"], [], { "/home/me": "/Users/me" });
+    expect(await root({ traceFile: "/Users/me/Downloads/evil.json", cwd: "/work", home: HOME }, linked)).toBe("/work");
+  });
+
+  it("4. cwd at home, above it, or at / leaves no root, with the reason", async () => {
+    const fs = fakeRootFs(["/home/me/.git"]);
+    const traceFile = "/home/me/Downloads/evil.json";
+    expect(await resolveRoot({ traceFile, cwd: "/home/me", home: HOME }, fs)).toEqual({
+      root: null,
+      unset: { reason: "home" }
+    });
+    expect(await resolveRoot({ cwd: "/home", home: HOME }, fs)).toEqual({ root: null, unset: { reason: "home" } });
+    expect(await resolveRoot({ cwd: "/", home: HOME }, fs)).toEqual({
+      root: null,
+      unset: { reason: "filesystem-root" }
+    });
+    // home: null skips only the home part.
+    expect(await resolveRoot({ cwd: "/home/me", home: null }, fs)).toEqual({ root: "/home/me" });
+    expect((await resolveRoot({ cwd: "/", home: null }, fs)).unset).toEqual({ reason: "filesystem-root" });
+    // A cwd that is a symlink to home is judged by its real path.
+    const link = fakeRootFs([], [], { "/tmp/h": "/home/me" });
+    expect((await resolveRoot({ cwd: "/tmp/h", home: HOME }, link)).root).toBeNull();
+    // With a rejected dataset.root both are reported.
+    const both = fakeRootFs(["/"]);
+    expect(await resolveRoot({ datasetRoot: "/", cwd: "/home/me", home: HOME }, both)).toEqual({
+      root: null,
+      ignored: { datasetRoot: "/", reason: "filesystem-root" },
+      unset: { reason: "home" }
+    });
+  });
+
+  it("an unrelated dataset.root is not reported as ignored when rule 3 lands on it anyway", async () => {
+    // The trace directory is reached through a symlink that leaves /r, but its marker is /r itself.
+    const fs = fakeRootFs(["/r"], ["/link/package.json"], { "/link": "/r", "/link/sub": "/x/sub" });
+    expect(await resolveRoot({ datasetRoot: "/r", traceFile: "/link/sub/t.json", cwd: "/c", home: HOME }, fs)).toEqual({
+      root: "/r"
+    });
+  });
+
+  it("the flag is never constrained: / and home are taken as given", async () => {
+    const fs = fakeRootFs([]);
+    expect(await resolveRoot({ flag: "/", cwd: "/home/me", home: HOME }, fs)).toEqual({ root: "/" });
+    expect(await resolveRoot({ flag: "~", cwd: "/home", home: HOME }, fs)).toEqual({ root: "/home/~" });
+    expect(await resolveRoot({ flag: ".", cwd: "/home/me", home: HOME }, fs)).toEqual({ root: "/home/me" });
+  });
+
+  it("rules 3 and 4 return the real path, like rule 2", async () => {
+    const marked = fakeRootFs([], ["/link/app/package.json"], { "/link/app": "/real/app" });
+    expect(await root({ traceFile: "/link/app/t.json", cwd: "/w", home: HOME }, marked)).toBe("/real/app");
+    const cwd = fakeRootFs([], [], { "/tmp/w": "/private/tmp/w" });
+    expect(await root({ cwd: "/tmp/w", home: HOME }, cwd)).toBe("/private/tmp/w");
   });
 
   it("real disk: a symlink inside the project that points outside it is rejected (rule 2)", async () => {
@@ -209,7 +281,7 @@ describe("resolveRoot (spec 4.8)", () => {
       const input = { datasetRoot: path.join(dir, "project", "escape"), traceFile, cwd: "/", home: null };
       const result = await resolveRoot(input, nodeRootFs);
       expect(result.ignored?.reason).toBe("unrelated");
-      expect(result.root).toBe(path.join(dir, "project"));
+      expect(result.root).toBe(await realpath(path.join(dir, "project")));
       // The project itself is accepted, by its real path (macOS: /var → /private/var).
       const own = await resolveRoot({ ...input, datasetRoot: path.join(dir, "project") }, nodeRootFs);
       expect(own).toEqual({ root: await realpath(path.join(dir, "project")) });

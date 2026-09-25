@@ -25,7 +25,8 @@ import { utf8Bytes, utf8Prefix } from "../format/bytes.js";
 import { compactJson, maskValue, tagOf } from "../format/value.js";
 import { escapeTerminalControls, isSafeOsc8Uri, toFileUri } from "../sanitize.js";
 import { wrapVisible } from "../wrap.js";
-import { areaText, statusText } from "./labels.js";
+import type { WideRootRejection } from "../code/root.js";
+import { areaText, rootUnsetText, statusText } from "./labels.js";
 
 /** One value's text in the pane; longer JSON is cut at a UTF-8 boundary and ends with `…`. */
 export const DETAIL_VALUE_MAX_BYTES = 4096;
@@ -33,7 +34,10 @@ export const DETAIL_VALUE_MAX_BYTES = 4096;
 export type DetailInput = {
   readonly model: TraceModel;
   readonly ref: SpanRef;
-  readonly root: string;
+  /** The code root; null: none (spec 4.8), so no snippet is read and no link is drawn. */
+  readonly root: string | null;
+  /** Why `root` is null, for the code window. */
+  readonly rootUnset?: WideRootRejection | null;
   readonly values: SpanValues | "loading" | undefined;
   readonly snippet: Snippet | "loading" | undefined;
 };
@@ -151,8 +155,8 @@ export function valueText(value: Value | "loading" | undefined, role: "args" | "
 const LINKS_ON: ColorEnv = Object.freeze({ KOSMO_TUI_LINKS: "1" });
 
 /** OSC 8 through `sourceLink` (the one OSC 8 builder), only for a `file://` URI inside the root. */
-function locationLink(text: string, root: string, location: Location, links: boolean): string {
-  if (!links) return text;
+function locationLink(text: string, root: string | null, location: Location, links: boolean): string {
+  if (!links || root === null) return text;
   const uri = toFileUri(`${root.replace(/\/+$/, "")}/${location.file}`);
   return sourceLink(text, isSafeOsc8Uri(uri, root) ? uri : undefined, LINKS_ON);
 }
@@ -205,8 +209,10 @@ type CodeBox = { readonly top: string; body(rows: number): CodeBody; bottom(last
  * names the state. The gutter is as wide as the largest line number shown.
  */
 function codeBox(input: DetailInput, location: Location, width: number, color: ColorLevel): CodeBox {
-  const snippet = input.snippet === "loading" ? undefined : input.snippet;
-  const loading = input.snippet === undefined || input.snippet === "loading";
+  // No code root: nothing was read and nothing is loading; only the recorded snippet can be shown.
+  const noRoot = input.root === null;
+  const snippet = noRoot || input.snippet === "loading" ? undefined : input.snippet;
+  const loading = !noRoot && (input.snippet === undefined || input.snippet === "loading");
   const marker = paint("▶", { fg: THEME.accent, bold: true }, color);
   const rule = (prefix: string): string => {
     const head = clipText(prefix, Math.max(1, width - 1));
@@ -220,11 +226,13 @@ function codeBox(input: DetailInput, location: Location, width: number, color: C
   // Disk lines are drawn when they hold the ▶ line, or when no recorded line can be the ▶ line instead.
   const hasTarget = snippet !== undefined && snippet.lines.some((line) => line.n === snippet.target);
   const fromDisk = snippet !== undefined && snippet.lines.length > 0 && (hasTarget || recorded === null);
-  let title = loading
-    ? "loading…"
-    : snippet!.state === "moved"
-      ? `moved to line ${snippet!.target}`
-      : STATE_TITLE[snippet!.state];
+  let title = noRoot
+    ? "no code root"
+    : loading
+      ? "loading…"
+      : snippet!.state === "moved"
+        ? `moved to line ${snippet!.target}`
+        : STATE_TITLE[snippet!.state];
   if (!fromDisk && recorded !== null) title = title === "" ? "recorded snippet" : `${title} · recorded snippet`;
   const top = rule(`┌ ${escapeTerminalControls(location.file)}${title === "" ? "" : ` · ${title}`}`);
 
@@ -246,8 +254,14 @@ function codeBox(input: DetailInput, location: Location, width: number, color: C
       const digits = String(location.line).length;
       return { lines: [gutter(true, location.line, digits) + clipText(recorded, room(digits))], target: 0, last: null };
     }
+    // rootUnsetText is fixed text (no input in it), so it needs no escaping.
+    const why = noRoot
+      ? rootUnsetText(input.rootUnset ?? null)
+      : loading
+        ? "loading…"
+        : `no code: ${STATE_TITLE[snippet!.state] || "empty file"}`;
     return {
-      lines: [`│  ${loading ? "loading…" : `no code: ${STATE_TITLE[snippet!.state] || "empty file"}`}`],
+      lines: [`│  ${why}`],
       target: 0,
       last: null
     };

@@ -15,7 +15,7 @@ import type { TraceModel } from "../format/model.js";
 import { spanKey } from "../format/types.js";
 import { renderKosmoText } from "../output/kosmo-text.js";
 import { escapeTerminalControls } from "../sanitize.js";
-import { STATUS_GLYPH, areaText, locationText } from "./labels.js";
+import { STATUS_GLYPH, areaText, locationText, rootUnsetText } from "./labels.js";
 import { formatSpanRef } from "./refs.js";
 import { separatorRowText, tableHeaderText, tableRowText, traceListRowText, treeRowText } from "./rows.js";
 import {
@@ -141,6 +141,8 @@ export function noticeText(notice: ViewNotice): string {
       return `${notice.count} unknown fields ignored`;
     case "dataset-root-ignored":
       return `dataset.root ignored (${rootRejectionText(notice.reason, notice.stdin)}): ${escapeTerminalControls(notice.datasetRoot)}`;
+    case "code-root-unset":
+      return rootUnsetText(notice.reason);
   }
 }
 
@@ -152,6 +154,8 @@ function rootRejectionText(reason: DatasetRootRejection, stdin: boolean): string
       return "the home directory or above it";
     case "unrelated":
       return stdin ? "does not contain the current directory" : "contains neither cwd nor the trace directory";
+    case "not-absolute":
+      return "not an absolute path";
   }
 }
 

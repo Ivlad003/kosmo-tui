@@ -352,28 +352,47 @@ CREATE TABLE kosmo_links (
   позначкою `invalid-location`, span лишається.
 - `snippet` — текст рядка `line` без символу кінця рядка, обрізаний по межі UTF-8 до ≤ 512 B.
   Обрізаний snippet має `snippetCut: true`.
-- Корінь для читання файлів (фрагменти коду, дебаг) визначається так:
-  1. `--root <dir>` або `:root <dir>`;
-  2. `dataset.root`, якщо така директорія існує і проходить перевірку довіри (нижче);
+- Корінь для читання файлів (фрагменти коду, дебаг) визначається так, перше правило, що
+  спрацювало, виграє:
+  1. `--root <dir>` або `:root <dir>` (відносний шлях — від cwd);
+  2. `dataset.root`, якщо це абсолютний шлях, така директорія існує і проходить перевірку довіри
+     (нижче);
   3. найближчий предок файлу трейсу, де є `.git` або `package.json`;
   4. поточна директорія.
-- **Перевірка довіри до `dataset.root`** (правило 2). Файл трейсу — недовірені дані, тож
-  `dataset.root` не може сам вибрати, які файли машини показувати. Усі шляхи порівнюються за
-  realpath (симлінки розкрито):
+- **Правила 2–4 автоматичні**, а файл трейсу — недовірені дані, тож трейс не може сам вибрати,
+  які файли машини показувати. Усі шляхи порівнюються за realpath (симлінки розкрито), і
+  автоматичне правило завжди повертає realpath. Кандидат будь-якого автоматичного правила
+  відкидається, якщо він:
+  - корінь файлової системи `/`;
+  - домашня директорія користувача або будь-який її предок (корінь надто широкий). Домашню
+    директорію визначає composition root (`os.homedir()` у `ui/open.ts`) і передає як
+    залежність; якщо вона невідома (`os.homedir()` кинув виняток або повернув порожній чи
+    відносний рядок), ця частина перевірки пропускається, `/` відкидається все одно.
+- **Правило 2** додатково:
+  - відносний `dataset.root` не розв'язується (база не визначена): він відкидається з причиною
+    `not an absolute path`;
   - `dataset.root` мусить дорівнювати поточній директорії або директорії файлу трейсу чи містити
     одну з них. Для stdin директорії трейсу немає, рахується лише cwd;
-  - корінь файлової системи `/` відкидається завжди, навіть якщо він «містить» cwd;
-  - домашня директорія користувача і будь-який її предок відкидаються (корінь надто широкий).
-    Домашню директорію визначає composition root (`os.homedir()` у `ui/open.ts`) і передає як
-    залежність; якщо вона невідома (`os.homedir()` кинув виняток або повернув порожній рядок),
-    ця перевірка пропускається, решта діє;
   - відкинутий `dataset.root` переходить до правила 3, а рядок стану трейсу показує
-    `dataset.root ignored (<причина>): <шлях>`. `dataset.root`, якого немає на диску, переходить до
-    правила 3 мовчки, як і раніше;
-  - `--root`/`:root` задає користувач, тож перевірка до них не застосовується.
+    `dataset.root ignored (<причина>): <шлях>`, де причина — `the filesystem root`,
+    `the home directory or above it`, `contains neither cwd nor the trace directory` (для stdin
+    `does not contain the current directory`) або `not an absolute path`. Повідомлення немає,
+    якщо корінь, обраний далі, збігся з realpath цього ж `dataset.root`. `dataset.root`, якого
+    немає на диску, переходить до правила 3 мовчки.
+- **Правило 3** зупиняється на найближчому предку з маркером. Якщо його відкинуто (наприклад,
+  репозиторій dotfiles дає `~/.git`), відкинуто і всіх його предків, тож вирішує правило 4.
+- **Правило 4**: якщо відкинуто й cwd (наприклад, `cd ~; kosmo-tui Downloads/evil.json`), кореня
+  немає: фрагменти з диска не читаються, OSC 8 вимкнено, вікно коду показує лише записаний
+  `snippet` (заголовок `no code root`) або рядок `code root not set: …`, а рядок стану трейсу —
+  `code root not set: cwd is the home directory or above it; use :root or --root` (для `/` —
+  `cwd is the filesystem root`). До відкриття датасету кореня теж немає, якщо не задано `--root`.
+- `--root`/`:root` задає користувач, тож жодна з цих перевірок до них не застосовується (зокрема
+  `--root ~` і `--root /` дозволені).
 - Продюсери можуть не писати `dataset.root` у переносні файли, бо абсолютні шляхи хоста — приватні дані.
 - _Змінено 2026-09-25 після рев'ю етапу 1:_ раніше правило 2 приймало будь-яку наявну директорію, і
   ворожий трейс із `"root": "/"` та `location.file: "etc/passwd"` показував той файл у вікні коду.
+  Після фінального рев'ю ту саму перевірку `/` і home отримали правила 3 і 4: інакше трейс у
+  `~/Downloads` при `~/.git` чи cwd `~` міг показати `location.file: ".ssh/id_rsa"`.
 
 ### 4.9 Ліміти і наслідки порушень
 
@@ -780,7 +799,9 @@ argv ─┬─ шлях ──► sniff ──► reader.open ──► validate
     самий текст шукається в ±40 рядках: найближчий збіг, при рівності — менший номер рядка, і показується
     `moved to line N`.
 - **`file:line`** — OSC 8 посилання лише при `KOSMO_TUI_LINKS=1` (як зараз). URI будується лише з
-  провалідованого `root + location.file`.
+  провалідованого `root + location.file`; без кореня (4.8, правило 4) посилань немає.
+- **Без кореня** (4.8) вікно коду має заголовок `<file> · no code root`: під ним записаний `snippet`
+  як рядок `▶` або, якщо його немає, `│  code root not set: <причина>; use :root or --root`.
 
 ### 6.5 Панель Areas (`a`)
 
@@ -956,7 +977,8 @@ trailer     = "… truncated: output-byte-cap (shown " N " of " M " spans)" LF
 - SGR (`ESC[…m`);
 - OSC 8, URI якого `paint` перевіряє сам: схема `file://`, шлях у межах кореня, без керівних і
   bidi-символів. Порожній корінь або `/` — це відсутність кореня: `isSafeOsc8Uri` тоді не пропускає
-  жодного URI (змінено 2026-09-25 після рев'ю етапу 1; корінь із `dataset.root` обмежує 4.8).
+  жодного URI (змінено 2026-09-25 після рев'ю етапу 1; автоматичний корінь обмежує 4.8, а без
+  кореня `paint` не пропускає жодного OSC 8).
 
 Усе інше екранується: сирий ESC, C1, окремі C0, bidi. Кольори йдуть через
 `adaptSgr(detectColorLevel(env, isTTY))`. Парсер екрана в `test/pty.ts` навчиться OSC, що
@@ -1863,7 +1885,7 @@ validation чи проби `'use cache'` виконується у worker'ах, 
 | NDJSON / stdin                  | `reading… N spans`, `no-controlling-terminal`, `stream stopped at line N: <reason>`, `stream stopped: too-large`, `N unknown lines skipped`                                                                                 |
 | Батько                          | `unknown(ambiguous)`, `unknown(missing)`, `cycle`                                                                                                                                                                           |
 | Location / snippet / attrs      | `no location`, `invalid-location`, `invalid-snippet`, `invalid-attrs`, `invalid-attrs(N)`                                                                                                                                   |
-| Фрагмент коду                   | `ok`, `file-missing`, `outside-root`, `too-large`, `unreadable`, `not-text`, `changed-since-trace`, `moved to line N`                                                                                                       |
+| Фрагмент коду                   | `ok`, `file-missing`, `outside-root`, `too-large`, `unreadable`, `not-text`, `changed-since-trace`, `moved to line N`, `no code root`                                                                                       |
 | Значення                        | `recorded`, `truncated` (`viewer-cap`), `masked`, `not-recorded(reason)`, `live`, `invalid-value(<позиція>)`, `unknown-tag`, `loading` (SQLite), у live — `unavailable` на ім'я                                             |
 | Можливість                      | `reload: unavailable(stdin-stream)` та інші `<capability>: unavailable(<reason>)`                                                                                                                                           |
 | Рядок Targets (Node)            | `unverified`, `tool process, not your app`, `supervisor (no app code)`, `inspector-off`, `inspector-port-busy (best guess)`, `inspector-enable-timeout`, `restarted`                                                        |

@@ -7,6 +7,7 @@
  * Every text that carries data (names, files, ids) is raw here; the renderer escapes it.
  */
 
+import { rootUnsetText } from "./labels.js";
 import { tokenize, type Token } from "../command-line.js";
 import type { AreaKey, AreaRow, TraceModel } from "../format/model.js";
 import type { SpanRef, SpanRow } from "../format/types.js";
@@ -52,7 +53,10 @@ export function parseCommandLine(state: ViewState, line: string): Action | { rea
       if (args.length !== 1 || args[0]!.regex !== undefined) return usage("trace <trace>");
       return { type: "openTrace", id: args[0]!.text };
     case "root":
-      if (args.length === 0) return { type: "showBanner", level: "info", text: `root: ${state.root}` };
+      if (args.length === 0) {
+        const text = state.root === null ? rootUnsetText(state.rootUnset) : `root: ${state.root}`;
+        return { type: "showBanner", level: "info", text };
+      }
       return args.length === 1 ? { type: "setRoot", dir: args[0]!.text } : usage("root [<dir>]");
     case "ancestors":
     case "path":

@@ -30,9 +30,10 @@ import {
 } from "../format/types.js";
 import { utf8Bytes } from "../format/validate.js";
 import { renderKosmoText } from "../output/kosmo-text.js";
-import type { DatasetRootRejection } from "../code/root.js";
+import type { DatasetRootRejection, WideRootRejection } from "../code/root.js";
 import type { ContainerKind, Notice, Origin, ReaderError, TraceListPage } from "../readers/types.js";
 import type { Snippet } from "../code/snippet.js";
+import { rootUnsetText } from "./labels.js";
 import { regexFromLiteral } from "./refs.js";
 
 export type Screen = "start" | "traces" | "trace";
@@ -54,7 +55,10 @@ export type StartRow = {
   readonly missing: boolean;
 };
 export type Bookmark = { readonly ref: SpanRef; readonly name: string };
-/** A reader notice, or one the session adds: `dataset.root` failed the trust check of spec 4.8 rule 2. */
+/**
+ * A reader notice, or one the session adds (spec 4.8): `dataset.root` failed the checks of rule 2 and
+ * the root is elsewhere, or no automatic rule left a code root at all.
+ */
 export type ViewNotice =
   | Notice
   | {
@@ -62,7 +66,8 @@ export type ViewNotice =
       readonly datasetRoot: string;
       readonly reason: DatasetRootRejection;
       readonly stdin: boolean;
-    };
+    }
+  | { readonly kind: "code-root-unset"; readonly reason: WideRootRejection };
 export type DatasetView = {
   readonly info: DatasetInfo;
   readonly kind: ContainerKind;
@@ -88,7 +93,10 @@ export type ViewState = {
   readonly dataset: DatasetView | null;
   readonly traceList: { readonly cursor: number; readonly filter: string };
   readonly trace: TraceModel | null;
-  readonly root: string;
+  /** The code root (spec 4.8); null: none yet, or no automatic rule survived (no snippets, no OSC 8). */
+  readonly root: string | null;
+  /** Why `root` is null after a dataset opened; null otherwise. */
+  readonly rootUnset: WideRootRejection | null;
   readonly view: "tree" | "table" | "text";
   readonly pane: Pane;
   /** spanKey of spans the user expanded explicitly; everything is expanded unless in `collapsed`. */
@@ -189,7 +197,7 @@ export type Action =
   | { readonly type: "valuesFailed"; readonly ref: SpanRef; readonly reason: string }
   | { readonly type: "snippetLoaded"; readonly ref: SpanRef; readonly snippet: Snippet }
   | { readonly type: "readingProgress"; readonly spans: number | null }
-  | { readonly type: "rootChanged"; readonly root: string };
+  | { readonly type: "rootChanged"; readonly root: string | null; readonly unset?: WideRootRejection };
 
 export type TreeRow = {
   readonly ref: SpanRef;
@@ -209,7 +217,11 @@ export const DETAIL_SCROLL_END = 1_000_000_000;
 
 export const EMPTY_FILTER: TreeFilter = { errorsOnly: false, search: null, name: null, kindGlob: null, area: null };
 
-export function initialState(input: { root: string; readOnly: boolean; start?: readonly StartRow[] }): ViewState {
+export function initialState(input: {
+  root: string | null;
+  readOnly: boolean;
+  start?: readonly StartRow[];
+}): ViewState {
   return {
     screen: "start",
     start: { rows: input.start ?? [], cursor: 0, filter: "" },
@@ -217,6 +229,7 @@ export function initialState(input: { root: string; readOnly: boolean; start?: r
     traceList: { cursor: 0, filter: "" },
     trace: null,
     root: input.root,
+    rootUnset: null,
     view: "tree",
     pane: "tree",
     expanded: new Set<string>(),
@@ -655,10 +668,11 @@ export function update(current: ViewState, action: Action): Result {
     case "readingProgress":
       return [{ ...state, reading: action.spans }, NO_EFFECTS];
     case "rootChanged": {
+      const rootUnset = action.root === null ? (action.unset ?? null) : null;
       const cleared: ViewState = banner(
-        { ...state, root: action.root, snippets: new Map(), cacheBytes: mapBytes(state.values) },
+        { ...state, root: action.root, rootUnset, snippets: new Map(), cacheBytes: mapBytes(state.values) },
         "info",
-        `root: ${action.root}`
+        action.root === null ? rootUnsetText(rootUnset) : `root: ${action.root}`
       );
       if (cleared.selected === null) return [cleared, NO_EFFECTS];
       const [next, effects] = select(cleared, cleared.selected);
@@ -774,7 +788,8 @@ function select(state: ViewState, ref: SpanRef): Result {
       next = { ...next, values: withEntry(next.values, key, "loading") };
       effects.push({ kind: "loadValues", ref: span.ref });
     }
-    if (span.location !== undefined && !next.snippets.has(key)) {
+    // Without a code root nothing is read: the detail says so instead (spec 4.8).
+    if (span.location !== undefined && next.root !== null && !next.snippets.has(key)) {
       next = { ...next, snippets: withEntry(next.snippets, key, "loading") };
       effects.push({ kind: "loadSnippet", ref: span.ref, location: span.location });
     }

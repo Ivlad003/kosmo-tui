@@ -263,6 +263,27 @@ describe("tree navigation and selection", () => {
     expect(run(second, { type: "rootChanged", root: "/other" }).state.cacheBytes).toBe(jsonBytes(VALUES));
   });
 
+  it("without a code root no snippet is asked for; a root brings the request back (spec 4.8)", () => {
+    const traced = onTrace(multiSession());
+    const unset = run(traced, { type: "rootChanged", root: null, unset: "home" });
+    expect(unset.state.root).toBeNull();
+    expect(unset.state.rootUnset).toBe("home");
+    expect(unset.state.banner).toEqual({
+      level: "info",
+      text: "code root not set: cwd is the home directory or above it; use :root or --root"
+    });
+    const selected = run(unset.state, { type: "selectRef", ref: ref("a") });
+    expect(selected.effects.filter((effect) => effect.kind === "loadSnippet")).toEqual([]);
+    expect(selected.state.snippets.size).toBe(0);
+    const rooted = run(selected.state, { type: "rootChanged", root: "/p" });
+    expect(rooted.state.rootUnset).toBeNull();
+    expect(rooted.effects).toContainEqual({
+      kind: "loadSnippet",
+      ref: ref("a"),
+      location: { file: "src/a.ts", line: 1 }
+    });
+  });
+
   it("h on a leaf goes to the parent row; Space toggles", () => {
     const state = run(onTrace(multiSession()), { type: "selectRef", ref: ref("a1") }, { type: "collapse" }).state;
     expect(state.selected).toEqual(ref("a"));
