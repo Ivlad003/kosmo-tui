@@ -11,6 +11,7 @@ import { ABORTED, concatBytes, errorText, fatalAt, nextChunk, readerError, relea
 import { openJsonFile, parseJsonDocument } from "./json.js";
 import { openNdjson } from "./ndjson.js";
 import { SNIFF_HEAD_BYTES, SQLITE_MAGIC, firstLineComplete, sniffContainer } from "./sniff.js";
+import { openSqliteFile } from "./sqlite.js";
 import type { OpenResult, OpenedDataset, Origin, ReaderDeps } from "./types.js";
 
 export async function openTarget(origin: Origin, deps: ReaderDeps, signal: AbortSignal): Promise<OpenResult> {
@@ -40,7 +41,7 @@ export async function openTarget(origin: Origin, deps: ReaderDeps, signal: Abort
   if (kind === null) return { ok: false, error: fatalAt("not-a-kosmo-trace", "$", "empty input") };
   if (kind === "json") return openJsonFile(path, stat.size, deps.fs);
   if (kind === "ndjson") return openNdjson(origin, deps.fs.createReadStream(path), deps, signal);
-  return notReadable(kind);
+  return openSqliteFile(path, stat.size, deps, signal);
 }
 
 /** Read the same origin again (`r`, spec 6.7); null for stdin: `reload: unavailable(stdin-stream)`. */
@@ -146,9 +147,4 @@ async function collect(
     }
     parts.push(next.value);
   }
-}
-
-/** Task 10 replaces this with the sqlite reader. */
-function notReadable(kind: "sqlite"): OpenResult {
-  return { ok: false, error: readerError("read-error", `read-error: ${kind} containers are not readable yet`) };
 }
