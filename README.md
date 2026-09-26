@@ -1,6 +1,6 @@
 # @ivlad003/kosmo-tui
 
-Terminal viewer for kosmo-trace call traces. It answers one question: **which logic and which piece of code does
+Terminal viewer and live debugger for kosmo-trace call traces. It answers one question: **which logic and which piece of code does
 every call belong to**. A span carries its exact place in the code, the detail pane shows that code from disk, calls
 are grouped by module and feature, and framework calls (Express middleware, Nest enhancers, React render/effect, the
 Next server/client boundary) have readable names.
@@ -39,6 +39,8 @@ the recent list is off and a banner says so.
 shows `METHOD route → status` of its first request and `N requests` when there are several. A dataset with one trace
 skips this screen.
 
+![Traces in examples/demo.kosmo-trace.json](docs/shots/traces.svg)
+
 ```
  kosmo-tui · checkout bug demo · 2 traces Enter open · / filter · r reload · q …
  ▸ t_cart               GET /cart                      4  errored     GET /cart…
@@ -68,8 +70,10 @@ it, with the code window read from the project root. The `▶` line is always vi
  args    [{"discount":120,"id":7},2]
  return  not-recorded (threw)
  error   RangeError: discount > 100%
- attrs   code.function = calculateLineTotal
+   attrs   code.function = calculateLineTotal
 ```
+
+![Same trace, code window from disk](docs/shots/error.svg)
 
 The code window names its state when the file does not match the trace: `file-missing`, `outside-root` (a symlink
 leaves the root), `root-changed` (the root directory now resolves elsewhere, say it was swapped for a symlink),
@@ -84,44 +88,56 @@ Then no code is read from disk, file links are off, the code window says `no cod
 `code root not set: …; use :root or --root`.
 
 A child whose session or runtime differs from its parent's gets a separator row: `┄┄ browser → node · n1 ┄┄`.
+
+![Storefront trace with a node to browser boundary](docs/shots/boundary.svg)
+
 **Areas** (`a`) lists `module · feature` with span and error counts; derived areas (from the file's directory, or the
 package name inside `node_modules`) are marked `~`. Enter filters the tree to an area, with ancestors dimmed.
 
 ## Keys
 
-| Key                                    | Action                                                                            |
-| -------------------------------------- | --------------------------------------------------------------------------------- |
-| `j` `k` ↑ ↓ PgUp PgDn `g` `G` Home End | Move                                                                              |
-| `h` `l` Space                          | Collapse / expand / toggle                                                        |
-| Enter                                  | Open the file or trace; on the tree: focus the detail (it scrolls)                |
-| Tab / Esc                              | Back to the tree / close the pane, clear the filter, go back                      |
-| `T` Backspace                          | From the trace back to the trace list                                             |
-| `v` `d`                                | Tree ↔ table / kosmo-text view                                                    |
-| `/` `e` `a`                            | Search name and file / errors only / Areas                                        |
-| `s`                                    | Stack: the recorded ancestors                                                     |
-| `m` `'`                                | Bookmark / list bookmarks                                                         |
-| `y`                                    | Copy kosmo-text/v1 of the selected subtree (printed after exit when no clipboard) |
-| `>` `r`                                | Next page of traces (SQLite) / read the file again (not for stdin)                |
-| `:`                                    | Command line                                                                      |
-| `q` Ctrl+C                             | Quit (Ctrl+C exits 130)                                                           |
+| Key                                    | Action                                                                             |
+| -------------------------------------- | ---------------------------------------------------------------------------------- |
+| `j` `k` ↑ ↓ PgUp PgDn `g` `G` Home End | Move                                                                               |
+| `h` `l` Space                          | Collapse / expand / toggle                                                         |
+| Enter                                  | Open the file or trace; on the tree: focus the detail (it scrolls)                 |
+| Tab / Esc                              | Back to the tree / close the pane, clear the filter, go back                       |
+| `T` Backspace                          | From the trace back to the trace list                                              |
+| `v` `d`                                | Tree ↔ table / kosmo-text view                                                     |
+| `/` `e` `a`                            | Search name and file / errors only / Areas                                         |
+| `s`                                    | Stack: the recorded ancestors                                                      |
+| `m` `'`                                | Bookmark / list bookmarks                                                          |
+| `y`                                    | Copy kosmo-text/v1 of the selected subtree (printed after exit when no clipboard)  |
+| `>` `r`                                | Next page of traces (SQLite) / read the file again (not for stdin)                 |
+| `:`                                    | Command line                                                                       |
+| `A` `H` `P`                            | Targets / hits / paused stack. Enter in Targets asks before attach                 |
+| `b` `B`                                | Tracepoint (no pause) / breakpoint on the selected span                            |
+| `c` `n` `o` `s`                        | While paused: continue / step over / step out / step into (`s` in the paused pane) |
+| `q` Ctrl+C                             | Quit (Ctrl+C exits 130). Ctrl+Z suspends kosmo-tui; breakpoints stay inactive      |
 
 ## Commands
 
 A span ref is `.` (the selection), `<id>`, `<session>:<id>` or `<trace>:<session>:<id>`; an ambiguous ref lists its
 candidates instead of guessing. `/re/flags` is a regular expression only in `:find`, `:filter name` and `:area`.
 
-| Command                                                                     | Meaning                                                                    |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `:trace <id>`                                                               | Open a trace                                                               |
-| `:ancestors [ref]`                                                          | The parent chain, ending in `root reached`, `parent unknown(…)` or `cycle` |
-| `:path <from> <to>`                                                         | `found`, `no-path` or `unknown-path(<reason>)`                             |
-| `:callers [ref]`                                                            | Spans at the same `file:line`, grouped by their parents                    |
-| `:find /re/[imsu]`                                                          | Spans whose name or file matches                                           |
-| `:filter errors [on\|off] \| name /re/ \| kind <glob> \| area <x> \| clear` | Tree filters (`kind nest.*` keeps the Nest steps)                          |
-| `:area <x>`                                                                 | Feature first, then module; `module:<x>` and `feature:<x>` are explicit    |
-| `:bookmark [list]`                                                          | Bookmarks                                                                  |
-| `:root [<dir>]`                                                             | Show the code root, or change it and re-read the snippets                  |
-| `:q`                                                                        | Quit                                                                       |
+| Command                                                                     | Meaning                                                                     |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `:trace <id>`                                                               | Open a trace                                                                |
+| `:ancestors [ref]`                                                          | The parent chain, ending in `root reached`, `parent unknown(…)` or `cycle`  |
+| `:path <from> <to>`                                                         | `found`, `no-path` or `unknown-path(<reason>)`                              |
+| `:callers [ref]`                                                            | Spans at the same `file:line`, grouped by their parents                     |
+| `:find /re/[imsu]`                                                          | Spans whose name or file matches                                            |
+| `:filter errors [on\|off] \| name /re/ \| kind <glob> \| area <x> \| clear` | Tree filters (`kind nest.*` keeps the Nest steps)                           |
+| `:area <x>`                                                                 | Feature first, then module; `module:<x>` and `feature:<x>` are explicit     |
+| `:bookmark [list]`                                                          | Bookmarks                                                                   |
+| `:root [<dir>]`                                                             | Show the code root, or change it and re-read the snippets                   |
+| `:attach <ip>:<port>`                                                       | Probe a loopback inspector and ask before attach                            |
+| `:detach`                                                                   | Remove points and the helper; may offer to close a port opened with SIGUSR1 |
+| `:tp <file>:<line> [names]` `:bp <file>:<line> [names] [--same-case]`       | Arm a point in every attached target                                        |
+| `:untp <id>` `:unbp <id>` `:tp-cap <n>` `:max-pause <s>\|off`               | Remove a point, cap tracepoint hits (default 100), auto-resume our pauses   |
+| `:launch-browser <http://localhost:port/…>`                                 | Launch Chrome/Edge/Chromium with a temporary profile                        |
+| `:attach-browser <ip>:<port>` `:reload-armed`                               | Attach to a non-default loopback profile, or reload after points are armed  |
+| `:q`                                                                        | Quit                                                                        |
 
 ## `--print`
 
@@ -289,6 +305,16 @@ span("price", "load", "price", {
 ```
 
 <!-- ndjson-producer:end -->
+
+## Debugger
+
+`A` opens Targets (also with no trace open). Enter asks before attach: kosmo-tui can pause the process and run code in it. `-r` turns every debug action off.
+
+Start the process with an inspector on loopback, not via `NODE_OPTIONS` on a supervisor (`tsx`, `nest`, `next`, `node --watch`): the supervisor would take the port and has no app code. Node: `node --inspect app.js`. TypeScript: compile first (`tsc`) and inspect the output; `tsx` and Node's type strip shift locations. Express is the same as Node. Nest: `nest start` then inspect the child, not the CLI. Next 15.5/16: inspect `next-server`, not the `next dev` supervisor (`NODE_OPTIONS=--inspect` on the supervisor is the trap). Vite / React Router: inspect the dev server, then `◆ launch browser` or `:launch-browser http://localhost:<port>`.
+
+`b` sets a tracepoint (no pause) on the selected span; `B` sets a breakpoint. The span's `runtime` decides the target: `browser` spans arm in the browser, everything else in Node. `:tp <file>:<line> [names]` and `:bp <file>:<line> [names] [--same-case]` do the same by hand and arm in every attached target; `:untp <id>` / `:unbp <id>` remove a point, `:tp-cap <n>` sets how many hits a tracepoint records before it is removed (default 100). Points go through source maps (tsc, tsx, Vite, Next) and land on the first breakable location of the body (`Debugger.getPossibleBreakpoints`), never on the header. When the file on disk differs from what the map was built from (`sourcesContent`, or the trace's snippet for tsc maps), the line is found again by its text within ±200 lines and the point is marked `map-untrusted · re-anchored`; no unique match is `failed(map-mismatch)`. `H` lists points with their state (`pending`, `resolved (N scripts)`, `failed(…)`) above the hits. `P` is the paused stack with the `local`/`block`/`closure` values of the top frame below it (getters are not invoked, keys are masked like recorded values). While paused: `c` continue, `n` over, `o` out, `s` step into; `:max-pause <s>|off` resumes our own pauses automatically. A pause held by another debugger is shown, never resumed by kosmo-tui. `:attach <ip>:<port>` (IP literal or `localhost`) probes and asks the same question as Enter in Targets. Enter on a `○` process (no inspector) offers to send `SIGUSR1`; `:detach` then asks whether to close that port again. When a watched child restarts, kosmo-tui finds the new pid within 10 s and offers to reattach with the same points. Ctrl+Z restores the terminal and stops kosmo-tui (breakpoints inactive until `fg`). `:detach` removes breakpoints, the helper and console history (`discardConsoleEntries`).
+
+The browser is launched with a temporary profile and `--remote-debugging-pipe` (no TCP port, not your everyday profile). `:attach-browser <ip>:<port>` is the fallback and only for loopback Chrome/Edge that already has a non-default `--user-data-dir`. `:reload-armed` reloads the page after points are armed; it runs the page again, so it asks first. A DevTools window you open in that browser sees kosmo-tui's `console.trace` messages, and page code can see or replace the helper.
 
 ## Masking and terminal safety
 

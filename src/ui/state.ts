@@ -35,9 +35,11 @@ import type { ContainerKind, Notice, Origin, ReaderError, TraceListPage } from "
 import type { Snippet } from "../code/snippet.js";
 import { rootUnsetText } from "./labels.js";
 import { regexFromLiteral } from "./refs.js";
+import { EMPTY_DEBUG, reduceDebug, debugItemCount, type DebugAction, type DebugView } from "./debug-reduce.js";
+import type { DebugCommand } from "../debug/port.js";
 
 export type Screen = "start" | "traces" | "trace";
-export type Pane = "tree" | "detail" | "areas" | "stack" | "bookmarks" | "results";
+export type Pane = "tree" | "detail" | "areas" | "stack" | "bookmarks" | "results" | "targets" | "hits" | "paused";
 /** Panes that replace the detail area while they have focus. */
 export type AuxPane = "areas" | "stack" | "bookmarks" | "results";
 export type TreeFilter = {
@@ -122,6 +124,7 @@ export type ViewState = {
   readonly resultsInfo: ResultsInfo | null;
   /** `jsonBytes` of the loaded entries of `values` and `snippets` ("loading" is 0); kept ≤ CACHE_MAX_BYTES. */
   readonly cacheBytes: number;
+  readonly debug: DebugView;
 };
 
 export type Effect =
@@ -135,7 +138,10 @@ export type Effect =
   | { kind: "setRoot"; dir: string }
   /** The view dropped its dataset (Esc to the start screen): late answers are dropped, then it is closed. */
   | { kind: "closeDataset" }
-  | { kind: "quit" };
+  | { kind: "quit" }
+  | { kind: "debug"; readonly command: DebugCommand }
+  /** Ctrl+Z: restore the terminal, SIGSTOP; on SIGCONT take the terminal back (spec 9.9). */
+  | { kind: "suspend" };
 
 export type Action =
   // keys: lists of the current screen (start rows, trace list, tree)
@@ -199,7 +205,8 @@ export type Action =
   | { readonly type: "readingProgress"; readonly spans: number | null }
   | { readonly type: "rootChanged"; readonly root: string | null; readonly unset?: WideRootRejection }
   /** After `closeDataset`: back to the root before any dataset (`--root`/`:root`, or none), no banner. */
-  | { readonly type: "rootReset"; readonly root: string | null };
+  | { readonly type: "rootReset"; readonly root: string | null }
+  | { readonly type: "debug"; readonly action: DebugAction };
 
 export type TreeRow = {
   readonly ref: SpanRef;
@@ -251,7 +258,8 @@ export function initialState(input: {
     fromStart: false,
     pendingSelect: null,
     resultsInfo: null,
-    cacheBytes: 0
+    cacheBytes: 0,
+    debug: EMPTY_DEBUG
   };
 }
 
@@ -468,6 +476,10 @@ export function paneItemCount(state: ViewState): number {
       return state.bookmarks.length;
     case "results":
       return state.results?.length ?? 0;
+    case "targets":
+    case "hits":
+    case "paused":
+      return debugItemCount(state);
     default:
       return 0;
   }
@@ -498,7 +510,9 @@ const SESSION_ACTIONS = new Set<Action["type"]>([
 ]);
 
 export function update(current: ViewState, action: Action): Result {
-  const state = SESSION_ACTIONS.has(action.type) || current.banner === null ? current : { ...current, banner: null };
+  // Controller events (hits, point states) arrive on their own; they must not wipe a banner unread.
+  const keepBanner = SESSION_ACTIONS.has(action.type) || (action.type === "debug" && action.action.type === "event");
+  const state = keepBanner || current.banner === null ? current : { ...current, banner: null };
   switch (action.type) {
     case "move":
       return move(state, action.delta, null);
@@ -695,6 +709,8 @@ export function update(current: ViewState, action: Action): Result {
         { ...state, root: action.root, rootUnset: null, snippets: new Map(), cacheBytes: mapBytes(state.values) },
         NO_EFFECTS
       ];
+    case "debug":
+      return reduceDebug(state, action.action);
     default:
       // Unreachable for typed callers; a stray action from JS must not crash the session.
       return [state, NO_EFFECTS];

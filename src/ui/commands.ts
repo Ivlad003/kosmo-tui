@@ -13,6 +13,9 @@ import type { AreaKey, AreaRow, TraceModel } from "../format/model.js";
 import type { SpanRef, SpanRow } from "../format/types.js";
 import { formatSpanRef, regexFromLiteral, resolveSpanRef, spanRefFromToken, type SpanRefInput } from "./refs.js";
 import { ancestorsOf, type Action, type ViewState } from "./state.js";
+import { parseHostPort } from "../debug/loopback.js";
+import type { DebugCommand } from "../debug/port.js";
+import { isCaptureName } from "../code/params.js";
 
 export const COMMAND_NAMES = [
   "trace",
@@ -24,7 +27,18 @@ export const COMMAND_NAMES = [
   "area",
   "bookmark",
   "root",
-  "q"
+  "q",
+  "attach",
+  "detach",
+  "tp",
+  "untp",
+  "tp-cap",
+  "bp",
+  "unbp",
+  "max-pause",
+  "attach-browser",
+  "reload-armed",
+  "launch-browser"
 ] as const;
 
 type CommandError = { readonly error: string };
@@ -49,6 +63,18 @@ export function parseCommandLine(state: ViewState, line: string): Action | { rea
   switch (name) {
     case "q":
       return args.length === 0 ? { type: "quit" } : usage("q");
+    case "attach":
+    case "detach":
+    case "tp":
+    case "untp":
+    case "tp-cap":
+    case "bp":
+    case "unbp":
+    case "max-pause":
+    case "attach-browser":
+    case "reload-armed":
+    case "launch-browser":
+      return debugCommand(name, args, state);
     case "trace":
       if (args.length !== 1 || args[0]!.regex !== undefined) return usage("trace <trace>");
       return { type: "openTrace", id: args[0]!.text };
@@ -76,6 +102,95 @@ export function parseCommandLine(state: ViewState, line: string): Action | { rea
 
 function usage(text: string): CommandError {
   return { error: `usage: :${text}` };
+}
+
+const DEBUG_USAGE: Record<string, string> = {
+  attach: "attach <ip>:<port>",
+  "attach-browser": "attach-browser <ip>:<port>",
+  "launch-browser": "launch-browser <http://localhost:port/…>",
+  detach: "detach [node|browser]",
+  tp: "tp <file>:<line> [name…]",
+  bp: "bp <file>:<line> [name…] [--same-case]",
+  untp: "untp <id>",
+  unbp: "unbp <id>",
+  "tp-cap": "tp-cap <n>",
+  "max-pause": "max-pause <seconds>|off",
+  "reload-armed": "reload-armed"
+};
+
+function debugCommand(name: string, args: readonly Token[], state: ViewState): Outcome {
+  if (state.readOnly) return { error: "debug: unavailable(read-only)" };
+  const help = usage(DEBUG_USAGE[name] ?? name);
+  const send = (command: DebugCommand): Outcome => ({ type: "debug", action: { type: "command", command } });
+  const first = args[0]?.text;
+  switch (name) {
+    case "detach": {
+      if (args.length > 1) return help;
+      if (first !== undefined && first !== "node" && first !== "browser") return help;
+      return send({ type: "detach", which: first ?? "both" });
+    }
+    case "reload-armed":
+      return args.length === 0 ? send({ type: "reloadArmed" }) : help;
+    case "max-pause": {
+      if (args.length !== 1 || first === undefined) return help;
+      if (first === "off") return send({ type: "maxPause", seconds: null });
+      const seconds = /^\d+$/.test(first) ? Number(first) : null;
+      if (seconds === null || seconds < 1 || seconds > 3600) return help;
+      return send({ type: "maxPause", seconds });
+    }
+    case "attach":
+    case "attach-browser": {
+      if (args.length !== 1 || first === undefined) return help;
+      const parsed = parseHostPort(first);
+      if (parsed === null) return help;
+      return send(
+        name === "attach"
+          ? { type: "attachAddress", host: parsed.host, port: parsed.port }
+          : { type: "attachBrowser", host: parsed.host, port: parsed.port }
+      );
+    }
+    case "launch-browser":
+      return args.length === 1 && first !== undefined ? send({ type: "launchBrowser", url: first }) : help;
+    case "tp":
+    case "bp": {
+      const located = first === undefined ? null : /^(.+):(\d+)$/.exec(first);
+      if (located === null) return help;
+      const rest = args.slice(1).map((token) => token.text);
+      const flags = rest.filter((token) => token.startsWith("--"));
+      const names = rest.filter((token) => !token.startsWith("--"));
+      if (flags.some((flag) => flag !== "--same-case") || (name === "tp" && flags.length > 0)) return help;
+      const bad = names.find((token) => !isCaptureName(token));
+      if (bad !== undefined) return { error: `${name}: not a capture name: ${bad}` };
+      const line = Number(located[2]);
+      if (!Number.isSafeInteger(line) || line < 1) return help;
+      // Without a span there is no runtime: the point goes to every attached target (spec 9.3).
+      return send({
+        type: "arm",
+        id: state.debug.nextId,
+        kind: name,
+        file: located[1]!,
+        root: state.root,
+        line,
+        names,
+        sameCase: flags.includes("--same-case"),
+        cap: state.debug.cap,
+        runtime: null
+      });
+    }
+    case "untp":
+    case "unbp": {
+      const id = first === undefined || !/^\d+$/.test(first) ? null : Number(first);
+      if (args.length !== 1 || id === null) return help;
+      return { type: "debug", action: { type: "removePoint", id, kind: name === "untp" ? "tp" : "bp" } };
+    }
+    case "tp-cap": {
+      const cap = first === undefined || !/^\d+$/.test(first) ? null : Number(first);
+      if (args.length !== 1 || cap === null) return help;
+      return { type: "debug", action: { type: "setCap", cap } };
+    }
+    default:
+      return help;
+  }
 }
 
 /**

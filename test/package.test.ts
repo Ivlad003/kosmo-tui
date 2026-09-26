@@ -51,7 +51,7 @@ describe("package manifest (spec 15)", () => {
     expect(pkg.type).toBe("module");
     expect(pkg.publishConfig?.access).toBe("public");
     expect(pkg.bin).toEqual({ "kosmo-tui": "bin/kosmo-tui.js" });
-    expect(pkg.description).toBe("Terminal viewer for kosmo-trace call traces");
+    expect(pkg.description).toBe("Terminal viewer and live debugger for kosmo-trace call traces");
   });
 
   it("needs Node >= 22.13.0 (node:sqlite without a flag, process.getBuiltinModule)", () => {

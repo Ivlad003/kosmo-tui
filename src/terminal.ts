@@ -65,6 +65,10 @@ export type Terminal = {
    * behind the viewer's back. A no-op after close or on a non-TTY input.
    */
   reclaimInput?(): void;
+  /** Ctrl+Z (spec 9.9): give the terminal back (cooked mode, main screen) without closing. */
+  suspend?(): void;
+  /** After SIGCONT: raw mode and the alternate screen again; the next paint is a full redraw. */
+  resume?(): void;
 };
 
 export const MIN_COLS = 40;
@@ -91,6 +95,7 @@ export function createTerminal(input: TerminalInput, output: TerminalOutput, opt
   const guard = options.guard ?? DEFAULT_PAINT_GUARD;
   let previous: Frame = [];
   let closed = false;
+  let suspended = false;
   const keyListeners: Array<(key: string) => void> = [];
   const resizeListeners: Array<(size: TerminalSize) => void> = [];
 
@@ -125,7 +130,7 @@ export function createTerminal(input: TerminalInput, output: TerminalOutput, opt
   return {
     size,
     paint(frame) {
-      if (closed) return;
+      if (closed || suspended) return;
       const cols = size().cols;
       const rows = frame.map((row) => {
         const safe = guard(row);
@@ -153,6 +158,25 @@ export function createTerminal(input: TerminalInput, output: TerminalOutput, opt
       // Node skips a same-mode setRawMode(true), so toggle to make it apply again.
       input.setRawMode?.(false);
       input.setRawMode?.(true);
+    },
+    suspend() {
+      if (closed || suspended) return;
+      suspended = true;
+      if (input.isTTY) {
+        input.setRawMode?.(false);
+        input.pause?.();
+      }
+      if (output.isTTY) output.write(RESTORE_SEQUENCE);
+    },
+    resume() {
+      if (closed || !suspended) return;
+      suspended = false;
+      previous = [];
+      if (input.isTTY) {
+        input.setRawMode?.(true);
+        input.resume?.();
+      }
+      if (output.isTTY) output.write(ENTER_SEQUENCE + CURSOR.clearScreen);
     },
     close() {
       if (closed) return;

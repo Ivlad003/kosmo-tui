@@ -13,13 +13,20 @@
     </nav>
     <h1>kosmo-tui</h1>
     <p class="lede">
-      Термінальний переглядач знімків викликів <code>kosmo-trace/v1</code>. Відповідає на одне питання: яка логіка і
-      який шматок коду стоїть за кожним викликом.
+      Термінальний переглядач знімків <code>kosmo-trace/v1</code> і live-дебагер для Node та браузера. Відповідає на
+      одне питання: яка логіка і який шматок коду стоїть за кожним викликом.
     </p>
     <pre><code>npx @ivlad003/kosmo-tui ./x.kosmo-trace.json
 producer | npx @ivlad003/kosmo-tui -
 npx @ivlad003/kosmo-tui ./x.kosmo-trace.json --print --trace t_cart</code></pre>
-    <p>Потрібен Node >= 22.13.0. Мережі немає, залежностей під час запуску немає, у файл траси нічого не пишеться.</p>
+    <p>
+      Потрібен Node >= 22.13.0. Перегляд не ходить у мережу і нічого не пише в файл траси. Дебагер чіпляється лише до
+      loopback inspector і лише після підтвердження. <code>-r</code> вимикає кожну debug-дію.
+    </p>
+    <figure>
+      <img src="shots/error.svg" alt="kosmo-tui: дерево GET /cart і вікно коду з RangeError" />
+      <figcaption>examples/demo.kosmo-trace.json</figcaption>
+    </figure>
 
     <div class="grid">
       <section class="card ok">
@@ -32,15 +39,16 @@ npx @ivlad003/kosmo-tui ./x.kosmo-trace.json --print --trace t_cart</code></pre>
           <li>Знайти помилку, стек, шлях між двома span і всіх, хто кликав той самий рядок.</li>
           <li>Прочитати JSON, NDJSON, SQLite або потік NDJSON зі stdin.</li>
           <li>Віддати текст, JSON або TSV для скрипта і CI через <code>--print</code>.</li>
-          <li>Не виконати escape-послідовності з траси і замаскувати очевидні секрети.</li>
+          <li>Поставити tracepoint або breakpoint на вибраний span у живому Node чи браузері і пройти стек паузи.</li>
+          <li>Екранує керівні послідовності з траси і маскує очевидні секрети.</li>
         </ul>
       </section>
       <section class="card bad">
         <h2>Не вирішує</h2>
         <ul>
-          <li>Не записує траси. Потрібен окремий producer.</li>
-          <li>Не дебагер: не ставить breakpoint і не чіпляється до процесу.</li>
+          <li>Не записує траси. Потрібен окремий producer, якщо треба дерево викликів.</li>
           <li>Не заміна Jaeger, Tempo чи UI OpenTelemetry.</li>
+          <li>Не замінює Chrome DevTools і не дебажить усе, що не Node і не Chromium на loopback.</li>
           <li>Не профайлер CPU чи пам'яті.</li>
           <li>Не live-tail: потік читається до EOF, модель будується один раз.</li>
           <li>Не вгадує батька span і не лагодить код.</li>
@@ -55,8 +63,9 @@ npx @ivlad003/kosmo-tui ./x.kosmo-trace.json --print --trace t_cart</code></pre>
 
     <h2>Коли його відкривати</h2>
     <p>
-      Є файл або потік <code>kosmo-trace</code>, і треба зрозуміти, який виклик упав, у якому файлі, і чи це ваш код, чи
-      шар фреймворка. Якщо траси ще немає, kosmo-tui нічим не допоможе: він тільки читає вже записаний знімок.
+      Є файл або потік <code>kosmo-trace</code>, і треба зрозуміти, який виклик упав і в якому файлі. Або процес уже
+      запущений з inspector, і треба зупинити той самий рядок, не збираючи нову трасу. Без траси лишається Targets
+      (<code>A</code>): чіплятись можна, дерева викликів не буде.
     </p>
     <p class="callout">
       Маскування в переглядачі — другий шар. Секрет у полі з невинною назвою він не зловить. Producer має маскувати

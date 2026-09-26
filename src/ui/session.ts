@@ -41,6 +41,7 @@ import type { OpenResult, OpenedDataset, Origin, ReaderDeps, ReaderError } from 
 import { escapeTerminalControls } from "../sanitize.js";
 import { loadStartRows, recentPath, recordRecent, type StartFs } from "../start.js";
 import type { Terminal } from "../terminal.js";
+import type { DebugController } from "../debug/port.js";
 import { decodeKey } from "./keys.js";
 import { renderFrame, type RenderEnv } from "./render.js";
 import {
@@ -107,6 +108,10 @@ export type SessionDeps = {
    * null: no root (none yet, or spec 4.8 left none), so no link passes.
    */
   readonly onRootChange?: (root: string | null) => void;
+  /** Stage 2–3 debugger. Absent under `-r` and in tests that do not exercise debug. */
+  readonly debug?: DebugController;
+  /** Ctrl+Z: `stop` sends SIGSTOP to this process; `onContinue` fires on SIGCONT (spec 9.9). */
+  readonly suspend?: { stop(): void; onContinue(handler: () => void): () => void };
   /** Injection points for tests; default to the readers' `openTarget` / `reopen`. */
   readonly open?: (origin: Origin, deps: ReaderDeps, signal: AbortSignal) => Promise<OpenResult>;
   readonly reopen?: (dataset: OpenedDataset, deps: ReaderDeps, signal: AbortSignal) => Promise<OpenResult> | null;
@@ -114,6 +119,8 @@ export type SessionDeps = {
 
 const ESC = "\u001b";
 const CTRL_C = "\u0003";
+/** Ctrl+Z waits this long for the debugger to release its pauses before stopping the process. */
+const SUSPEND_DEADLINE_MS = 1500;
 
 const defaultTimers: SessionTimers = {
   setTimeout: (handler, ms) => setTimeout(handler, ms),
@@ -356,6 +363,23 @@ export async function runSession(deps: SessionDeps): Promise<number> {
       case "closeDataset":
         abandonDataset();
         return;
+      case "suspend":
+        background(suspendSelf());
+        return;
+      case "debug": {
+        if (deps.debug === undefined) {
+          dispatch({ type: "showBanner", level: "error", text: "debug: unavailable" });
+          return;
+        }
+        background(
+          deps.debug.handle(effect.command).catch((error: unknown) => {
+            if (closed) return;
+            dispatch({ type: "showBanner", level: "error", text: describeError(error) });
+            paint();
+          })
+        );
+        return;
+      }
     }
   }
 
@@ -617,7 +641,41 @@ export async function runSession(deps: SessionDeps): Promise<number> {
     }
   }
 
+  /**
+   * Ctrl+Z (spec 9.9): our pauses end and breakpoints go inactive, the terminal is restored, then
+   * the process stops itself. SIGCONT takes the terminal back and re-activates the breakpoints.
+   */
+  let suspending = false;
+  async function suspendSelf(): Promise<void> {
+    if (deps.suspend === undefined || terminal.suspend === undefined || closed || suspending) return;
+    suspending = true;
+    // A target that does not answer must not swallow Ctrl+Z: the debugger gets the detach deadline.
+    await Promise.race([
+      deps.debug?.suspend().catch(() => undefined) ?? Promise.resolve(),
+      new Promise<void>((resolve) => timers.setTimeout(resolve, SUSPEND_DEADLINE_MS))
+    ]);
+    if (closed) {
+      suspending = false;
+      return;
+    }
+    const off = deps.suspend.onContinue(() => {
+      off();
+      suspending = false;
+      if (closed) return;
+      terminal.resume?.();
+      paint();
+      background(deps.debug?.resume().catch(() => undefined) ?? Promise.resolve());
+    });
+    terminal.suspend();
+    deps.suspend.stop();
+  }
+
   const onAbort = (): void => finish(exitCodeForSignal(deps.signal?.reason));
+  deps.debug?.on((event) => {
+    if (closed || outcome !== null) return;
+    guarded(() => dispatch({ type: "debug", action: { type: "event", event } }));
+    paint();
+  });
 
   async function close(): Promise<void> {
     closed = true;
@@ -625,9 +683,11 @@ export async function runSession(deps: SessionDeps): Promise<number> {
     clearProgress();
     lifetime.abort();
     openController?.abort();
+    const detaching = deps.debug?.close() ?? Promise.resolve();
     // Terminal first (raw mode, cursor, main screen), then what could not be copied.
     terminal.close();
     deps.clipboard.fallback.flush();
+    await detaching;
     // An aborted stream read settles at once and releases stdin (the producer gets EPIPE).
     await Promise.all([...pendingOpens]);
     // Then the open dataset and every replaced or abandoned one still closing; stderr comes after.

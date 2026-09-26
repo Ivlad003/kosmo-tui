@@ -29,6 +29,7 @@ import {
   treeBody
 } from "./panes.js";
 import { valuesOf, type ViewState } from "./state.js";
+import { debugPane } from "./debug-panes.js";
 
 export type RenderEnv = { readonly color: ColorLevel; readonly links: boolean };
 
@@ -46,11 +47,13 @@ export function renderFrame(state: ViewState, size: { cols: number; rows: number
   const bodyHeight = rows - 2;
   const header = headerLine(headerTitle(state, env.color, cols), `${keyHints(state)} `, cols);
   const body =
-    state.screen === "start"
-      ? startBody(state, cols, bodyHeight, env.color)
-      : state.screen === "traces"
-        ? tracesBody(state, cols, bodyHeight, env.color)
-        : traceBody(state, cols, bodyHeight, env);
+    state.pane === "targets" || state.pane === "hits" || state.pane === "paused" || state.debug.confirm !== null
+      ? debugPane(state, cols, bodyHeight)
+      : state.screen === "start"
+        ? startBody(state, cols, bodyHeight, env.color)
+        : state.screen === "traces"
+          ? tracesBody(state, cols, bodyHeight, env.color)
+          : traceBody(state, cols, bodyHeight, env);
   const frame = [header, ...body.slice(0, bodyHeight), footerLine(state, cols, env.color)];
   while (frame.length < rows) frame.splice(frame.length - 1, 0, "");
   return frame.map((line) => truncateVisible(line, cols));

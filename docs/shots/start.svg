@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="872" height="124" viewBox="0 0 872 124" role="img">
+<title>kosmo-tui — start</title>
+<rect width="100%" height="100%" rx="10" fill="#12140f"/>
+<rect x="0" y="0" width="100%" height="28" fill="#24281c"/>
+<circle cx="16" cy="14" r="5" fill="#e06c75"/>
+<circle cx="32" cy="14" r="5" fill="#e5c07b"/>
+<circle cx="48" cy="14" r="5" fill="#98c379"/>
+<text x="436" y="18" text-anchor="middle" fill="#a3a48f" font-family="ui-monospace, Menlo, Consolas, monospace" font-size="12">kosmo-tui — start</text>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">
+<text x="24.4" y="55" fill="#e7e4d4" font-weight="650" opacity="1">kosmo-tui</text>
+<text x="100" y="55" fill="#e7e4d4" font-weight="450" opacity="1">                                                           Enter open · / filter · q quit </text>
+<text x="16" y="72" fill="#e7e4d4" font-weight="450" opacity="1"> Found in ./ (depth 2)                                                                              </text>
+<text x="16" y="89" fill="#e7e4d4" font-weight="450" opacity="1"> ▸ storefront/cart-and-pdp.kosmo-trace.json                                      5.4 KB  2026-09-25 </text>
+<text x="16" y="106" fill="#e7e4d4" font-weight="450" opacity="1">   demo.kosmo-trace.json                                                         2.8 KB  2026-09-25 </text>
+</g>
+</svg>

@@ -29,6 +29,10 @@ npx @ivlad003/kosmo-tui ./trace.kosmo-trace.sqlite</code></pre>
       <code>-r</code> не пише <code>recent.json</code>. <code>--print</code> теж. Якщо домашня директорія не
       визначається і <code>XDG_CONFIG_HOME</code> не задано, список недавніх вимкнений.
     </p>
+    <figure>
+      <img src="shots/start.svg" alt="Стартовий екран: два файли прикладів у examples/" />
+      <figcaption>examples/, без аргументів. Файл відкривається тільки після Enter.</figcaption>
+    </figure>
 
     <h2>1. Побачити код біля впалого виклику</h2>
     <p>Запускайте з кореня проєкту, де лежать <code>package.json</code> або <code>.git</code> і сам вихідний код.</p>
@@ -54,6 +58,14 @@ npx @ivlad003/kosmo-tui ./traces/checkout.kosmo-trace.json</code></pre>
       інакше найближчий <code>.git</code> / <code>package.json</code> над файлом траси; інакше поточна директорія.
       Автоматичний вибір не може бути <code>/</code>, домашньою директорією чи вище неї.
     </p>
+    <figure>
+      <img src="shots/traces.svg" alt="Список трейсів demo: t_cart errored і t_health complete" />
+      <figcaption>examples/demo.kosmo-trace.json</figcaption>
+    </figure>
+    <figure>
+      <img src="shots/error.svg" alt="Дерево GET /cart і код calculateLineTotal з RangeError" />
+      <figcaption>Той самий файл: Enter, потім j j. Код прочитано з examples/demo/src/cart.ts.</figcaption>
+    </figure>
 
     <h2>2. Потік від producer</h2>
     <p>kosmo-tui не інструментує процес. Producer пише NDJSON у stdout, переглядач читає stdin до EOF.</p>
@@ -95,6 +107,14 @@ npx @ivlad003/kosmo-tui ./traces/checkout.kosmo-trace.json</code></pre>
       Рядок <code>┄┄ node → browser · browser ┄┄</code> — дитина в іншій сесії або runtime. Так видно межу SSR і
       браузера, а не «просто вкладений виклик».
     </p>
+    <figure>
+      <img src="shots/boundary.svg" alt="Дерево PDP з межею node → browser" />
+      <figcaption>examples/storefront/cart-and-pdp.kosmo-trace.json, трейс t_pdp.</figcaption>
+    </figure>
+    <figure>
+      <img src="shots/areas.svg" alt="Панель areas для GET /cart" />
+      <figcaption>Той самий файл, трейс t_cart, клавіша a.</figcaption>
+    </figure>
     <p>Корисні фільтри:</p>
     <pre><code>:filter errors on
 :filter kind nest.*
@@ -197,6 +217,52 @@ npx @ivlad003/kosmo-tui /tmp/nomark/demo.kosmo-trace.json</code></pre>
       всередині кореня.
     </p>
 
+    <h2>9. Зупинити той самий рядок у живому процесі</h2>
+    <p>
+      <code>A</code> відкриває Targets навіть без траси. Enter питає підтвердження: kosmo-tui може поставити процес на
+      паузу і виконати в ньому код. <code>-r</code> вимикає кожну debug-дію. Inspector має слухати loopback, не
+      <code>0.0.0.0</code>.
+    </p>
+    <pre><code>node --inspect app.js
+# TypeScript: спочатку tsc, потім inspect зібраного файлу.
+# tsx і strip типів зсувають рядки.
+# nest / next / tsx / node --watch: не ставте NODE_OPTIONS=--inspect на supervisor.
+# Інспектуйте дочірній процес, у Next 15.5/16 це next-server.</code></pre>
+    <ol>
+      <li>
+        <code>A</code>, Enter на процесі з inspector. Процес без inspector (<code>○</code>) може отримати
+        <code>SIGUSR1</code>, якщо підтвердите.
+      </li>
+      <li>
+        На span: <code>b</code> — tracepoint без паузи, <code>B</code> — breakpoint.
+        <code>runtime: browser</code> озброюється в браузері, решта в Node.
+      </li>
+      <li>
+        <code>H</code> — точки і їхній стан (<code>pending</code>, <code>resolved (N scripts)</code>,
+        <code>failed</code>). <code>P</code> — стек паузи.
+      </li>
+      <li>
+        На паузі: <code>c</code> далі, <code>n</code> over, <code>o</code> out, <code>s</code> у панелі паузи — step
+        into.
+      </li>
+    </ol>
+    <pre><code>:tp src/cart.ts:12
+:bp src/cart.ts:12 --same-case
+:tp-cap 100
+:max-pause 30
+:launch-browser http://localhost:5173/
+:attach-browser 127.0.0.1:9222
+:reload-armed
+:detach</code></pre>
+    <p>
+      <code>:tp</code> і <code>:bp</code> без span озброюють кожну приєднану ціль. Точки йдуть через source map і стають
+      після заголовка функції; на новий скрипт (HMR, lazy load) їх шукають знову. Браузер стартує з тимчасовим профілем
+      і <code>--remote-debugging-pipe</code>, не з вашим щоденним профілем. <code>:attach-browser</code> приймає лише
+      loopback Chrome/Edge з чужим <code>--user-data-dir</code>. <code>:reload-armed</code> перезавантажує сторінку,
+      тому питає підтвердження. Ctrl+Z відновлює термінал і зупиняє kosmo-tui: поки він зупинений, breakpoint не
+      спрацьовують. Паузу чужого дебагера kosmo-tui показує і сам не знімає.
+    </p>
+
     <h2>Клавіші</h2>
     <table>
       <thead>
@@ -251,8 +317,20 @@ npx @ivlad003/kosmo-tui /tmp/nomark/demo.kosmo-trace.json</code></pre>
           <td>командний рядок</td>
         </tr>
         <tr>
+          <td><code>A</code> <code>H</code> <code>P</code></td>
+          <td>Targets / влучання / стек паузи. Enter у Targets питає перед attach</td>
+        </tr>
+        <tr>
+          <td><code>b</code> <code>B</code></td>
+          <td>tracepoint без паузи / breakpoint на вибраному span</td>
+        </tr>
+        <tr>
+          <td><code>c</code> <code>n</code> <code>o</code> <code>s</code></td>
+          <td>на паузі: далі / over / out / into (<code>s</code> у панелі паузи)</td>
+        </tr>
+        <tr>
           <td><code>q</code> Ctrl+C</td>
-          <td>вихід; Ctrl+C дає код 130</td>
+          <td>вихід; Ctrl+C дає код 130. Ctrl+Z зупиняє kosmo-tui, breakpoint тим часом неактивні</td>
         </tr>
       </tbody>
     </table>
@@ -265,7 +343,10 @@ npx @ivlad003/kosmo-tui /tmp/nomark/demo.kosmo-trace.json</code></pre>
 
     <h2>Чого чекати даремно</h2>
     <ul>
-      <li>Живий процес без записаної траси. Немає producer — немає що відкривати.</li>
+      <li>
+        Живий процес без inspector на loopback. <code>NODE_OPTIONS=--inspect</code> на supervisor (<code>next dev</code
+        >, <code>nest</code>, <code>tsx</code>) чіпляється не до коду застосунку.
+      </li>
       <li>
         Дописати рядки у вже відкритий файл і побачити їх без <code>r</code>. І навіть <code>r</code> не працює для
         stdin.

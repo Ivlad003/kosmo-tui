@@ -148,6 +148,20 @@ th {
   margin-bottom: 0;
 }
 
+figure {
+  margin: 1.2rem 0 1.6rem;
+}
+figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+figcaption {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font: 0.78rem/1.4 var(--mono);
+}
+
 .callout {
   border-left: 3px solid var(--warn);
   padding: 0.2rem 0 0.2rem 0.9rem;

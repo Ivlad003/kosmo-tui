@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="872" height="532" viewBox="0 0 872 532" role="img">
+<title>kosmo-tui — error and code</title>
+<rect width="100%" height="100%" rx="10" fill="#12140f"/>
+<rect x="0" y="0" width="100%" height="28" fill="#24281c"/>
+<circle cx="16" cy="14" r="5" fill="#e06c75"/>
+<circle cx="32" cy="14" r="5" fill="#e5c07b"/>
+<circle cx="48" cy="14" r="5" fill="#98c379"/>
+<text x="436" y="18" text-anchor="middle" fill="#a3a48f" font-family="ui-monospace, Menlo, Consolas, monospace" font-size="12">kosmo-tui — error and code</text>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">
+<text x="24.4" y="55" fill="#e7e4d4" font-weight="650" opacity="1">kosmo-tui</text>
+<text x="100" y="55" fill="#e7e4d4" font-weight="450" opacity="1"> · GET /cart · 4 spans · errored Enter detail · / search · e errors · a areas · s stack ·…</text>
+<text x="16" y="72" fill="#e7e4d4" font-weight="450" opacity="1">   - </text>
+<text x="58" y="72" fill="rgb(224,108,117)" font-weight="450" opacity="1">✗</text>
+<text x="66.4" y="72" fill="#e7e4d4" font-weight="450" opacity="1"> GET /cart </text>
+<text x="158.8" y="72" fill="#e7e4d4" font-weight="450" opacity="0.55">http.server</text>
+<text x="251.20000000000002" y="72" fill="#e7e4d4" font-weight="450" opacity="1"> GET /cart → 500  examples/demo/src/server.ts:4  14.2ms                 </text>
+<text x="16" y="89" fill="#e7e4d4" font-weight="450" opacity="1">     - </text>
+<text x="74.80000000000001" y="89" fill="rgb(224,108,117)" font-weight="450" opacity="1">✗</text>
+<text x="83.2" y="89" fill="#e7e4d4" font-weight="450" opacity="1"> loadCart  examples/demo/src/cart.ts:5  3.9ms                                               </text>
+<text x="16" y="106" fill="#e7e4d4" font-weight="450" opacity="1"> ▸     - </text>
+<text x="91.60000000000001" y="106" fill="rgb(224,108,117)" font-weight="450" opacity="1">✗</text>
+<text x="108.4" y="106" fill="#e7e4d4" font-weight="650" opacity="1">calculateLineTotal</text>
+<text x="259.6" y="106" fill="#e7e4d4" font-weight="450" opacity="1">  examples/demo/src/cart.ts:12  1.8ms                                  </text>
+<text x="108.4" y="123" fill="rgb(152,195,121)" font-weight="450" opacity="1">✓</text>
+<text x="116.80000000000001" y="123" fill="#e7e4d4" font-weight="450" opacity="1"> price  examples/demo/src/pricing.ts:3  0.4ms                                           </text>
+<text x="24.4" y="242" fill="#e7e4d4" font-weight="650" opacity="1">calculateLineTotal · function · errored · node · s1</text>
+<text x="16" y="259" fill="#e7e4d4" font-weight="450" opacity="1"> examples/demo/src/cart.ts:12:1  area cart · cart                                                   </text>
+<text x="16" y="276" fill="#e7e4d4" font-weight="450" opacity="1"> ┌ examples/demo/src/cart.ts ───────────────────────────────────────────────────────────────────────</text>
+<text x="16" y="293" fill="#e7e4d4" font-weight="450" opacity="1"> │</text>
+<text x="32.8" y="293" fill="rgb(97,175,239)" font-weight="650" opacity="1">▶</text>
+<text x="41.2" y="293" fill="#e7e4d4" font-weight="450" opacity="1"> 12  export async function calculateLineTotal(item: Item, qty: number) {                         </text>
+<text x="16" y="310" fill="#e7e4d4" font-weight="450" opacity="1"> │  13    const p = await price(item.id);                                                           </text>
+<text x="16" y="327" fill="#e7e4d4" font-weight="450" opacity="1"> │  14    if (item.discount &gt; 100) {                                                                </text>
+<text x="16" y="344" fill="#e7e4d4" font-weight="450" opacity="1"> │  15      throw new RangeError("discount &gt; 100%");                                                </text>
+<text x="16" y="361" fill="#e7e4d4" font-weight="450" opacity="1"> │  16    }                                                                                         </text>
+<text x="16" y="378" fill="#e7e4d4" font-weight="450" opacity="1"> │  17    return p * qty;                                                                           </text>
+<text x="16" y="395" fill="#e7e4d4" font-weight="450" opacity="1"> │  18  }                                                                                           </text>
+<text x="16" y="412" fill="#e7e4d4" font-weight="450" opacity="1"> └──────────────────────────────────────────────────────────────────────────────────────────────────</text>
+<text x="16" y="429" fill="#e7e4d4" font-weight="450" opacity="1"> args    [{"discount":120,"id":7},2]                                                                </text>
+<text x="16" y="446" fill="#e7e4d4" font-weight="450" opacity="1"> return  not-recorded (threw)                                                                       </text>
+<text x="16" y="463" fill="#e7e4d4" font-weight="450" opacity="1"> error   RangeError: discount &gt; 100%                                                                </text>
+<text x="16" y="480" fill="#e7e4d4" font-weight="450" opacity="1"> attrs   code.function = calculateLineTotal                                                         </text>
+<text x="16" y="514" fill="rgb(128,128,128)" font-weight="450" opacity="1"> tree</text>
+</g>
+</svg>

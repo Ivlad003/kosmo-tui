@@ -1,7 +1,8 @@
 # Security policy
 
-kosmo-tui is a read-only viewer for `kosmo-trace/v1` traces. Stage 1 opens no network connection and runs no code
-from a trace.
+kosmo-tui is a viewer for `kosmo-trace/v1` traces and, after you confirm, a live debugger. The viewer opens no
+network connection and runs no code from a trace. The debugger talks only to a loopback inspector and only after
+attach is confirmed. `-r` and `--print` disable every debug effect.
 
 - **Reads only.** JSON and NDJSON files are opened for reading; SQLite stores are opened with `readOnly: true` through
   the built-in `node:sqlite`. On Node >= 22.15 a WAL store in a read-only directory opens as `immutable`; on older
@@ -38,5 +39,26 @@ from a trace.
 - **Clipboard.** `y` starts `pbcopy`, `wl-copy`, `xclip` or `clip` without a shell, found on absolute `PATH` entries
   only, with an allowlisted environment (no tokens or credential variables). Without an adapter the text is printed
   to stdout after the terminal is restored.
+- **Debug is a separate effect.** It runs only after you confirm an attach (`A`, `:attach`, `:launch-browser`,
+  `:attach-browser`). `-r` and `--print` disable it. Inspector and browser endpoints must be loopback. Probes of
+  `/json/version` can hit an application's HTTP server; wildcard binds are probed only on `R`.
+- **What is injected.** A fixed helper (and, for Edge, a binding) is evaluated in the target. The first
+  `process.getBuiltinModule("node:inspector")` loads Node's inspector modules. Breakpoint conditions are generated
+  from fixed fragments, validated identifiers and a hex nonce — never from trace or debuggee text. The browser
+  helper is installed with `Page.addScriptToEvaluateOnNewDocument` in a temporary profile. Page code can see the
+  `Symbol.for` key and can delete or spoof the helper; the nonce does not prevent that. A DevTools window in the
+  launched browser sees kosmo-tui `console.trace` messages.
+- **Detach.** Breakpoints are removed, our pause is resumed, the helper is deleted, `Runtime.discardConsoleEntries`
+  clears console history for every client, then `Debugger.disable`. The terminal is restored without waiting for
+  those replies (deadline 1.5s). Node prints the full `ws://` URL in the application's own terminal. An inspector
+  kosmo-tui opened with SIGUSR1 (Enter on `○`, confirmed) is reachable by every local process until that process
+  exits; `:detach` offers to close it (`inspector.close()` in the target, which also detaches other debuggers), and
+  if you decline the status says so. Live-value masking is the same incomplete key mask as the viewer.
+- **Source maps.** Maps are read from `data:` URLs, from files inside the trace root only, and in the browser over
+  HTTP from the script's own loopback origin (no redirects, 32 MiB, 5 s); `/__nextjs_source-map` is never fetched.
+- **Browser.** The default launch uses `--remote-debugging-pipe` and a `0700` temporary profile, never your everyday
+  profile and never `--remote-allow-origins`. `:attach-browser` is refused unless the listener is loopback Chrome/Edge
+  with a non-default `--user-data-dir`. That TCP port is reachable by any local process. Only `Page`, `Runtime`,
+  `Debugger`, `Target` and `Browser.close` are used.
 
 Report vulnerabilities privately to the maintainers instead of opening a public issue.

@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Live debugger for Node (`A` Targets, `b` tracepoint, `B` breakpoint, `H` hits, `P` paused) over the loopback inspector, with confirmation before attach.
+- Browser debugger: launch Chrome/Edge/Chromium with a temporary profile and `--remote-debugging-pipe`, or `:attach-browser` to a loopback inspector that is not the default profile.
+- Commands `:attach`, `:detach`, `:tp`, `:bp`, `:untp`, `:unbp`, `:tp-cap`, `:max-pause`, `:launch-browser`, `:attach-browser`, `:reload-armed`. `-r` disables every debug effect.
+- Points resolve through source maps (inline `data:`, files inside the root, same-origin loopback HTTP in the browser) and are anchored after the function header; they are re-resolved on every new script (HMR, lazy load) and re-armed on reattach. Spans route by `runtime`: `browser` spans arm in the browser, the rest in Node; `:tp`/`:bp` without a span arm everywhere.
+- Map trust: the file on disk is compared with the map's `sourcesContent` (or the trace snippet) and the point is re-anchored by text when they differ; sites are chosen with `Debugger.getPossibleBreakpoints` and checked to map back into the function. The Paused view shows the scope values of the top frame.
+- Enter on a process without an inspector offers `SIGUSR1`; `:detach` then asks whether to close that port. When the child of a supervisor restarts, the replacement is found within 10 s and offered for reattach. Ctrl+Z restores the terminal and stops kosmo-tui (breakpoints inactive meanwhile); SIGCONT brings it back.
+
 ## [0.1.0] - 2026-09-25
 
 First publishable build. Install with `npx @ivlad003/kosmo-tui`. Node >= 22.13.0. No runtime dependencies.

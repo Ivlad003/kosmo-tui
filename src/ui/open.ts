@@ -41,6 +41,7 @@ import {
 import { PRINT_HINT, openKeyboardInput, type KeyboardDeps, type KeyboardResult } from "../terminal-input.js";
 import { nodeRootFs, nodeSnippetFs, nodeStartFs } from "./node-ports.js";
 import { paintGuardFromEnv } from "../paint-guard.js";
+import { DebugController } from "../debug/port.js";
 import { runSession, type SessionClipboard, type SessionDeps, type SessionTimers } from "./session.js";
 
 /** Second raw-mode reclaim after data EOF, for a producer whose exit trails its EOF. */
@@ -173,7 +174,19 @@ export async function openTui(input: OpenTuiInput, deps: OpenTuiDeps = {}): Prom
     tmpToken: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
     onRootChange: (next) => {
       root = next;
-    }
+    },
+    ...(args.readOnly ? {} : { debug: new DebugController(proc.env, platform as NodeJS.Platform) }),
+    ...(platform === "win32"
+      ? {}
+      : {
+          suspend: {
+            stop: () => process.kill(process.pid, "SIGSTOP"),
+            onContinue: (handler: () => void) => {
+              process.once("SIGCONT", handler);
+              return () => process.off("SIGCONT", handler);
+            }
+          }
+        })
   };
   try {
     return await runSession(session);

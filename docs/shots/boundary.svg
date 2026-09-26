@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="872" height="532" viewBox="0 0 872 532" role="img">
+<title>kosmo-tui — runtime boundary</title>
+<rect width="100%" height="100%" rx="10" fill="#12140f"/>
+<rect x="0" y="0" width="100%" height="28" fill="#24281c"/>
+<circle cx="16" cy="14" r="5" fill="#e06c75"/>
+<circle cx="32" cy="14" r="5" fill="#e5c07b"/>
+<circle cx="48" cy="14" r="5" fill="#98c379"/>
+<text x="436" y="18" text-anchor="middle" fill="#a3a48f" font-family="ui-monospace, Menlo, Consolas, monospace" font-size="12">kosmo-tui — runtime boundary</text>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">
+<text x="24.4" y="55" fill="#e7e4d4" font-weight="650" opacity="1">kosmo-tui</text>
+<text x="100" y="55" fill="#e7e4d4" font-weight="450" opacity="1"> · GET /product/25565189M · 8 spans · complete Enter detail · / search · e errors · a are…</text>
+<text x="16" y="72" fill="#e7e4d4" font-weight="450" opacity="1">   - </text>
+<text x="58" y="72" fill="rgb(152,195,121)" font-weight="450" opacity="1">✓</text>
+<text x="66.4" y="72" fill="#e7e4d4" font-weight="450" opacity="1"> GET /product/25565189M </text>
+<text x="268" y="72" fill="#e7e4d4" font-weight="450" opacity="0.55">http.server</text>
+<text x="360.40000000000003" y="72" fill="#e7e4d4" font-weight="450" opacity="1"> GET /product/:productId → 200  (no location)  212.6ms     </text>
+<text x="16" y="89" fill="#e7e4d4" font-weight="450" opacity="1"> ▸   - </text>
+<text x="74.80000000000001" y="89" fill="rgb(152,195,121)" font-weight="450" opacity="1">✓</text>
+<text x="91.60000000000001" y="89" fill="#e7e4d4" font-weight="650" opacity="1">loader</text>
+<text x="142" y="89" fill="#e7e4d4" font-weight="450" opacity="1">  src/routes/_app.product.$productId.tsx:137  148.3ms                                </text>
+<text x="91.60000000000001" y="106" fill="rgb(152,195,121)" font-weight="450" opacity="1">✓</text>
+<text x="100" y="106" fill="#e7e4d4" font-weight="450" opacity="1"> GET /product/shopper-products/v1/products/{id} </text>
+<text x="503.20000000000005" y="106" fill="#e7e4d4" font-weight="450" opacity="0.55">http.client</text>
+<text x="595.6" y="106" fill="#e7e4d4" font-weight="450" opacity="1">  (no location)  121.7ms       </text>
+<text x="91.60000000000001" y="123" fill="rgb(152,195,121)" font-weight="450" opacity="1">✓</text>
+<text x="100" y="123" fill="#e7e4d4" font-weight="450" opacity="1"> GET /product/shopper-products/v1/products/{id}/recommendations </text>
+<text x="637.6" y="123" fill="#e7e4d4" font-weight="450" opacity="0.55">http.client</text>
+<text x="730" y="123" fill="#e7e4d4" font-weight="450" opacity="1">  (no location…</text>
+<text x="74.80000000000001" y="140" fill="rgb(152,195,121)" font-weight="450" opacity="1">✓</text>
+<text x="83.2" y="140" fill="#e7e4d4" font-weight="450" opacity="1"> ProductPage </text>
+<text x="192.4" y="140" fill="#e7e4d4" font-weight="450" opacity="0.55">react.render</text>
+<text x="293.2" y="140" fill="#e7e4d4" font-weight="450" opacity="1">  (no location)  18.9ms                                            </text>
+<text x="16" y="157" fill="#e7e4d4" font-weight="450" opacity="0.55">       ┄┄ node → browser · browser ┄┄</text>
+<text x="16" y="174" fill="#e7e4d4" font-weight="450" opacity="1">     - </text>
+<text x="74.80000000000001" y="174" fill="rgb(152,195,121)" font-weight="450" opacity="1">✓</text>
+<text x="83.2" y="174" fill="#e7e4d4" font-weight="450" opacity="1"> ProductPage </text>
+<text x="192.4" y="174" fill="#e7e4d4" font-weight="450" opacity="0.55">react.render</text>
+<text x="293.2" y="174" fill="#e7e4d4" font-weight="450" opacity="1">  (no location)  7.4ms                                             </text>
+<text x="16" y="191" fill="#e7e4d4" font-weight="450" opacity="1">       - </text>
+<text x="91.60000000000001" y="191" fill="rgb(152,195,121)" font-weight="450" opacity="1">✓</text>
+<text x="100" y="191" fill="#e7e4d4" font-weight="450" opacity="1"> onAddToCart  (no location)  96.1ms                                                       </text>
+<text x="108.4" y="208" fill="rgb(152,195,121)" font-weight="450" opacity="1">✓</text>
+<text x="116.80000000000001" y="208" fill="#e7e4d4" font-weight="450" opacity="1"> POST /action/cart-item-add </text>
+<text x="352" y="208" fill="#e7e4d4" font-weight="450" opacity="0.55">http.client</text>
+<text x="444.40000000000003" y="208" fill="#e7e4d4" font-weight="450" opacity="1">  (no location)  88.5ms                          </text>
+<text x="24.4" y="242" fill="#e7e4d4" font-weight="650" opacity="1">loader · function · complete · node · ssr</text>
+<text x="16" y="259" fill="#e7e4d4" font-weight="450" opacity="1"> src/routes/_app.product.$productId.tsx:137  area src/routes · pdp                                  </text>
+<text x="16" y="276" fill="#e7e4d4" font-weight="450" opacity="1"> ┌ src/routes/_app.product.$productId.tsx · file-missing ───────────────────────────────────────────</text>
+<text x="16" y="293" fill="#e7e4d4" font-weight="450" opacity="1"> │  no code: file-missing                                                                           </text>
+<text x="16" y="310" fill="#e7e4d4" font-weight="450" opacity="1"> └──────────────────────────────────────────────────────────────────────────────────────────────────</text>
+<text x="16" y="327" fill="#e7e4d4" font-weight="450" opacity="1"> args    [{"params":{"productId":"25565189M"},"request":{"method":"GET","url":"http://localhost:517…</text>
+<text x="16" y="344" fill="#e7e4d4" font-weight="450" opacity="1"> return  {"product":{"currency":"USD","id":"25565189M","name":"Classic Crew Neck Tee","orderable":t…</text>
+<text x="16" y="361" fill="#e7e4d4" font-weight="450" opacity="1"> error   not-recorded                                                                               </text>
+<text x="16" y="378" fill="#e7e4d4" font-weight="450" opacity="1"> attrs   code.function = loader                                                                     </text>
+<text x="16" y="514" fill="rgb(128,128,128)" font-weight="450" opacity="1"> tree</text>
+</g>
+</svg>

@@ -73,10 +73,15 @@ describe("global keys of stage 1", () => {
     expect(decodeKey(state, "\u0003")).toEqual({ type: "quit" });
   });
 
-  it("keys freed in stage 1 and stage-2 keys decode to nothing", () => {
-    for (const key of ["n", "b", "L", "p", "=", "w", "f", "t", "R", "-", "+", "A", "B", "H", "P", "c", "o"]) {
+  it("keys freed in stage 1 stay unbound; stage 2 binds A b B H P", () => {
+    for (const key of ["L", "p", "=", "w", "t", "-", "+", "n", "c", "o", "f", "R"]) {
       expect(decodeKey(state, key), key).toBeUndefined();
     }
+    expect(decodeKey(state, "A")).toEqual({ type: "debug", action: { type: "openTargets" } });
+    expect(decodeKey(state, "b")).toEqual({ type: "debug", action: { type: "togglePoint", kind: "tp" } });
+    expect(decodeKey(state, "B")).toEqual({ type: "debug", action: { type: "togglePoint", kind: "bp" } });
+    expect(decodeKey(state, "H")).toEqual({ type: "debug", action: { type: "openHits" } });
+    expect(decodeKey(state, "P")).toEqual({ type: "debug", action: { type: "openPaused" } });
   });
 
   it("Tab means nothing outside the trace screen", () => {
@@ -107,7 +112,7 @@ describe("precedence: prompt, then focused pane, then global", () => {
       type: "runCommand",
       result: {
         error:
-          "unknown command :nope; available: :trace :ancestors :path :callers :find :filter :area :bookmark :root :q"
+          "unknown command :nope; available: :trace :ancestors :path :callers :find :filter :area :bookmark :root :q :attach :detach :tp :untp :tp-cap :bp :unbp :max-pause :attach-browser :reload-armed :launch-browser"
       }
     });
   });

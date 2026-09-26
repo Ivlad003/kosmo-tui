@@ -12,6 +12,24 @@ import {
 import { fakeTerminalIo } from "./terminal-fakes.js";
 
 describe("terminal", () => {
+  it("suspend gives the terminal back and resume repaints everything", () => {
+    const f = fakeTerminalIo();
+    const term = createTerminal(f.input, f.output);
+    term.paint(["alpha"]);
+    f.writes.length = 0;
+    term.suspend!();
+    expect(f.writes).toEqual([RESTORE_SEQUENCE]);
+    term.paint(["ignored while stopped"]);
+    expect(f.writes).toEqual([RESTORE_SEQUENCE]);
+    f.writes.length = 0;
+    term.resume!();
+    expect(f.writes[0]).toContain(ENTER_SEQUENCE);
+    term.paint(["alpha"]);
+    // Same frame as before the suspend, yet painted again: the screen was cleared meanwhile.
+    expect(f.writes.some((write) => write.includes("alpha"))).toBe(true);
+    term.close();
+  });
+
   it("repaints only the rows that changed", () => {
     const f = fakeTerminalIo();
     const term = createTerminal(f.input, f.output);

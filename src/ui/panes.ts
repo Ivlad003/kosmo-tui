@@ -82,7 +82,8 @@ export function headerTitle(state: ViewState, color: ColorLevel, width = Number.
   const data = (text: string): string => escapeTerminalControls(clipPrefix(text, measureLimit(width)));
   if (state.screen === "trace" && state.trace !== null) {
     const trace = state.trace.trace;
-    return ` ${name} · ${data(trace.name ?? trace.id)} · ${state.trace.size} spans · ${trace.status ?? "-"}`;
+    const debug = state.debug.status === null ? "" : ` · ${escapeTerminalControls(state.debug.status)}`;
+    return ` ${name} · ${data(trace.name ?? trace.id)} · ${state.trace.size} spans · ${trace.status ?? "-"}${debug}`;
   }
   if (state.screen === "traces" && state.dataset !== null) {
     const info = state.dataset.info;
@@ -94,6 +95,12 @@ export function headerTitle(state: ViewState, color: ColorLevel, width = Number.
 
 /** Keys that do something right now (capability-driven: `r` only when the source can be re-read). */
 export function keyHints(state: ViewState): string {
+  if (state.debug.capture !== null) return "Enter arm · Space same-case · Esc cancel";
+  if (state.debug.confirm !== null)
+    return state.debug.confirm.declined === undefined ? "y confirm · n cancel" : "y yes · n no · Esc cancel";
+  if (state.pane === "targets") return "Enter select · r rescan · R wildcard · Esc back";
+  if (state.pane === "hits") return "j/k scroll · Esc close";
+  if (state.pane === "paused") return "c continue · n over · o out · s into · Esc close";
   if (state.prompt !== null)
     return state.prompt.kind === "command" ? "Enter run · Esc cancel" : "Enter apply · Esc cancel";
   if (state.screen === "start") return "Enter open · / filter · q quit";
@@ -179,6 +186,16 @@ export function footerLine(state: ViewState, width: number, color: ColorLevel): 
   if (state.prompt !== null) {
     const sigil = state.prompt.kind === "command" ? ":" : "/";
     return truncateVisible(` ${sigil}${escapeTerminalControls(clipPrefix(state.prompt.text, limit))}_`, width);
+  }
+  if (state.debug.capture !== null) {
+    const capture = state.debug.capture;
+    return truncateVisible(
+      ` ${capture.kind} ${escapeTerminalControls(capture.file)}:${capture.line} ${escapeTerminalControls(capture.text)}_${capture.sameCase ? " same-case" : ""}`,
+      width
+    );
+  }
+  if (state.debug.pausedText !== null) {
+    return truncateVisible(` ${escapeTerminalControls(state.debug.pausedText)} · c continue`, width);
   }
   if (state.banner !== null) {
     const message = escapeTerminalControls(clipPrefix(state.banner.text, limit));

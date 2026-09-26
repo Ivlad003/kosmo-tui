@@ -105,7 +105,8 @@ describe("parseCommandLine: general", () => {
 
   it("unknown commands list the available ones", () => {
     expect(parseCommandLine(state, ":js 1+1")).toEqual({
-      error: "unknown command :js; available: :trace :ancestors :path :callers :find :filter :area :bookmark :root :q"
+      error:
+        "unknown command :js; available: :trace :ancestors :path :callers :find :filter :area :bookmark :root :q :attach :detach :tp :untp :tp-cap :bp :unbp :max-pause :attach-browser :reload-armed :launch-browser"
     });
   });
 
@@ -137,7 +138,8 @@ describe("parseCommandLine: general", () => {
     expect(parseCommandLine(state, ':root "/my app"')).toEqual({ type: "setRoot", dir: "/my app" });
     expect(parseCommandLine(state, ":trace /t")).toEqual({ type: "openTrace", id: "/t" });
     expect(parseCommandLine(state, ':js "x')).toEqual({
-      error: "unknown command :js; available: :trace :ancestors :path :callers :find :filter :area :bookmark :root :q"
+      error:
+        "unknown command :js; available: :trace :ancestors :path :callers :find :filter :area :bookmark :root :q :attach :detach :tp :untp :tp-cap :bp :unbp :max-pause :attach-browser :reload-armed :launch-browser"
     });
   });
 
